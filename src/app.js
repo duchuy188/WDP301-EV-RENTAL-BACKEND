@@ -22,25 +22,21 @@ const PORT = process.env.PORT || 5000;
 // Middleware để phân tích dữ liệu JSON
 app.use(express.json());
 
-//  Cấu hình CORS theo environment
-if (process.env.NODE_ENV === 'development') {
-  // Development: cho phép tất cả origins
-  app.use(cors({
-    origin: true,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-  }));
-} else {
- 
-  const allowedOrigins = process.env.FRONTEND_URL?.split(',') || [];
-  app.use(cors({
-    origin: allowedOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-  }));
-}
+// Cấu hình CORS cho cả development và production
+const allowedOrigins = [
+  'https://wdp301-ev-rental-backend.onrender.com',
+  'http://localhost:5000',
+  'http://127.0.0.1:5000',
+  'http://localhost:5173',
+  'http://localhost:5174'
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 
 // Thiết lập Swagger với xác thực cơ bản
 app.use('/api-docs', swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerDocs));
