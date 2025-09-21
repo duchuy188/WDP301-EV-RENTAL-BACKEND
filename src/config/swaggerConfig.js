@@ -10,8 +10,13 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'http://localhost:5000', 
+       url: 'https://wdp301-ev-rental-backend.onrender.com',
+        description: 'Production server'
       },
+    {
+      url: 'http://localhost:5000',
+      description: 'Development server'
+    }
     ],
     components: {
       securitySchemes: {
