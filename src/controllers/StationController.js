@@ -5,19 +5,19 @@ const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 // Helper function để tự động generate code station
 const generateStationCode = async () => {
   try {
-  
+    // Tìm station có code lớn nhất
     const lastStation = await Station.findOne({}, {}, { sort: { 'code': -1 } });
     
     if (!lastStation) {
-
+      // Nếu chưa có station nào, bắt đầu từ ST001
       return 'ST001';
     }
     
-
+    // Lấy số từ code cuối cùng (ST001 -> 001)
     const lastCode = lastStation.code;
     const lastNumber = parseInt(lastCode.replace('ST', ''));
     
-
+    // Tăng lên 1 và format lại
     const nextNumber = lastNumber + 1;
     const nextCode = `ST${nextNumber.toString().padStart(3, '0')}`;
     
@@ -31,7 +31,7 @@ const generateStationCode = async () => {
 // Thêm station mới
 exports.createStation = async (req, res) => {
   try {
-   
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -43,25 +43,25 @@ exports.createStation = async (req, res) => {
       description
     } = req.body;
 
-
+    // Validate required fields
     if (!name || !address || !district || !city || !phone || !email || !opening_time || !closing_time || !max_capacity) {
       return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc' });
     }
 
-
+    // Tự động generate code
     const code = await generateStationCode();
 
-
+    // Kiểm tra code đã tồn tại chưa (để đảm bảo an toàn)
     const existingStation = await Station.findOne({ code });
     if (existingStation) {
       return res.status(400).json({ message: 'Code station đã tồn tại, vui lòng thử lại' });
     }
 
-  
+    // Upload images if provided
     let images = [];
 
     if (req.files && req.files.length > 0) {
-    
+      // req.files là array các file, không phải object
       const imageFiles = req.files;
       
       for (const file of imageFiles) {
@@ -70,7 +70,7 @@ exports.createStation = async (req, res) => {
           images.push(result.url);
         } catch (uploadError) {
           console.error('Lỗi upload ảnh:', uploadError);
-        
+          // Continue with other images if one fails
         }
       }
     }
@@ -132,21 +132,21 @@ exports.getStations = async (req, res) => {
       ];
     }
 
- 
+    // Tính toán skip cho phân trang
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  
+    // Tạo sort options
     let sortOption = {};
     if (sort === 'name') sortOption = { name: 1 };
     else if (sort === 'available') sortOption = { available_vehicles: -1 };
 
-   
+    // Lấy danh sách stations
     const stations = await Station.find(query)
       .sort(sortOption)
       .skip(skip)
       .limit(parseInt(limit));
 
- 
+    // Tính tổng số stations
     const total = await Station.countDocuments(query);
 
     // Format thời gian theo giờ Việt Nam
@@ -399,7 +399,7 @@ exports.deleteStation = async (req, res) => {
 // Đồng bộ số lượng xe
 exports.syncVehicleCount = async (req, res) => {
   try {
- 
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin' && req.user.role !== 'Station Staff') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -411,7 +411,7 @@ exports.syncVehicleCount = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy station' });
     }
     
-
+    // Nếu là Station Staff, kiểm tra có thuộc station này không
     if (req.user.role === 'Station Staff' && req.user.stationId.toString() !== id) {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -441,7 +441,7 @@ exports.syncVehicleCount = async (req, res) => {
 // Đồng bộ tất cả stations
 exports.syncAllStations = async (req, res) => {
   try {
-
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -466,7 +466,7 @@ exports.getStationStaff = async (req, res) => {
   try {
     const { id } = req.params;
     
-
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin' && 
         (req.user.role !== 'Station Staff' || req.user.stationId.toString() !== id)) {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
@@ -505,7 +505,7 @@ exports.getStationStaff = async (req, res) => {
 // Xóa hình ảnh station
 exports.deleteStationImage = async (req, res) => {
   try {
- 
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -527,7 +527,8 @@ exports.deleteStationImage = async (req, res) => {
     
     await station.save();
     
-
+    // Xóa ảnh khỏi Cloudinary nếu cần
+    // Cần lưu publicId để xóa
     
     return res.status(200).json({
       message: 'Đã xóa hình ảnh thành công',

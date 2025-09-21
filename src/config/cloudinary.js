@@ -11,7 +11,7 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-
+// Hàm tạo storage cho từng loại ảnh
 const createStorage = (folder) => {
     return new CloudinaryStorage({
         cloudinary: cloudinary,

@@ -19,6 +19,9 @@ const vehicleRoutes = require('./routes/vehicle.routes');
 const app = express();
 const PORT = process.env.PORT || 5000; 
 
+// Trust proxy cho production (Render)
+app.set('trust proxy', 1);
+
 // Middleware để phân tích dữ liệu JSON
 app.use(express.json());
 

@@ -7,7 +7,7 @@ const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 // Tạo tài khoản Staff (chỉ Admin) - KHÔNG gán station
 exports.createStaffAccount = async (req, res) => {
   try {
-  
+    // Kiểm tra quyền Admin
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Chỉ Admin mới có quyền tạo tài khoản Staff' });
     }
@@ -16,22 +16,22 @@ exports.createStaffAccount = async (req, res) => {
       fullname, email, phone
     } = req.body;
 
-
+    // Validate required fields
     if (!fullname || !email || !phone) {
       return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc' });
     }
 
-
+    // Kiểm tra email đã tồn tại
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'Email đã được sử dụng' });
     }
 
-
+    // Tạo password mặc định
     const defaultPassword = crypto.randomBytes(8).toString('hex');
     const hashedPassword = await bcrypt.hash(defaultPassword, 12);
 
- 
+    // Tạo user mới (chưa gán station)
     const newUser = new User({
       fullname,
       email,
@@ -39,24 +39,24 @@ exports.createStaffAccount = async (req, res) => {
       passwordHash: hashedPassword,
       role: 'Station Staff',
       status: 'active',
-      kycStatus: 'not_submitted' 
+      kycStatus: 'not_submitted' // Staff không cần KYC
     });
 
     await newUser.save();
 
- 
+    // Trả về thông tin user + password
     const userResponse = {
       _id: newUser._id,
       fullname: newUser.fullname,
       email: newUser.email,
       phone: newUser.phone,
       role: newUser.role,
-      stationId: newUser.stationId, 
+      stationId: newUser.stationId, // null vì chưa gán
       status: newUser.status,
       createdAt: formatVietnamTime(newUser.createdAt, 'DD/MM/YYYY HH:mm:ss')
     };
 
-   
+    // Gửi email chứa password cho staff
     try {
       const emailHtml = getStaffAccountEmailTemplate(fullname, email, defaultPassword);
       await sendEmail({
@@ -67,13 +67,13 @@ exports.createStaffAccount = async (req, res) => {
       console.log(`Email đã gửi thành công cho staff: ${email}`);
     } catch (emailError) {
       console.error('Lỗi gửi email:', emailError);
-   
+      // Không throw error, chỉ log để không ảnh hưởng đến việc tạo tài khoản
     }
 
     res.status(201).json({
       message: 'Đã tạo tài khoản Staff thành công',
       user: userResponse,
-      temporaryPassword: defaultPassword, 
+      temporaryPassword: defaultPassword, // Chỉ hiển thị trong development
       emailSent: true
     });
 
@@ -83,22 +83,22 @@ exports.createStaffAccount = async (req, res) => {
   }
 };
 
-
+// Gán Staff cho Station (chỉ Admin)
 exports.assignStaffToStation = async (req, res) => {
   try {
-   
+    // Kiểm tra quyền Admin
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Chỉ Admin mới có quyền gán staff' });
     }
 
     const { userId, stationId } = req.body;
 
-  
+    // Validate required fields
     if (!userId || !stationId) {
       return res.status(400).json({ message: 'Vui lòng cung cấp userId và stationId' });
     }
 
-   
+    // Kiểm tra user có tồn tại và là Staff không
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'Không tìm thấy user' });
@@ -108,13 +108,13 @@ exports.assignStaffToStation = async (req, res) => {
       return res.status(400).json({ message: 'User này không phải là Staff' });
     }
 
-   
+    // Kiểm tra station có tồn tại không
     const station = await Station.findById(stationId);
     if (!station) {
       return res.status(404).json({ message: 'Không tìm thấy trạm' });
     }
 
-   
+    // Gán staff cho station
     user.stationId = stationId;
     await user.save();
 
@@ -139,7 +139,7 @@ exports.assignStaffToStation = async (req, res) => {
   }
 };
 
-
+// Lấy danh sách users theo role
 exports.getUsers = async (req, res) => {
   try {
     const { 
@@ -152,14 +152,14 @@ exports.getUsers = async (req, res) => {
       sort = 'createdAt'
     } = req.query;
 
-  
+    // Kiểm tra quyền
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Chỉ Admin mới có quyền xem danh sách users' });
     }
 
     const query = {};
 
-    
+    // Áp dụng các filter
     if (role) query.role = role;
     if (status) query.status = status;
     if (stationId) query.stationId = stationId;
@@ -171,16 +171,16 @@ exports.getUsers = async (req, res) => {
       ];
     }
 
-   
+    // Tính toán skip cho phân trang
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-   
+    // Tạo sort options
     let sortOption = {};
     if (sort === 'createdAt') sortOption = { createdAt: -1 };
     else if (sort === 'fullname') sortOption = { fullname: 1 };
     else if (sort === 'email') sortOption = { email: 1 };
 
-   
+    // Lấy danh sách users
     const users = await User.find(query)
       .select('-password -refreshTokens')
       .populate('stationId', 'name code')
@@ -188,7 +188,7 @@ exports.getUsers = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-   
+    // Tính tổng số users
     const total = await User.countDocuments(query);
 
     // Format thời gian theo giờ Việt Nam
@@ -214,7 +214,7 @@ exports.getUsers = async (req, res) => {
   }
 };
 
-
+// Lấy danh sách khách hàng cho Staff (chỉ EV Renter)
 exports.getCustomers = async (req, res) => {
   try {
     const { 
@@ -225,10 +225,10 @@ exports.getCustomers = async (req, res) => {
       sort = 'createdAt'
     } = req.query;
 
-   
+    // Chỉ lấy EV Renter
     const query = { role: 'EV Renter' };
 
-   
+    // Áp dụng các filter
     if (status) query.status = status;
     if (search) {
       query.$and = [
@@ -242,26 +242,26 @@ exports.getCustomers = async (req, res) => {
       ];
     }
 
-   
+    // Tính toán skip cho phân trang
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  
+    // Tạo sort options
     let sortOption = {};
     if (sort === 'createdAt') sortOption = { createdAt: -1 };
     else if (sort === 'fullname') sortOption = { fullname: 1 };
     else if (sort === 'email') sortOption = { email: 1 };
 
-    
+    // Lấy danh sách customers
     const customers = await User.find(query)
       .select('_id fullname email phone kycStatus kycId createdAt')
       .sort(sortOption)
       .skip(skip)
       .limit(parseInt(limit));
 
-   
+    // Tính tổng số customers
     const total = await User.countDocuments(query);
 
-  
+    // Format thời gian theo giờ Việt Nam
     const formattedCustomers = customers.map(customer => ({
       ...customer.toObject(),
       createdAt: formatVietnamTime(customer.createdAt, 'DD/MM/YYYY HH:mm:ss')
@@ -287,7 +287,7 @@ exports.getCustomers = async (req, res) => {
 // Lấy danh sách Staff chưa có station (chỉ Admin)
 exports.getUnassignedStaff = async (req, res) => {
   try {
-  
+    // Kiểm tra quyền Admin
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Chỉ Admin mới có quyền xem danh sách staff' });
     }
@@ -304,7 +304,7 @@ exports.getUnassignedStaff = async (req, res) => {
       status: 'active'
     };
 
-    
+    // Thêm search nếu có
     if (search) {
       query.$and = [
         {
@@ -317,17 +317,17 @@ exports.getUnassignedStaff = async (req, res) => {
       ];
     }
 
-   
+    // Tính skip
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  
+    // Lấy staff chưa có station
     const staff = await User.find(query)
       .select('-password -refreshTokens')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
- 
+    // Tính tổng số staff chưa có station
     const total = await User.countDocuments(query);
 
     // Format thời gian theo giờ Việt Nam
@@ -359,7 +359,7 @@ exports.getUserDetail = async (req, res) => {
   try {
     const { id } = req.params;
 
-   
+    // Kiểm tra quyền
     if (req.user.role !== 'Admin' && req.user._id.toString() !== id) {
       return res.status(403).json({ message: 'Bạn không có quyền xem thông tin user này' });
     }
@@ -372,7 +372,7 @@ exports.getUserDetail = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy user' });
     }
 
-    
+    // Format thời gian theo giờ Việt Nam
     const formattedUser = {
       ...user.toObject(),
       createdAt: formatVietnamTime(user.createdAt, 'DD/MM/YYYY HH:mm:ss'),
@@ -395,7 +395,7 @@ exports.updateUser = async (req, res) => {
       fullname, phone, status, stationId
     } = req.body;
 
-   
+    // Kiểm tra quyền
     if (req.user.role !== 'Admin' && req.user._id.toString() !== id) {
       return res.status(403).json({ message: 'Bạn không có quyền cập nhật user này' });
     }
@@ -417,7 +417,7 @@ exports.updateUser = async (req, res) => {
         user.status = status;
       }
       if (stationId) {
-      
+        // Kiểm tra station có tồn tại không
         const station = await Station.findById(stationId);
         if (!station) {
           return res.status(404).json({ message: 'Không tìm thấy trạm' });
@@ -510,7 +510,7 @@ exports.resetUserPassword = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy user' });
     }
 
-
+    // Tạo password mới
     const newPassword = crypto.randomBytes(8).toString('hex');
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
@@ -519,7 +519,7 @@ exports.resetUserPassword = async (req, res) => {
 
     res.status(200).json({
       message: 'Đã reset password thành công',
-      newPassword: newPassword 
+      newPassword: newPassword // Chỉ trả về lần đầu
     });
 
   } catch (error) {
@@ -538,7 +538,8 @@ exports.getRiskyCustomers = async (req, res) => {
 
     const { page = 1, limit = 10 } = req.query;
 
-  
+    // Tìm users có role EV Renter và có nhiều feedback tiêu cực
+    // Hoặc có nhiều lần vi phạm (có thể thêm logic phức tạp hơn)
     const query = {
       role: 'EV Renter',
       status: 'active'
