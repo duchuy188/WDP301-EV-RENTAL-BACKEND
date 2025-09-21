@@ -1,5 +1,19 @@
 const swaggerJsDoc = require('swagger-jsdoc');
 
+const servers = process.env.NODE_ENV === 'production' 
+  ? [
+      {
+        url: 'https://wdp301-ev-rental-backend.onrender.com',
+        description: 'Production server'
+      }
+    ]
+  : [
+      {
+        url: 'http://localhost:5000',
+        description: 'Development server'
+      }
+    ];
+
 const swaggerOptions = {
   swaggerDefinition: {
     openapi: '3.0.0',
@@ -8,16 +22,7 @@ const swaggerOptions = {
       version: '1.0.0',
       description: 'API documentation for the EV Rental System',
     },
-    servers: [
-      {
-       url: 'https://wdp301-ev-rental-backend.onrender.com',
-        description: 'Production server'
-      },
-    {
-      url: 'http://localhost:5000',
-      description: 'Development server'
-    }
-    ],
+    servers: servers,
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -37,7 +42,7 @@ const swaggerOptions = {
     './src/routes/*.js',
     './src/config/swagger/api/*.js',
     './src/config/swagger/schemas/*.js'
-  ], // Đường dẫn đến các tệp chứa định nghĩa API
+  ],
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
