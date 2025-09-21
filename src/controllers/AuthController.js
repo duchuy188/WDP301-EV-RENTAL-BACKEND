@@ -47,13 +47,22 @@ exports.register = async (req, res) => {
                 subject: 'Chào mừng đến với EV Rental',
                 html: getWelcomeEmailTemplate(fullname)
             });
-            console.log('Email chào mừng đã được gửi đến:', email);
+            console.log('✅ Email chào mừng đã được gửi đến:', email);
         } catch (emailError) {
-            console.error('Lỗi khi gửi email chào mừng:', emailError);
-           
+            console.error('❌ Lỗi khi gửi email chào mừng:', emailError.message);
+            // Không throw error, chỉ log và tiếp tục
+            // Email không gửi được không ảnh hưởng đến việc đăng ký
         }
         
-        res.status(201).json({ message: 'Đăng ký người dùng thành công' });
+        res.status(201).json({ 
+            message: 'Đăng ký tài khoản thành công! Vui lòng kiểm tra email để xác nhận',
+            user: {
+                id: newUser._id,
+                fullname: newUser.fullname,
+                email: newUser.email,
+                role: newUser.role
+            }
+        });
     } catch (error) {
         
         if (error.code === 11000 && error.keyPattern && error.keyPattern.email) {
