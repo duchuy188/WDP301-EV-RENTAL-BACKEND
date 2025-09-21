@@ -47,22 +47,13 @@ exports.register = async (req, res) => {
                 subject: 'Chào mừng đến với EV Rental',
                 html: getWelcomeEmailTemplate(fullname)
             });
-            console.log('✅ Email chào mừng đã được gửi đến:', email);
+            console.log('Email chào mừng đã được gửi đến:', email);
         } catch (emailError) {
-            console.error('❌ Lỗi khi gửi email chào mừng:', emailError.message);
-            // Không throw error, chỉ log và tiếp tục
-            // Email không gửi được không ảnh hưởng đến việc đăng ký
+            console.error('Lỗi khi gửi email chào mừng:', emailError);
+           
         }
         
-        res.status(201).json({ 
-            message: 'Đăng ký tài khoản thành công! Vui lòng kiểm tra email để xác nhận',
-            user: {
-                id: newUser._id,
-                fullname: newUser.fullname,
-                email: newUser.email,
-                role: newUser.role
-            }
-        });
+        res.status(201).json({ message: 'Đăng ký người dùng thành công' });
     } catch (error) {
         
         if (error.code === 11000 && error.keyPattern && error.keyPattern.email) {
@@ -92,7 +83,7 @@ exports.login = async (req, res) => {
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
         
-      
+        // Tạo refresh token ngẫu nhiên
         const refreshTokenString = require('crypto').randomBytes(40).toString('hex');
         
         const refreshToken = new RefreshToken({
@@ -230,13 +221,13 @@ exports.changePassword = async (req, res) => {
         const { currentPassword, newPassword } = req.body;
         const user = req.user;
         
-   
+        // Kiểm tra mật khẩu hiện tại
         const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
         if (!isMatch) {
             return res.status(401).json({ message: 'Mật khẩu hiện tại không đúng' });
         }
         
-     
+        // Kiểm tra mật khẩu mới có đủ mạnh không
         const isStrongPassword = (password) => {
             const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
             return regex.test(password);
@@ -248,18 +239,18 @@ exports.changePassword = async (req, res) => {
             });
         }
         
-        
+        // Kiểm tra mật khẩu mới không được trùng với mật khẩu cũ
         if (currentPassword === newPassword) {
             return res.status(400).json({ message: 'Mật khẩu mới không được trùng với mật khẩu hiện tại' });
         }
         
-       
+        // Cập nhật mật khẩu mới
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         user.passwordHash = hashedPassword;
         
         await user.save();
         
-     
+        // Vô hiệu hóa tất cả các refresh token hiện có
         await RefreshToken.deleteMany({ userId: user._id });
         
         res.status(200).json({ message: 'Đổi mật khẩu thành công, vui lòng đăng nhập lại' });
@@ -274,25 +265,26 @@ exports.forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
         
+        // Kiểm tra email có tồn tại không
         const user = await User.findOne({ email });
         if (!user) {
-            
+            // Trả về thông báo thành công để tránh tiết lộ thông tin người dùng
             return res.status(200).json({ message: 'Nếu email tồn tại, một liên kết đặt lại mật khẩu sẽ được gửi đến email của bạn' });
         }
         
-       
+        // Tạo token đặt lại mật khẩu
         const resetToken = require('crypto').randomBytes(32).toString('hex');
         
-       
+        // Lưu token và thời gian hết hạn vào database
         user.resetPasswordToken = resetToken;
-        user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); 
+        user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 giờ
         
         await user.save();
         
-      
+        // Tạo URL đặt lại mật khẩu
         const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
         
-      
+        // Gửi email
         try {
             await sendEmail({
                 to: user.email,
@@ -302,7 +294,7 @@ exports.forgotPassword = async (req, res) => {
             
             res.status(200).json({ message: 'Một liên kết đặt lại mật khẩu đã được gửi đến email của bạn' });
         } catch (emailError) {
-          
+            // Nếu gửi email thất bại, xóa token
             user.resetPasswordToken = null;
             user.resetPasswordExpires = null;
             await user.save();
@@ -321,7 +313,7 @@ exports.resetPassword = async (req, res) => {
     try {
         const { token, newPassword } = req.body;
         
-    
+        // Tìm user với token và kiểm tra thời gian hết hạn
         const user = await User.findOne({
             resetPasswordToken: token,
             resetPasswordExpires: { $gt: Date.now() }
@@ -331,7 +323,7 @@ exports.resetPassword = async (req, res) => {
             return res.status(400).json({ message: 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn' });
         }
         
-  
+        // Kiểm tra mật khẩu mới có đủ mạnh không
         const isStrongPassword = (password) => {
             const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
             return regex.test(password);
@@ -343,17 +335,17 @@ exports.resetPassword = async (req, res) => {
             });
         }
         
-   
+        // Cập nhật mật khẩu mới
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         user.passwordHash = hashedPassword;
         
-   
+        // Xóa token đặt lại mật khẩu
         user.resetPasswordToken = null;
         user.resetPasswordExpires = null;
         
         await user.save();
         
-     
+        // Vô hiệu hóa tất cả các refresh token hiện có
         await RefreshToken.deleteMany({ userId: user._id });
         
         res.status(200).json({ message: 'Đặt lại mật khẩu thành công, vui lòng đăng nhập với mật khẩu mới' });

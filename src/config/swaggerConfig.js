@@ -10,13 +10,8 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://wdp301-ev-rental-backend.onrender.com',
-        description: 'Production server'
+        url: 'http://localhost:5000', 
       },
-      {
-        url: 'http://localhost:5000',
-        description: 'Development server'
-      }
     ],
     components: {
       securitySchemes: {
@@ -37,7 +32,7 @@ const swaggerOptions = {
     './src/routes/*.js',
     './src/config/swagger/api/*.js',
     './src/config/swagger/schemas/*.js'
-  ], 
+  ], // Đường dẫn đến các tệp chứa định nghĩa API
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);

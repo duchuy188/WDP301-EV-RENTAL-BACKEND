@@ -10,16 +10,16 @@ const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 // Helper function để tạo vehicle ID
 const generateVehicleId = async () => {
   try {
-  
+    // Tìm vehicle có ID lớn nhất
     const lastVehicle = await Vehicle.findOne({}, {}, { sort: { 'name': -1 } })
       .where('name').regex(/^VH\d+/);
     
     if (!lastVehicle || !lastVehicle.name.startsWith('VH')) {
-      
+      // Nếu chưa có vehicle nào, bắt đầu từ VH001
       return 'VH001';
     }
     
- 
+    // Tìm số trong tên xe (VH001 -> 001)
     const match = lastVehicle.name.match(/VH(\d+)/);
     if (!match) return 'VH001';
     
@@ -55,14 +55,14 @@ exports.getVehicles = async (req, res) => {
     if (type) query.type = type;
     if (station_id) query.station_id = station_id;
     
-
+    // Tính số lượng bản ghi bỏ qua
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
-   
+    // Xây dựng sort options
     const sortOptions = {};
     sortOptions[sort] = order === 'desc' ? -1 : 1;
     
-   
+    // Thực hiện query
     const vehicles = await Vehicle.find(query)
       .populate('station_id', 'code name')
       .populate('created_by', 'fullname email')
@@ -70,7 +70,7 @@ exports.getVehicles = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
     
-  
+    // Đếm tổng số bản ghi
     const total = await Vehicle.countDocuments(query);
     
     return res.status(200).json({
@@ -111,7 +111,7 @@ exports.getVehicleDetail = async (req, res) => {
 // Tạo xe hàng loạt và xuất Excel template
 exports.bulkCreateVehicles = async (req, res) => {
   try {
-    
+    // ✅ QUAN TRỌNG: Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -131,20 +131,20 @@ exports.bulkCreateVehicles = async (req, res) => {
       export_excel = true
     } = req.body;
     
-
+    // ✅ QUAN TRỌNG: Validate required fields
     if (!model || !year || !color || !type || !battery_capacity || !max_range || !price_per_day || !deposit_amount) {
       return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc' });
     }
     
- 
+    // ✅ QUAN TRỌNG: Validate quantity
     if (quantity <= 0 || quantity > 100) {
       return res.status(400).json({ message: 'Số lượng xe phải từ 1 đến 100' });
     }
     
-  
+    // Lấy URLs từ Cloudinary (file đã được upload bởi middleware)
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
-      imageUrls = req.files.map(file => file.path); 
+      imageUrls = req.files.map(file => file.path); // file.path chứa secure_url từ Cloudinary
     }
     
     // Tạo danh sách xe
@@ -152,7 +152,7 @@ exports.bulkCreateVehicles = async (req, res) => {
     let lastId = await generateVehicleId();
     
     for (let i = 0; i < quantity; i++) {
- 
+      // Tạo ID cho xe tiếp theo
       if (i > 0) {
         const match = lastId.match(/VH(\d+)/);
         if (match) {
@@ -182,7 +182,7 @@ exports.bulkCreateVehicles = async (req, res) => {
       });
     }
     
-  
+    // Lưu vào database
     const createdVehicles = [];
     for (const vehicle of vehicles) {
       try {
@@ -190,11 +190,11 @@ exports.bulkCreateVehicles = async (req, res) => {
         createdVehicles.push(createdVehicle);
       } catch (error) {
         console.error(`Lỗi khi tạo xe ${vehicle.name}:`, error.message);
-       
+        // Tiếp tục với xe tiếp theo
       }
     }
     
-   
+    // Nếu không cần xuất Excel, trả về JSON response
     if (!export_excel) {
       return res.status(201).json({
         message: `Đã tạo ${createdVehicles.length} xe thành công`,
@@ -202,23 +202,23 @@ exports.bulkCreateVehicles = async (req, res) => {
       });
     }
     
-  
+    // Tạo Excel template từ các xe vừa tạo
     const result = await ExcelService.createVehicleTemplate(createdVehicles, color);
     
-  
+    // Trả về file Excel
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${result.fileName}`);
     
     const fileStream = fs.createReadStream(result.filePath);
     fileStream.pipe(res);
     
- 
+    // Xóa file sau khi đã gửi
     fileStream.on('end', () => {
       fs.unlinkSync(result.filePath);
     });
     
   } catch (error) {
-
+    // Xử lý Mongoose validation errors
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({ 
@@ -231,12 +231,12 @@ exports.bulkCreateVehicles = async (req, res) => {
   }
 };
 
-
+// Export template Excel
 exports.exportVehicleTemplate = async (req, res) => {
   try {
     const { color, status = 'draft' } = req.query;
     
-
+    // Tìm các xe phù hợp với điều kiện
     const query = { status };
     if (color) query.color = color;
     
@@ -246,20 +246,20 @@ exports.exportVehicleTemplate = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy xe phù hợp để export' });
     }
     
-
+    // Tạo file Excel
     const result = await ExcelService.createVehicleTemplate(vehicles, color);
     
-
+    // ✅ Tên file cố định không có ký tự đặc biệt
     const fileName = `vehicle_template_${Date.now()}.xlsx`;
     
-
+    // Trả về file
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     
     const fileStream = fs.createReadStream(result.filePath);
     fileStream.pipe(res);
     
- 
+    // Xóa file sau khi đã gửi
     fileStream.on('end', () => {
       fs.unlinkSync(result.filePath);
     });
@@ -269,10 +269,10 @@ exports.exportVehicleTemplate = async (req, res) => {
   }
 };
 
-
+// Import biển số từ Excel
 exports.importLicensePlates = async (req, res) => {
   try {
-
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -281,9 +281,10 @@ exports.importLicensePlates = async (req, res) => {
       return res.status(400).json({ message: 'Vui lòng upload file Excel' });
     }
     
-
+    // Xử lý file Excel
     const result = await ExcelService.processLicensePlateImport(req.file.path);
-
+    
+    // Nếu có lỗi, trả về danh sách lỗi
     if (result.errors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -292,9 +293,9 @@ exports.importLicensePlates = async (req, res) => {
       });
     }
     
-
+    // Cập nhật biển số cho từng xe
     const updatePromises = result.data.map(async ({ id, license_plate }) => {
-
+      // Kiểm tra xe tồn tại và đang ở trạng thái draft
       const vehicle = await Vehicle.findById(id);
       if (!vehicle) {
         return {
@@ -304,7 +305,7 @@ exports.importLicensePlates = async (req, res) => {
         };
       }
 
-  
+      // ⭐ THÊM KIỂM TRA: Chỉ cho phép import biển số cho xe ở trạng thái draft
       if (vehicle.status !== 'draft') {
         return {
           success: false,
@@ -313,7 +314,8 @@ exports.importLicensePlates = async (req, res) => {
         };
       }
 
-
+      // ⭐ SỬA: Bỏ qua kiểm tra biển số tạm thời
+      // Chỉ kiểm tra nếu xe đã có biển số thật (không phải biển số tạm thời)
       if (vehicle.license_plate && !vehicle.license_plate.startsWith('TEMP_')) {
         return {
           success: false,
@@ -322,7 +324,7 @@ exports.importLicensePlates = async (req, res) => {
         };
       }
 
-
+      // Kiểm tra biển số đã tồn tại chưa (trừ xe hiện tại)
       const existingVehicle = await Vehicle.findOne({ 
         license_plate,
         _id: { $ne: id }
@@ -336,7 +338,7 @@ exports.importLicensePlates = async (req, res) => {
         };
       }
       
-
+      // Cập nhật biển số
       const updated = await Vehicle.findByIdAndUpdate(
         id,
         { license_plate },
@@ -353,11 +355,11 @@ exports.importLicensePlates = async (req, res) => {
     
     const updateResults = await Promise.all(updatePromises);
     
-
+    // Phân loại kết quả
     const successes = updateResults.filter(r => r.success);
     const failures = updateResults.filter(r => !r.success);
 
-
+    // Trả về kết quả chi tiết
     return res.status(200).json({
       success: true,
       updated: successes.length,
@@ -373,38 +375,17 @@ exports.importLicensePlates = async (req, res) => {
     console.error('Lỗi khi import biển số:', error);
     return res.status(500).json({ message: 'Lỗi server' });
   } finally {
-
+    // Đảm bảo xóa file tạm
     if (req.file && req.file.path) {
       fs.unlinkSync(req.file.path);
     }
   }
 };
 
-// Helper function để validate xe có thể phân bổ
-const validateVehiclesForAssignment = (vehicles, requiredQuantity) => {
-  const vehiclesWithRealLicense = vehicles.filter(v => 
-    v.license_plate && 
-    !v.license_plate.startsWith('TEMP_') &&
-    v.status === 'draft'
-  );
-
-  if (vehiclesWithRealLicense.length < requiredQuantity) {
-    return {
-      isValid: false,
-      message: `Chỉ có ${vehiclesWithRealLicense.length} xe có biển số thật và ở trạng thái draft, không đủ ${requiredQuantity} xe để phân bổ`,
-      availableCount: vehiclesWithRealLicense.length
-    };
-  }
-
-  return {
-    isValid: true,
-    validVehicles: vehiclesWithRealLicense.slice(0, requiredQuantity)
-  };
-};
-
+// Phân bổ xe theo số lượng
 exports.assignVehiclesByQuantity = async (req, res) => {
   try {
-
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -415,13 +396,13 @@ exports.assignVehiclesByQuantity = async (req, res) => {
       return res.status(400).json({ message: 'Vui lòng cung cấp số lượng và ID trạm' });
     }
     
-
+    // Kiểm tra trạm tồn tại
     const station = await Station.findById(station_id);
     if (!station) {
       return res.status(404).json({ message: 'Không tìm thấy trạm' });
     }
     
-
+    // Kiểm tra sức chứa trạm
     const currentVehicles = station.current_vehicles || 0;
     if (currentVehicles + parseInt(quantity) > station.max_capacity) {
       return res.status(400).json({
@@ -429,38 +410,21 @@ exports.assignVehiclesByQuantity = async (req, res) => {
       });
     }
     
-    // Query để tìm xe draft có biển số thật
-    const query = { 
-      status: 'draft',
-      station_id: null,
-      license_plate: { 
-        $ne: null, 
-        $ne: '', 
-        $not: /^TEMP_/  // Không được bắt đầu bằng TEMP_
-      }
-    };
+    // Tìm xe phù hợp để phân bổ
+    const query = { status };
     if (color) query.color = color;
+    if (status === 'draft') query.license_plate = { $ne: null, $ne: '' };
+    query.station_id = null; // Chỉ lấy xe chưa được phân bổ
     
     const vehicles = await Vehicle.find(query).limit(parseInt(quantity));
     
     if (vehicles.length < parseInt(quantity)) {
       return res.status(400).json({
-        message: `Không đủ xe có biển số thật để phân bổ. Chỉ có ${vehicles.length} xe phù hợp với điều kiện`
+        message: `Không đủ xe để phân bổ. Chỉ có ${vehicles.length} xe phù hợp với điều kiện`
       });
     }
     
-    // Kiểm tra thêm: Tất cả xe phải có biển số thật
-    const vehiclesWithRealLicense = vehicles.filter(v => 
-      v.license_plate && 
-      !v.license_plate.startsWith('TEMP_')
-    );
-
-    if (vehiclesWithRealLicense.length < parseInt(quantity)) {
-      return res.status(400).json({
-        message: `Chỉ có ${vehiclesWithRealLicense.length} xe có biển số thật, không đủ ${quantity} xe để phân bổ`
-      });
-    }
-
+    // Cập nhật trạng thái xe
     const vehicleIds = vehicles.map(v => v._id);
     await Vehicle.updateMany(
       { _id: { $in: vehicleIds } },
@@ -472,12 +436,12 @@ exports.assignVehiclesByQuantity = async (req, res) => {
       }
     );
     
- 
+    // Cập nhật số lượng xe tại trạm
     station.current_vehicles += vehicles.length;
     station.available_vehicles += vehicles.length;
     await station.save();
     
-
+    // Lấy thông tin xe đã cập nhật
     const updatedVehicles = await Vehicle.find({ _id: { $in: vehicleIds } })
       .populate('station_id', 'code name');
     
@@ -497,22 +461,22 @@ exports.updateVehicleStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     
-
+    // Validate status
     const validStatuses = ['draft', 'available', 'rented', 'maintenance'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
     }
     
-
+    // Tìm xe
     const vehicle = await Vehicle.findById(id);
     if (!vehicle) {
       return res.status(404).json({ message: 'Không tìm thấy xe' });
     }
     
-
+    // Lưu trạng thái cũ để cập nhật trạm
     const oldStatus = vehicle.status;
     
- 
+    // Nếu trạng thái không thay đổi, không cần làm gì
     if (oldStatus === status) {
       return res.status(200).json({
         message: `Xe đã ở trạng thái ${status}`,
@@ -520,36 +484,38 @@ exports.updateVehicleStatus = async (req, res) => {
       });
     }
     
+    // Kiểm tra logic chuyển đổi trạng thái
     const validTransitions = {
-      'draft': ['available'],
-      'available': ['rented', 'maintenance'],
-      'rented': ['available', 'maintenance'],
-      'maintenance': ['available', 'draft'] 
+      'draft': ['available'], // Draft chỉ có thể chuyển sang Available
+      'available': ['rented', 'maintenance'], // Available có thể chuyển sang Rented hoặc Maintenance
+      'rented': ['available', 'maintenance'], // Rented có thể chuyển sang Available hoặc Maintenance
+      'maintenance': ['available', 'draft'] // Maintenance có thể chuyển sang Available hoặc Draft (nếu cần sửa nhiều)
     };
     
-
+    // Kiểm tra chuyển đổi có hợp lệ không
     if (!validTransitions[oldStatus].includes(status)) {
       return res.status(400).json({ 
         message: `Không thể chuyển trạng thái từ ${oldStatus} sang ${status}` 
       });
     }
-
+    
+    // Các kiểm tra đặc biệt cho từng loại chuyển đổi
     if (status === 'available') {
- 
+      // Kiểm tra xe phải có trạm
       if (!vehicle.station_id) {
         return res.status(400).json({ 
           message: 'Xe phải được gán vào trạm trước khi đổi trạng thái thành available' 
         });
       }
       
-     
+      // Kiểm tra xe phải có biển số thật (không phải biển tạm)
       if (!vehicle.license_plate || vehicle.license_plate.startsWith('TEMP_')) {
         return res.status(400).json({ 
           message: 'Xe phải có biển số thật trước khi đổi trạng thái thành available' 
         });
       }
       
-    
+      // Kiểm tra tình trạng kỹ thuật
       if (vehicle.technical_status !== 'good') {
         return res.status(400).json({ 
           message: 'Xe phải ở tình trạng kỹ thuật tốt trước khi đổi trạng thái thành available' 
@@ -558,18 +524,18 @@ exports.updateVehicleStatus = async (req, res) => {
     }
     
     if (status === 'rented') {
-
+      // Kiểm tra xe phải từ trạng thái available
       if (oldStatus !== 'available') {
         return res.status(400).json({ 
           message: 'Chỉ xe ở trạng thái available mới có thể chuyển sang rented' 
         });
       }
       
-
+      // Có thể thêm kiểm tra xe đã được đặt trước (booking) chưa
     }
     
     if (status === 'maintenance') {
-
+      // Kiểm tra lý do bảo trì (có thể thêm vào request body)
       const { maintenance_reason } = req.body;
       if (!maintenance_reason) {
         return res.status(400).json({ 
@@ -592,19 +558,20 @@ exports.updateVehicleStatus = async (req, res) => {
       });
     }
     
-
+    // Cập nhật trạng thái
     vehicle.status = status;
     await vehicle.save();
-
+    
+    // Cập nhật số lượng xe tại trạm (nếu có)
     if (vehicle.station_id) {
       const station = await Station.findById(vehicle.station_id);
       if (station) {
-
+        // Giảm số lượng xe theo trạng thái cũ
         if (oldStatus === 'available') station.available_vehicles -= 1;
         else if (oldStatus === 'rented') station.rented_vehicles -= 1;
         else if (oldStatus === 'maintenance') station.maintenance_vehicles -= 1;
         
-
+        // Tăng số lượng xe theo trạng thái mới
         if (status === 'available') station.available_vehicles += 1;
         else if (status === 'rented') station.rented_vehicles += 1;
         else if (status === 'maintenance') station.maintenance_vehicles += 1;
@@ -623,34 +590,35 @@ exports.updateVehicleStatus = async (req, res) => {
   }
 };
 
-
+// Cập nhật thông tin xe
 exports.updateVehicle = async (req, res) => {
   try {
     const { id } = req.params;
     
- 
+    // ✅ QUAN TRỌNG: Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
     
-  
+    // ✅ QUAN TRỌNG: Tìm xe
     const vehicle = await Vehicle.findById(id);
     if (!vehicle) {
       return res.status(404).json({ message: 'Không tìm thấy xe' });
     }
     
-  
+    // Kiểm tra xe đã bị xóa chưa
     if (!vehicle.is_active) {
       return res.status(400).json({ message: 'Không thể cập nhật xe đã bị xóa' });
     }
-
+    
+    // ✅ Kiểm tra xe có đang được thuê không
     if (vehicle.status === 'rented') {
       return res.status(400).json({ 
         message: 'Không thể cập nhật xe đang được thuê. Vui lòng đợi khách hàng trả xe.' 
       });
     }
     
- 
+    // Lấy thông tin cần cập nhật
     const {
       license_plate,
       name,
@@ -666,7 +634,7 @@ exports.updateVehicle = async (req, res) => {
       technical_status
     } = req.body;
 
-
+    // ✅ QUAN TRỌNG: Validation biển số unique (Mongoose không làm được)
     if (license_plate) {
       const existingVehicle = await Vehicle.findOne({ 
         license_plate,
@@ -680,7 +648,7 @@ exports.updateVehicle = async (req, res) => {
       }
     }
     
-  
+    // Cập nhật thông tin - Mongoose sẽ validate các trường còn lại
     if (license_plate) vehicle.license_plate = license_plate;
     if (name) vehicle.name = name;
     if (model) vehicle.model = model;
@@ -694,7 +662,7 @@ exports.updateVehicle = async (req, res) => {
     if (deposit_amount) vehicle.deposit_amount = deposit_amount;
     if (technical_status) vehicle.technical_status = technical_status;
     
-
+    // Cập nhật hình ảnh nếu có
     if (req.files && req.files.length > 0) {
       const imageUrls = [];
       
@@ -708,7 +676,7 @@ exports.updateVehicle = async (req, res) => {
       }
     }
     
-
+    // Lưu thay đổi - Mongoose sẽ validate
     await vehicle.save();
     
     return res.status(200).json({
@@ -718,7 +686,7 @@ exports.updateVehicle = async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi cập nhật thông tin xe:', error);
     
- 
+    // Xử lý Mongoose validation errors
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({ 
@@ -731,44 +699,45 @@ exports.updateVehicle = async (req, res) => {
   }
 };
 
-
+// Xóa xe
 exports.deleteVehicle = async (req, res) => {
   try {
     const { id } = req.params;
     
-
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
     
- 
+    // Tìm xe
     const vehicle = await Vehicle.findById(id);
     if (!vehicle) {
       return res.status(404).json({ message: 'Không tìm thấy xe' });
     }
 
-
+    // Kiểm tra xe đã bị xóa chưa
     if (!vehicle.is_active) {
       return res.status(400).json({ message: 'Xe đã bị xóa trước đó' });
     }
 
+    // Kiểm tra xe có đang được thuê không
     if (vehicle.status === 'rented') {
       return res.status(400).json({ 
         message: 'Không thể xóa xe đang được thuê. Vui lòng đợi khách hàng trả xe.' 
       });
     }
     
-
+    // Soft delete
     vehicle.is_active = false;
     await vehicle.save();
     
-
+    // Cập nhật số lượng xe tại trạm (nếu có)
     if (vehicle.station_id) {
       const station = await Station.findById(vehicle.station_id);
       if (station) {
         station.current_vehicles -= 1;
         
-    
+        // Giảm số lượng xe theo trạng thái
         if (vehicle.status === 'available') station.available_vehicles -= 1;
         else if (vehicle.status === 'rented') station.rented_vehicles -= 1;
         else if (vehicle.status === 'maintenance') station.maintenance_vehicles -= 1;
@@ -1402,7 +1371,7 @@ exports.exportPricingTemplate = async (req, res) => {
 // Import và cập nhật giá từ Excel
 exports.importPricingUpdates = async (req, res) => {
   try {
-  
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -1411,8 +1380,10 @@ exports.importPricingUpdates = async (req, res) => {
       return res.status(400).json({ message: 'Vui lòng upload file Excel' });
     }
 
+    // Xử lý file Excel
     const result = await ExcelService.processPricingImport(req.file.path);
 
+    // Nếu có lỗi, trả về danh sách lỗi
     if (result.errors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -1421,9 +1392,9 @@ exports.importPricingUpdates = async (req, res) => {
       });
     }
 
-   
+    // Cập nhật giá cho từng xe
     const updatePromises = result.data.map(async ({ vehicle_code, new_price, new_deposit }) => {
-
+      // Tìm xe theo mã xe
       const vehicle = await Vehicle.findOne({ name: vehicle_code });
       if (!vehicle) {
         return {
@@ -1433,6 +1404,7 @@ exports.importPricingUpdates = async (req, res) => {
         };
       }
 
+      // Cập nhật giá và cọc
       const updated = await Vehicle.findByIdAndUpdate(
         vehicle._id,
         { 
@@ -1455,17 +1427,17 @@ exports.importPricingUpdates = async (req, res) => {
 
     const updateResults = await Promise.all(updatePromises);
 
- 
+    // Phân loại kết quả
     const successes = updateResults.filter(r => r.success);
     const failures = updateResults.filter(r => !r.success);
 
-    
+    // Thống kê theo trạng thái
     const statusStats = successes.reduce((acc, item) => {
       acc[item.status] = (acc[item.status] || 0) + 1;
       return acc;
     }, {});
 
-
+    // Trả về kết quả chi tiết
     return res.status(200).json({
       success: true,
       updated: successes.length,
@@ -1482,7 +1454,7 @@ exports.importPricingUpdates = async (req, res) => {
     console.error('Lỗi khi import pricing updates:', error);
     return res.status(500).json({ message: 'Lỗi server' });
   } finally {
-
+    // Đảm bảo xóa file tạm
     if (req.file && req.file.path) {
       fs.unlinkSync(req.file.path);
     }

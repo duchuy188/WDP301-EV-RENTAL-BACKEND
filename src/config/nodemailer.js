@@ -1,47 +1,15 @@
 const nodemailer = require('nodemailer');
 
-// Cấu hình transporter với timeout và retry cho production
+// Tạo transporter cho nodemailer
 const transporter = nodemailer.createTransport({
     service: process.env.EMAIL_SERVICE || 'gmail',
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD
-    },
-    // Cấu hình cho production
-    pool: true,
-    maxConnections: 2,
-    maxMessages: 50,
-    rateDelta: 20000,
-    rateLimit: 3,
-    // Timeout settings - giảm timeout
-    connectionTimeout: 30000,  // 30 seconds
-    greetingTimeout: 15000,    // 15 seconds
-    socketTimeout: 30000,       // 30 seconds
-    // Retry settings
-    retryDelay: 3000,          // 3 seconds
-    retryAttempts: 2,
-    // Security settings
-    secure: true,
-    tls: {
-        rejectUnauthorized: false
     }
 });
 
-// Function để test connection
-const testConnection = async () => {
-    try {
-        await transporter.verify();
-        console.log('✅ Email server connection verified');
-        return true;
-    } catch (error) {
-        console.error('❌ Email server connection failed:', error.message);
-        return false;
-    }
-};
-
-// Gọi test connection khi khởi động
-testConnection();
-
+// Hàm gửi email
 const sendEmail = async (options) => {
     const mailOptions = {
         from: `${process.env.EMAIL_FROM_NAME} <${process.env.EMAIL_FROM}>`,
@@ -52,41 +20,15 @@ const sendEmail = async (options) => {
 
     try {
         const info = await transporter.sendMail(mailOptions);
-        console.log('✅ Email sent successfully:', info.messageId);
+        console.log('Email sent: ', info.messageId);
         return info;
     } catch (error) {
-        console.error('❌ Error sending email:', error.message);
-        
-        // Retry logic cho timeout errors
-        if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
-            console.log('🔄 Retrying email send...');
-            try {
-                // Tạo transporter mới cho retry
-                const retryTransporter = nodemailer.createTransport({
-                    service: process.env.EMAIL_SERVICE || 'gmail',
-                    auth: {
-                        user: process.env.EMAIL_USER,
-                        pass: process.env.EMAIL_PASSWORD
-                    },
-                    connectionTimeout: 15000,
-                    greetingTimeout: 10000,
-                    socketTimeout: 15000
-                });
-                
-                const retryInfo = await retryTransporter.sendMail(mailOptions);
-                console.log('✅ Email sent on retry:', retryInfo.messageId);
-                return retryInfo;
-            } catch (retryError) {
-                console.error('❌ Email retry failed:', retryError.message);
-                throw retryError;
-            }
-        }
-        
+        console.error('Error sending email: ', error);
         throw error;
     }
 };
 
-
+// CSS chung cho tất cả email templates - Theme xanh lá xe điện
 const getCommonStyles = () => {
     return `
         <style>

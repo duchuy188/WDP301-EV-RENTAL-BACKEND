@@ -90,16 +90,16 @@ exports.uploadIdentityCardFront = async (req, res) => {
     kyc.identityCardFrontImage = uploadResult.url;
     kyc.identityCardFrontImagePublicId = uploadResult.publicId;
     
-
+    // Lưu kết quả OCR
     if (!kyc.identityOcr) {
       kyc.identityOcr = {};
     }
     kyc.identityOcr.front = idData;
     
-  
+    // Cập nhật trạng thái upload
     kyc.identityCardFrontUploaded = true;
     
-
+    // Cập nhật trạng thái KYC
     if (kyc.identityCardBackUploaded) {
       const validation = validateUserIdentity(user, idData);
       kyc.status = 'pending';
@@ -149,7 +149,7 @@ exports.uploadIdentityCardBack = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy người dùng' });
     }
 
-
+    // Tìm hoặc tạo KYC record
     const kyc = await findOrCreateKyc(req.user.id);
     
     const ocrResult = await verifyIdentityCard(req.file.buffer);
@@ -174,21 +174,21 @@ exports.uploadIdentityCardBack = async (req, res) => {
     kyc.identityIssueDate = idData.issue_date || '';
     kyc.identityIssueLoc = idData.issue_loc || '';
     
-
+    // Upload ảnh lên Cloudinary
     const uploadResult = await uploadToCloudinary(req.file.buffer, 'identity_cards');
     kyc.identityCardBackImage = uploadResult.url;
     kyc.identityCardBackImagePublicId = uploadResult.publicId;
     
-
+    // Lưu kết quả OCR
     if (!kyc.identityOcr) {
       kyc.identityOcr = {};
     }
     kyc.identityOcr.back = idData;
     
-
+    // Cập nhật trạng thái upload
     kyc.identityCardBackUploaded = true;
     
-
+    // Cập nhật trạng thái KYC
     if (kyc.identityCardFrontUploaded) {
       if (kyc.status !== 'approved') {
         kyc.status = 'pending';
@@ -238,10 +238,10 @@ exports.uploadDriverLicenseFront = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy người dùng' });
     }
 
-
+    // Tìm hoặc tạo KYC record
     const kyc = await findOrCreateKyc(req.user.id);
 
-
+    // Gọi API FPT.AI để xác thực GPLX
     const ocrResult = await verifyDriverLicense(req.file.buffer);
     
     if (ocrResult.errorCode !== 0) {
@@ -251,15 +251,15 @@ exports.uploadDriverLicenseFront = async (req, res) => {
       });
     }
 
-
+    // Lấy dữ liệu từ kết quả OCR
     const licenseData = ocrResult.data[0];
     
-
+    // Kiểm tra xem có phải mặt sau không (type = "old-back" hoặc chỉ có class và date)
     if (licenseData.type === 'old-back' || (!licenseData.id && licenseData.class)) {
       return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt trước giấy phép lái xe' });
     }
     
-
+    // Cập nhật thông tin KYC
     kyc.licenseTypeOcr = licenseData.type || '';
     kyc.licenseName = licenseData.name || '';
     kyc.licenseDob = licenseData.dob || '';
@@ -284,21 +284,21 @@ exports.uploadDriverLicenseFront = async (req, res) => {
     
     // Xử lý ngày hết hạn
     if (licenseData.doe) {
- 
+      // Xử lý trường hợp "KHÔNG THỜI HẠN" hoặc các giá trị đặc biệt khác
       if (licenseData.doe === "KHÔNG THỜI HẠN") {
         kyc.licenseExpiry = null;
         kyc.licenseExpiryText = "KHÔNG THỜI HẠN";
       } else {
         try {
           const [day, month, year] = licenseData.doe.split('/');
-   
+          // Kiểm tra xem có đủ 3 phần không
           if (day && month && year && !isNaN(parseInt(day)) && !isNaN(parseInt(month)) && !isNaN(parseInt(year))) {
-         
+            // Đảm bảo năm có 4 chữ số
             const fullYear = year.length === 2 ? `20${year}` : year;
-          
+            // Tạo ngày với định dạng ISO
             kyc.licenseExpiry = new Date(`${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
             
-         
+            // Kiểm tra xem ngày có hợp lệ không
             if (isNaN(kyc.licenseExpiry.getTime())) {
               console.error('Ngày không hợp lệ:', licenseData.doe);
               kyc.licenseExpiry = null;
@@ -320,12 +320,12 @@ exports.uploadDriverLicenseFront = async (req, res) => {
       kyc.licenseExpiryText = '';
     }
     
- 
+    // Upload ảnh lên Cloudinary
     const uploadResult = await uploadToCloudinary(req.file.buffer, 'licenses');
     kyc.licenseImage = uploadResult.url;
     kyc.licenseImagePublicId = uploadResult.publicId;
     
-
+    // Lưu kết quả OCR
     if (!kyc.licenseOcr) {
       kyc.licenseOcr = {};
     }
