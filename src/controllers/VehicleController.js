@@ -380,6 +380,27 @@ exports.importLicensePlates = async (req, res) => {
   }
 };
 
+// Helper function để validate xe có thể phân bổ
+const validateVehiclesForAssignment = (vehicles, requiredQuantity) => {
+  const vehiclesWithRealLicense = vehicles.filter(v => 
+    v.license_plate && 
+    !v.license_plate.startsWith('TEMP_') &&
+    v.status === 'draft'
+  );
+
+  if (vehiclesWithRealLicense.length < requiredQuantity) {
+    return {
+      isValid: false,
+      message: `Chỉ có ${vehiclesWithRealLicense.length} xe có biển số thật và ở trạng thái draft, không đủ ${requiredQuantity} xe để phân bổ`,
+      availableCount: vehiclesWithRealLicense.length
+    };
+  }
+
+  return {
+    isValid: true,
+    validVehicles: vehiclesWithRealLicense.slice(0, requiredQuantity)
+  };
+};
 
 exports.assignVehiclesByQuantity = async (req, res) => {
   try {
@@ -408,21 +429,38 @@ exports.assignVehiclesByQuantity = async (req, res) => {
       });
     }
     
-
-    const query = { status };
+    // Query để tìm xe draft có biển số thật
+    const query = { 
+      status: 'draft',
+      station_id: null,
+      license_plate: { 
+        $ne: null, 
+        $ne: '', 
+        $not: /^TEMP_/  // Không được bắt đầu bằng TEMP_
+      }
+    };
     if (color) query.color = color;
-    if (status === 'draft') query.license_plate = { $ne: null, $ne: '' };
-    query.station_id = null; 
     
     const vehicles = await Vehicle.find(query).limit(parseInt(quantity));
     
     if (vehicles.length < parseInt(quantity)) {
       return res.status(400).json({
-        message: `Không đủ xe để phân bổ. Chỉ có ${vehicles.length} xe phù hợp với điều kiện`
+        message: `Không đủ xe có biển số thật để phân bổ. Chỉ có ${vehicles.length} xe phù hợp với điều kiện`
       });
     }
     
-  
+    // Kiểm tra thêm: Tất cả xe phải có biển số thật
+    const vehiclesWithRealLicense = vehicles.filter(v => 
+      v.license_plate && 
+      !v.license_plate.startsWith('TEMP_')
+    );
+
+    if (vehiclesWithRealLicense.length < parseInt(quantity)) {
+      return res.status(400).json({
+        message: `Chỉ có ${vehiclesWithRealLicense.length} xe có biển số thật, không đủ ${quantity} xe để phân bổ`
+      });
+    }
+
     const vehicleIds = vehicles.map(v => v._id);
     await Vehicle.updateMany(
       { _id: { $in: vehicleIds } },
