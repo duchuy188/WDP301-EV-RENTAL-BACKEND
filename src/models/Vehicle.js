@@ -76,12 +76,13 @@ const vehicleSchema = new mongoose.Schema({
     min: 50000,
     max: 300000
   }, // VND/ngày
-  deposit_amount: { 
+  deposit_percentage: { 
     type: Number, 
     required: true,
-    min: 500000,
-    max: 3000000
-  }, // VND
+    min: 0, // 0% = không cọc
+    max: 100, // 100% = cọc full
+    default: 50 // 50% mặc định
+  }, // % của tổng giá thuê
   
   // Vị trí & trạng thái
   station_id: { 

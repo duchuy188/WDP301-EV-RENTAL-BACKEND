@@ -21,7 +21,7 @@
  *         - max_range
  *         - current_battery
  *         - price_per_day
- *         - deposit_amount
+ *         - deposit_percentage
  *       properties:
  *         _id:
  *           type: string
@@ -60,9 +60,9 @@
  *         price_per_day:
  *           type: number
  *           description: Giá thuê mỗi ngày (VND)
- *         deposit_amount:
+ *         deposit_percentage:
  *           type: number
- *           description: Tiền đặt cọc (VND)
+ *           description: Phần trăm cọc so với tổng giá thuê (%)
  *         station_id:
  *           type: string
  *           description: ID của trạm
@@ -106,7 +106,7 @@
  *         max_range: 80
  *         current_battery: 85
  *         price_per_day: 150000
- *         deposit_amount: 2000000
+ *         deposit_percentage: 50
  *         station_id: "60d5ec9af682fbd12a0bbaf2"
  *         status: "available"
  *         technical_status: "good"
@@ -121,7 +121,8 @@
  * @swagger
  * /api/vehicles:
  *   get:
- *     summary: Lấy danh sách xe
+ *     summary: Lấy danh sách xe available cho customer
+ *     description: API cho customer xem danh sách xe available, nhóm theo model và màu. Chỉ hiển thị xe available tại các trạm để booking.
  *     tags: [Vehicles]
  *     parameters:
  *       - in: query
@@ -137,16 +138,10 @@
  *           default: 10
  *         description: Số lượng mỗi trang
  *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [draft, available, rented, maintenance]
- *         description: Lọc theo trạng thái
- *       - in: query
  *         name: color
  *         schema:
  *           type: string
- *         description: Lọc theo màu
+ *         description: Lọc theo màu xe
  *       - in: query
  *         name: type
  *         schema:
@@ -173,7 +168,7 @@
  *         description: Thứ tự sắp xếp
  *     responses:
  *       200:
- *         description: Danh sách xe
+ *         description: Danh sách xe available nhóm theo model và màu cho booking
  *         content:
  *           application/json:
  *             schema:
@@ -182,25 +177,87 @@
  *                 vehicles:
  *                   type: array
  *                   items:
- *                     $ref: '#/components/schemas/Vehicle'
+ *                     type: object
+ *                     properties:
+ *                       model:
+ *                         type: string
+ *                         example: "VinFast Evo 200"
+ *                         description: Model xe để booking
+ *                       color:
+ *                         type: string
+ *                         example: "Đỏ"
+ *                         description: Màu xe để booking
+ *                       brand:
+ *                         type: string
+ *                         example: "VinFast"
+ *                       year:
+ *                         type: number
+ *                         example: 2024
+ *                       type:
+ *                         type: string
+ *                         example: "scooter"
+ *                       battery_capacity:
+ *                         type: number
+ *                         example: 2.3
+ *                       max_range:
+ *                         type: number
+ *                         example: 80
+ *                       price_per_day:
+ *                         type: number
+ *                         example: 150000
+ *                       deposit_percentage:
+ *                         type: number
+ *                         example: 50
+ *                       available_quantity:
+ *                         type: number
+ *                         example: 3
+ *                         description: Số lượng xe available để booking
+ *                       sample_image:
+ *                         type: string
+ *                         example: "https://res.cloudinary.com/..."
+ *                       stations:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             _id:
+ *                               type: string
+ *                               description: ID trạm để booking
+ *                             name:
+ *                               type: string
+ *                               example: "Trạm VinFast Quận 1"
+ *                             address:
+ *                               type: string
+ *                               example: "123 Nguyễn Huệ, Q1, TP.HCM"
+ *                             available_quantity:
+ *                               type: number
+ *                               example: 2
+ *                               description: Số xe available tại trạm này
  *                 pagination:
  *                   type: object
  *                   properties:
  *                     total:
  *                       type: integer
+ *                       description: Tổng số model xe available
  *                     page:
  *                       type: integer
  *                     limit:
  *                       type: integer
  *                     pages:
  *                       type: integer
+ *                     timestamp:
+ *                       type: string
+ *                       example: "15/01/2024 14:30:25"
+ *       500:
+ *         description: Lỗi server
  */
 
 /**
  * @swagger
  * /api/vehicles/{id}:
  *   get:
- *     summary: Lấy chi tiết xe
+ *     summary: Lấy chi tiết xe cho customer
+ *     description: API cho customer xem chi tiết xe available. Chỉ hiển thị xe available tại trạm để booking.
  *     tags: [Vehicles]
  *     parameters:
  *       - in: path
@@ -211,13 +268,95 @@
  *         description: ID của xe
  *     responses:
  *       200:
- *         description: Chi tiết xe
+ *         description: Chi tiết xe cho customer booking
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Vehicle'
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                   description: ID xe để booking
+ *                 brand:
+ *                   type: string
+ *                   example: "VinFast"
+ *                 model:
+ *                   type: string
+ *                   example: "VinFast Evo 200"
+ *                   description: Model xe để booking
+ *                 year:
+ *                   type: number
+ *                   example: 2024
+ *                 color:
+ *                   type: string
+ *                   example: "Đỏ"
+ *                   description: Màu xe để booking
+ *                 type:
+ *                   type: string
+ *                   example: "scooter"
+ *                 battery_capacity:
+ *                   type: number
+ *                   example: 2.3
+ *                 max_range:
+ *                   type: number
+ *                   example: 80
+ *                 price_per_day:
+ *                   type: number
+ *                   example: 150000
+ *                 deposit_percentage:
+ *                   type: number
+ *                   example: 50
+ *                 images:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["https://res.cloudinary.com/..."]
+ *                 station:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       description: ID trạm để booking
+ *                     name:
+ *                       type: string
+ *                       example: "Trạm VinFast Quận 1"
+ *                     address:
+ *                       type: string
+ *                       example: "123 Nguyễn Huệ, Q1, TP.HCM"
+ *                     phone:
+ *                       type: string
+ *                       example: "028 1234 5678"
+ *                     email:
+ *                       type: string
+ *                       example: "q1@vinfast.com"
+ *                     opening_time:
+ *                       type: string
+ *                       example: "06:00"
+ *                     closing_time:
+ *                       type: string
+ *                       example: "22:00"
+ *                 similar_vehicles_count:
+ *                   type: number
+ *                   example: 2
+ *                   description: Số xe cùng model/màu available tại trạm
+ *                 createdAt:
+ *                   type: string
+ *                   example: "15/01/2024 14:30:25"
+ *                 updatedAt:
+ *                   type: string
+ *                   example: "15/01/2024 14:30:25"
  *       404:
- *         description: Không tìm thấy xe
+ *         description: Không tìm thấy xe hoặc xe không available để booking
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy xe hoặc xe không khả dụng"
+ *       500:
+ *         description: Lỗi server
  */
 
 /**
@@ -243,7 +382,7 @@
  *               - battery_capacity
  *               - max_range
  *               - price_per_day
- *               - deposit_amount
+ *               - deposit_percentage
  *             properties:
  *               model:
  *                 type: string
@@ -271,9 +410,9 @@
  *               price_per_day:
  *                 type: number
  *                 description: Giá thuê mỗi ngày (VND)
- *               deposit_amount:
+ *               deposit_percentage:
  *                 type: number
- *                 description: Tiền đặt cọc (VND)
+ *                 description: Phần trăm cọc so với tổng giá thuê (%)
  *               quantity:
  *                 type: number
  *                 default: 1
@@ -580,9 +719,9 @@
  *               price_per_day:
  *                 type: number
  *                 description: Giá thuê mỗi ngày (VND)
- *               deposit_amount:
+ *               deposit_percentage:
  *                 type: number
- *                 description: Tiền đặt cọc (VND)
+ *                 description: Phần trăm cọc so với tổng giá thuê (%)
  *               technical_status:
  *                 type: string
  *                 enum: [good, needs_maintenance]
@@ -692,7 +831,7 @@
  * /api/vehicles/admin:
  *   get:
  *     summary: Lấy danh sách xe cho admin
- *     description: Admin thấy tất cả xe trong hệ thống
+ *     description: API cho admin xem tất cả xe trong hệ thống (bao gồm draft, available, rented, maintenance)
  *     tags: [Vehicles]
  *     security:
  *       - bearerAuth: []
@@ -731,9 +870,22 @@
  *         schema:
  *           type: string
  *         description: Lọc theo trạm
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           default: createdAt
+ *         description: Sắp xếp theo trường
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Thứ tự sắp xếp
  *     responses:
  *       200:
- *         description: Thành công
+ *         description: Danh sách xe cho admin
  *         content:
  *           application/json:
  *             schema:
@@ -747,13 +899,19 @@
  *                   type: object
  *                   properties:
  *                     total:
- *                       type: number
+ *                       type: integer
  *                     page:
- *                       type: number
+ *                       type: integer
  *                     limit:
- *                       type: number
+ *                       type: integer
  *                     pages:
- *                       type: number
+ *                       type: integer
+ *       401:
+ *         description: Không có quyền truy cập
+ *       403:
+ *         description: Không có quyền admin
+ *       500:
+ *         description: Lỗi server
  */
 
 /**

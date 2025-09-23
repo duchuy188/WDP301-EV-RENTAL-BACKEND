@@ -578,7 +578,7 @@ const getWelcomeEmailTemplate = (userName) => {
 
                 <div class="message" style="text-align: center; margin-top: 40px; font-size: 18px; color: #2d3748;">
                     <strong>🌍 Cùng nhau tạo nên một hành tinh xanh! 🌍</strong><br>
-                    <span style="color: #48bb78; font-weight: 600;">Every Mile Matters. Every Choice Counts. 🚗💚⚡</span>
+                    <span style="color: #48bb78; font-weight: 600;">Every Mile Matters. Every Choice Counts. 🏍️💚⚡</span>
                 </div>
             </div>
 
@@ -646,14 +646,20 @@ const getBookingConfirmationTemplate = (userName, bookingDetails) => {
                     <h3>Chi tiết đặt xe điện của bạn</h3>
                     <ul style="background: white; padding: 20px; border-radius: 10px; border: 2px solid #48bb78;">
                         <li><strong>🎫 Booking ID:</strong> <span style="color: #48bb78; font-weight: bold;">${bookingDetails.bookingId}</span></li>
+                        <li><strong>🎫 Booking Code:</strong> <span style="color: #48bb78; font-weight: bold;">${bookingDetails.bookingCode}</span></li>
                         <li><strong>🚗 Xe điện:</strong> ${bookingDetails.carModel} <span style="background: #48bb78; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">PREMIUM EV</span></li>
                         <li><strong>🔋 Mức pin:</strong> 100% (Range: ~400km)</li>
                         <li><strong>⏰ Thời gian nhận:</strong> ${bookingDetails.pickupTime}</li>
-                        <li><strong>📍 Điểm nhận xe:</strong> ${bookingDetails.pickupLocation}</li>
+                        <li><strong>📍 Điểm nhận xe:</strong> ${bookingDetails.pickupLocation}<br>
+                            <span style="color: #666; font-size: 14px;">🏢 Địa chỉ: 123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM</span><br>
+                            <span style="color: #666; font-size: 14px;">📞 Hotline: 028 1234 5678 | ⏰ Giờ mở cửa: 6:00 - 22:00</span></li>
                         <li><strong>⏰ Thời gian trả:</strong> ${bookingDetails.returnTime}</li>
                         <li><strong>💰 Tổng chi phí:</strong> <span style="color: #48bb78; font-weight: bold; font-size: 16px;">${bookingDetails.totalCost}</span></li>
                         <li><strong>🌱 Carbon saved:</strong> <span style="color: #48bb78; font-weight: bold;">~12.5kg CO₂</span></li>
                         <li><strong>💚 Eco-Points earned:</strong> <span style="color: #48bb78; font-weight: bold;">+250 points</span></li>
+                        <li><strong>📱 QR Code:</strong><br>
+                            ${bookingDetails.qrCodeImage ? `<img src="${bookingDetails.qrCodeImage}" alt="QR Code" style="width: 150px; height: 150px; margin: 10px 0; border: 2px solid #48bb78; border-radius: 8px; display: block;" /><br>` : ''}
+                            <span style="color: #666; font-size: 14px;">🔍 Quét QR này tại trạm để nhận xe | ⏰ Hết hạn: ${bookingDetails.qrExpiresAt}</span></li>
                     </ul>
                 </div>
 
@@ -672,7 +678,7 @@ const getBookingConfirmationTemplate = (userName, bookingDetails) => {
                         <div style="flex: 1; min-width: 200px;">
                             📄 <strong>Giấy tờ cần thiết:</strong><br>
                             • CMND/CCCD gốc hợp lệ<br>
-                            • Bằng lái xe hạng B1 trở lên<br>
+                            • Bằng lái xe hạng A hoặc A1 <br>
                             • Booking confirmation (email này)
                         </div>
                         <div style="flex: 1; min-width: 200px;">
@@ -686,29 +692,21 @@ const getBookingConfirmationTemplate = (userName, bookingDetails) => {
 
                 <div style="background: linear-gradient(135deg, #f0fff4, #e6fffa); padding: 25px; border-radius: 15px; margin: 25px 0; border-left: 5px solid #48bb78;">
                     <h3 style="color: #2d3748; margin-bottom: 15px; display: flex; align-items: center;">
-                        ⚡ <span style="margin-left: 10px;">Hướng dẫn lái xe điện cho người mới</span>
+                        ⚡ <span style="margin-left: 10px;">Hướng dẫn lái xe máy điện cho người mới</span>
                     </h3>
                     <div style="color: #4a5568; line-height: 1.7;">
-                        <p><strong>🚗 Khởi động:</strong> Nhấn nút START, đợi dashboard sáng hoàn toàn</p>
+                        <p><strong>🏍️ Khởi động:</strong> Bật khóa điện, đợi đèn báo sáng, nhấn nút khởi động</p>
                         <p><strong>🔄 Chế độ lái:</strong> ECO (tiết kiệm) → COMFORT (cân bằng) → SPORT (mạnh mẽ)</p>
                         <p><strong>🔋 Sạc điện:</strong> Sử dụng EV Charging Map để tìm trạm sạc gần nhất</p>
-                        <p><strong>🎯 Regenerative Braking:</strong> Tận dụng phanh tái sinh để tăng quãng đường</p>
+                        <p><strong>🎯 Phanh tái sinh:</strong> Tận dụng phanh tái sinh để tăng quãng đường</p>
                         <p><strong>📱 Kết nối:</strong> Sync điện thoại qua Bluetooth để navigation và music</p>
+                        <p><strong>🛡️ An toàn:</strong> Luôn đội mũ bảo hiểm (có sẵn 2 mũ), kiểm tra phanh trước khi đi</p>
+                        <p><strong>⚡ Tăng tốc:</strong> Xe máy điện tăng tốc mượt mà, không cần số</p>
+                        <p><strong>🔊 Âm thanh:</strong> Xe chạy rất êm, không có tiếng động cơ</p>
                     </div>
                 </div>
 
-                <div class="message" style="text-align: center; background: linear-gradient(135deg, #48bb78, #38a169); color: white; padding: 25px; border-radius: 15px; margin: 30px 0;">
-                    <h3 style="margin-bottom: 15px;">🎁 Surprise cho chuyến đi đầu tiên!</h3>
-                    <p style="font-size: 16px; margin-bottom: 15px;">
-                        🔋 Free fast charging tại 200+ trạm đối tác<br>
-                        🎵 Premium Spotify account trong xe<br>
-                        ☕ Voucher coffee 50k tại các điểm dừng chân<br>
-                        📸 Free professional car photos cho Instagram
-                    </p>
-                    <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 8px; display: inline-block;">
-                        <strong>Auto-applied to your trip ✨</strong>
-                    </div>
-                </div>
+              
 
                 <div class="message" style="margin-top: 30px; padding: 20px; background: rgba(72, 187, 120, 0.05); border-radius: 12px; border: 1px solid rgba(72, 187, 120, 0.2);">
                     <strong>🚨 Emergency & Support</strong><br><br>
@@ -734,7 +732,7 @@ const getBookingConfirmationTemplate = (userName, bookingDetails) => {
 
                 <div class="message" style="text-align: center; margin-top: 40px; font-size: 18px; color: #2d3748;">
                     <strong>🌟 Chúc bạn có chuyến đi xanh tuyệt vời! 🌟</strong><br>
-                    <span style="color: #48bb78; font-weight: 600;">Drive Electric. Drive Future. Drive Green! 🚗💚⚡</span>
+                    <span style="color: #48bb78; font-weight: 600;">Ride Electric. Ride Future. Ride Green! 🏍️💚⚡</span>
                 </div>
             </div>
 
@@ -843,7 +841,7 @@ const getStaffAccountEmailTemplate = (staffName, email, password) => {
 
                 <div class="message" style="text-align: center; margin-top: 40px; font-size: 18px; color: #2d3748;">
                     <strong>🌟 Chào mừng bạn đến với gia đình EV Rental! 🌟</strong><br>
-                    <span style="color: #48bb78; font-weight: 600;">Cùng nhau tạo nên tương lai xanh! 🚗💚⚡</span>
+                    <span style="color: #48bb78; font-weight: 600;">Cùng nhau tạo nên tương lai xanh! 🏍️💚⚡</span>
                 </div>
             </div>
 
@@ -867,10 +865,97 @@ const getStaffAccountEmailTemplate = (staffName, email, password) => {
     `;
 };
 
+// Template email hủy booking - Green EV Theme
+const getBookingCancellationTemplate = (userName, booking) => {
+    return `
+    <!DOCTYPE html>
+    <html lang="vi">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Hủy Đặt Xe - EV Rental</title>
+        ${getCommonStyles()}
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                <div class="logo-container">
+                    <div class="logo-icon">
+                        <img src="https://res.cloudinary.com/dcrbmfhbo/image/upload/v1758043354/Gemini_Generated_Image_c89jtfc89jtfc89j_z5gt9t.png" alt="EV Rental Logo" style="width: 64px; height: 64px; object-fit: contain;" />
+                    </div>
+                    <div class="logo">EV Rental</div>
+                </div>
+                <div class="subtitle">Thông báo hủy đặt xe</div>
+                <div class="eco-badge">Booking Cancelled</div>
+            </div>
+            
+            <div class="content">
+                <div class="greeting">Xin chào ${userName}!</div>
+                
+                <div class="message">
+                    Chúng tôi xác nhận đã hủy đặt xe của bạn thành công. 
+                    Cảm ơn bạn đã thông báo sớm để chúng tôi có thể phục vụ khách hàng khác.
+                </div>
+                
+                <div class="features">
+                    <h3>Chi tiết booking đã hủy</h3>
+                    <ul style="background: white; padding: 20px; border-radius: 10px; border: 2px solid #48bb78;">
+                        <li><strong>🎫 Booking ID:</strong> <span style="color: #48bb78; font-weight: bold;">${booking.code}</span></li>
+                        <li><strong>🚗 Xe điện:</strong> ${booking.vehicle_id?.name || 'N/A'}</li>
+                        <li><strong>📍 Trạm:</strong> ${booking.station_id?.name || 'N/A'}</li>
+                        <li><strong>📅 Ngày hủy:</strong> ${new Date().toLocaleDateString('vi-VN')}</li>
+                        <li><strong>📝 Lý do:</strong> ${booking.cancellation_reason || 'Không có lý do'}</li>
+                    </ul>
+                </div>
+                
+                <div class="warning-box">
+                    <strong>💡 Thông tin quan trọng:</strong><br><br>
+                    • Booking đã được hủy thành công<br>
+                    • Xe đã được trả về trạng thái available<br>
+                    • Không có phí hủy cho booking này<br>
+                    • Bạn có thể đặt xe mới bất cứ lúc nào
+                </div>
+                
+                <div class="cta-container">
+                    <a href="#" class="cta-button">
+                        🚗⚡ Đặt Xe Mới Ngay
+                    </a>
+                </div>
+                
+                <div class="message" style="text-align: center; margin-top: 40px; font-size: 18px; color: #2d3748;">
+                    <strong>💚 Cảm ơn bạn đã sử dụng dịch vụ EV Rental!</strong><br>
+                    <span style="color: #48bb78; font-weight: 600;">Hẹn gặp lại bạn trong những chuyến đi xanh tiếp theo! 🌱</span>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <div class="social-links">
+                    <a href="#">🌱 EV Community</a>
+                    <a href="#">📱 Mobile App</a>
+                    <a href="#">🔋 Charging Map</a>
+                    <a href="#">💚 Green Support</a>
+                </div>
+                <p><strong>© ${new Date().getFullYear()} EV Rental</strong> - Your Green Journey Partner 🌍</p>
+                <p>🏢 Green HQ: 123 Đường Xanh, Eco Park, Q7, HCMC | 📞 1900-EVGREEN</p>
+                <p>🌿 <strong>Eco Commitment:</strong> 100% renewable energy | Carbon negative footprint</p>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                    <p style="font-size: 11px; color: #a0aec0;">
+                        Email này được gửi tự động khi booking bị hủy<br>
+                        🌱 Mỗi email này được gửi bằng năng lượng tái tạo 100%
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+};
+
 module.exports = {
     sendEmail,
     getResetPasswordEmailTemplate,
     getWelcomeEmailTemplate,
     getBookingConfirmationTemplate,
-    getStaffAccountEmailTemplate
+    getStaffAccountEmailTemplate,
+    getBookingCancellationTemplate
 };

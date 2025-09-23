@@ -135,14 +135,102 @@ const validateUserIdentity = (user, ocrData) => {
   return {
     results,
     confidenceScore,
-    isAutoApproved: confidenceScore >= 70, // Tự động duyệt nếu điểm tin cậy >= 70%
+    isAutoApproved: false, // Bỏ auto-approve, luôn cần staff duyệt thủ công
     score,
     maxScore
   };
 };
 
+/**
+ * So sánh tên giữa CCCD và GPLX
+ * @param {Object} identityData - Dữ liệu từ CCCD
+ * @param {Object} licenseData - Dữ liệu từ GPLX
+ * @returns {Object} - Kết quả so sánh
+ */
+const compareIdentityAndLicenseNames = (identityData, licenseData) => {
+  if (!identityData.name || !licenseData.name) {
+    return {
+      match: false,
+      score: 0,
+      message: 'Thiếu thông tin tên từ một trong hai giấy tờ'
+    };
+  }
+
+  // Chuẩn hóa tên để so sánh
+  const normalizedIdentityName = identityData.name.toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalizedLicenseName = licenseData.name.toLowerCase().replace(/\s+/g, ' ').trim();
+  
+  if (normalizedIdentityName === normalizedLicenseName) {
+    return {
+      match: true,
+      score: 100,
+      message: 'Tên khớp hoàn toàn'
+    };
+  }
+
+  // Tính độ tương đồng của tên
+  const identityWords = normalizedIdentityName.split(' ');
+  const licenseWords = normalizedLicenseName.split(' ');
+  
+  let nameMatchCount = 0;
+  identityWords.forEach(word => {
+    if (licenseWords.includes(word)) nameMatchCount++;
+  });
+  
+  const matchScore = (nameMatchCount / Math.max(identityWords.length, licenseWords.length)) * 100;
+  
+  return {
+    match: matchScore >= 70,
+    score: matchScore,
+    message: matchScore >= 70 ? 'Tên khớp đủ độ tin cậy' : 'Tên không khớp, cần kiểm tra thủ công'
+  };
+};
+
+/**
+ * Kiểm tra hạng bằng lái xe có hợp lệ cho xe máy
+ * @param {string|Array} licenseClass - Hạng bằng lái xe
+ * @returns {Object} - Kết quả kiểm tra
+ */
+const validateLicenseClass = (licenseClass) => {
+  const validClasses = ['A', 'A1', 'A2'];
+  
+  if (!licenseClass) {
+    return {
+      isValid: false,
+      message: 'Không tìm thấy hạng bằng lái xe'
+    };
+  }
+
+  // Xử lý trường hợp licenseClass là string hoặc array
+  let classes = [];
+  if (typeof licenseClass === 'string') {
+    classes = [licenseClass];
+  } else if (Array.isArray(licenseClass)) {
+    classes = licenseClass;
+  }
+
+  // Kiểm tra xem có hạng hợp lệ không
+  const hasValidClass = classes.some(cls => validClasses.includes(cls));
+  
+  if (hasValidClass) {
+    const validClassFound = classes.find(cls => validClasses.includes(cls));
+    return {
+      isValid: true,
+      message: `Hạng bằng ${validClassFound} hợp lệ cho xe máy`,
+      validClass: validClassFound
+    };
+  } else {
+    return {
+      isValid: false,
+      message: `Hạng bằng ${classes.join(', ')} không hợp lệ. Cần hạng A, A1 hoặc A2 để thuê xe máy`
+    };
+  }
+};
+
 module.exports = {
   verifyIdentityCard,
   verifyDriverLicense,
-  validateUserIdentity
+  validateUserIdentity,
+  compareIdentityAndLicenseNames,
+  validateLicenseClass
 };

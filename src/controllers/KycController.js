@@ -1,5 +1,5 @@
 const { User, KYC } = require('../models');
-const { verifyIdentityCard, verifyDriverLicense, validateUserIdentity } = require('../services/kycService');
+const { verifyIdentityCard, verifyDriverLicense, validateUserIdentity, compareIdentityAndLicenseNames, validateLicenseClass } = require('../services/kycService');
 const { cloudinary, uploadToCloudinary } = require('../config/cloudinary');
 
 // Helper function để tìm hoặc tạo KYC record
@@ -103,6 +103,7 @@ exports.uploadIdentityCardFront = async (req, res) => {
     if (kyc.identityCardBackUploaded) {
       const validation = validateUserIdentity(user, idData);
       kyc.status = 'pending';
+      kyc.validationScore = validation.confidenceScore;
     } else {
       kyc.status = 'pending';
     }
@@ -282,6 +283,14 @@ exports.uploadDriverLicenseFront = async (req, res) => {
       }
     }
     
+    // Kiểm tra hạng bằng lái xe
+    const licenseClassValidation = validateLicenseClass(licenseData.class);
+    if (!licenseClassValidation.isValid) {
+      return res.status(400).json({ 
+        message: licenseClassValidation.message 
+      });
+    }
+    
     // Xử lý ngày hết hạn
     if (licenseData.doe) {
       // Xử lý trường hợp "KHÔNG THỜI HẠN" hoặc các giá trị đặc biệt khác
@@ -341,6 +350,17 @@ exports.uploadDriverLicenseFront = async (req, res) => {
     } else if (kyc.identityCardFrontUploaded && kyc.identityCardBackUploaded) {
       // Nếu đã có cả CMND/CCCD mặt trước và mặt sau nhưng chưa được duyệt
       kyc.status = 'pending';
+      
+      // So sánh tên giữa CCCD và GPLX
+      if (kyc.identityOcr && kyc.identityOcr.front && kyc.licenseOcr && kyc.licenseOcr.front) {
+        const nameComparison = compareIdentityAndLicenseNames(kyc.identityOcr.front, kyc.licenseOcr.front);
+        kyc.nameComparison = nameComparison;
+        
+        if (!nameComparison.match) {
+          kyc.status = 'pending'; // Vẫn pending nhưng có cảnh báo
+          kyc.validationNotes = `Cảnh báo: ${nameComparison.message}`;
+        }
+      }
     }
     
     kyc.lastUpdatedAt = new Date();
@@ -362,7 +382,13 @@ exports.uploadDriverLicenseFront = async (req, res) => {
         image: kyc.licenseImage
       },
       kycStatus: kyc.status,
-      needsBackImage: !kyc.licenseBackUploaded
+      needsBackImage: !kyc.licenseBackUploaded,
+      validation: {
+        licenseClassValid: licenseClassValidation.isValid,
+        licenseClassMessage: licenseClassValidation.message,
+        nameComparison: kyc.nameComparison || null,
+        validationNotes: kyc.validationNotes || null
+      }
     });
     
   } catch (error) {
@@ -543,7 +569,7 @@ exports.getPendingKycRequests = async (req, res) => {
       status: 'pending',
       identityCard: { $ne: '' } // Đảm bảo đã có CMND/CCCD
     }).populate('userId', '_id email fullname').select(
-      'userId identityCard identityCardFrontImage identityCardBackImage licenseNumber licenseImage licenseBackImage lastUpdatedAt identityName identityDob identityAddress licenseName licenseDob'
+      'userId identityCard identityCardFrontImage identityCardBackImage licenseNumber licenseImage licenseBackImage lastUpdatedAt identityName identityDob identityAddress licenseName licenseDob licenseClass validationScore nameComparison validationNotes'
     );
     
     return res.status(200).json({
@@ -615,6 +641,11 @@ exports.getMyKycStatus = async (req, res) => {
         frontUploaded: kyc.licenseFrontUploaded || false,
         backUploaded: kyc.licenseBackUploaded || false,
         uploaded: kyc.licenseUploaded || false
+      },
+      validation: {
+        score: kyc.validationScore || null,
+        nameComparison: kyc.nameComparison || null,
+        notes: kyc.validationNotes || null
       },
       lastUpdated: kyc.lastUpdatedAt || null
     });
