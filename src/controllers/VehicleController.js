@@ -1,6 +1,7 @@
 const { Vehicle, Station, User, Maintenance } = require('../models');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const ExcelService = require('../services/ExcelService');
+const DepositService = require('../services/DepositService');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
@@ -10,12 +11,12 @@ const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 // Helper function để tạo vehicle ID
 const generateVehicleId = async () => {
   try {
-    // Tìm vehicle có ID lớn nhất
+  
     const lastVehicle = await Vehicle.findOne({}, {}, { sort: { 'name': -1 } })
       .where('name').regex(/^VH\d+/);
     
     if (!lastVehicle || !lastVehicle.name.startsWith('VH')) {
-      // Nếu chưa có vehicle nào, bắt đầu từ VH001
+     
       return 'VH001';
     }
     
@@ -126,13 +127,13 @@ exports.bulkCreateVehicles = async (req, res) => {
       max_range,
       current_battery = 100,
       price_per_day,
-      deposit_amount,
+      deposit_percentage = 50,
       quantity = 1,
       export_excel = true
     } = req.body;
     
     // ✅ QUAN TRỌNG: Validate required fields
-    if (!model || !year || !color || !type || !battery_capacity || !max_range || !price_per_day || !deposit_amount) {
+    if (!model || !year || !color || !type || !battery_capacity || !max_range || !price_per_day) {
       return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc' });
     }
     
@@ -173,7 +174,7 @@ exports.bulkCreateVehicles = async (req, res) => {
         max_range,
         current_battery,
         price_per_day,
-        deposit_amount,
+        deposit_percentage,
         status: 'draft',
         technical_status: 'good',
         license_plate: `TEMP_${Date.now()}_${i}`, // Temporary license_plate
@@ -184,38 +185,75 @@ exports.bulkCreateVehicles = async (req, res) => {
     
     // Lưu vào database
     const createdVehicles = [];
+    const failedVehicles = [];
+    
     for (const vehicle of vehicles) {
       try {
         const createdVehicle = await Vehicle.create(vehicle);
         createdVehicles.push(createdVehicle);
       } catch (error) {
         console.error(`Lỗi khi tạo xe ${vehicle.name}:`, error.message);
-        // Tiếp tục với xe tiếp theo
+        failedVehicles.push({
+          name: vehicle.name,
+          error: error.message
+        });
       }
+    }
+    
+    // Kiểm tra kết quả
+    if (createdVehicles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể tạo xe nào. Vui lòng kiểm tra dữ liệu đầu vào.',
+        errors: failedVehicles
+      });
+    }
+    
+    // Nếu có lỗi nhưng vẫn tạo được một số xe
+    if (failedVehicles.length > 0) {
+      console.warn(`⚠️ Tạo thành công ${createdVehicles.length} xe, thất bại ${failedVehicles.length} xe`);
     }
     
     // Nếu không cần xuất Excel, trả về JSON response
     if (!export_excel) {
       return res.status(201).json({
-        message: `Đã tạo ${createdVehicles.length} xe thành công`,
-        vehicles: createdVehicles
+        success: true,
+        message: `Đã tạo ${createdVehicles.length} xe thành công${failedVehicles.length > 0 ? `, ${failedVehicles.length} xe thất bại` : ''}`,
+        vehicles: createdVehicles,
+        ...(failedVehicles.length > 0 && { failed_vehicles: failedVehicles })
       });
     }
     
     // Tạo Excel template từ các xe vừa tạo
-    const result = await ExcelService.createVehicleTemplate(createdVehicles, color);
-    
-    // Trả về file Excel
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=${result.fileName}`);
-    
-    const fileStream = fs.createReadStream(result.filePath);
-    fileStream.pipe(res);
-    
-    // Xóa file sau khi đã gửi
-    fileStream.on('end', () => {
-      fs.unlinkSync(result.filePath);
-    });
+    try {
+      const result = await ExcelService.createVehicleTemplate(createdVehicles, color);
+      
+      // Trả về file Excel
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=${result.fileName}`);
+      
+      const fileStream = fs.createReadStream(result.filePath);
+      fileStream.pipe(res);
+      
+      // Xóa file sau khi đã gửi
+      fileStream.on('end', () => {
+        fs.unlinkSync(result.filePath);
+      });
+      
+      // Nếu có lỗi khi tạo xe, thêm thông tin vào response headers
+      if (failedVehicles.length > 0) {
+        res.setHeader('X-Warning', `${failedVehicles.length} vehicles failed to create`);
+      }
+      
+    } catch (excelError) {
+      console.error('Lỗi khi tạo Excel template:', excelError);
+      return res.status(500).json({
+        success: false,
+        message: 'Đã tạo xe thành công nhưng không thể tạo file Excel',
+        vehicles: createdVehicles,
+        ...(failedVehicles.length > 0 && { failed_vehicles: failedVehicles })
+      });
+    }
     
   } catch (error) {
     // Xử lý Mongoose validation errors
@@ -630,7 +668,7 @@ exports.updateVehicle = async (req, res) => {
       max_range,
       current_battery,
       price_per_day,
-      deposit_amount,
+      deposit_percentage,
       technical_status
     } = req.body;
 
@@ -659,7 +697,7 @@ exports.updateVehicle = async (req, res) => {
     if (max_range) vehicle.max_range = max_range;
     if (current_battery !== undefined) vehicle.current_battery = current_battery;
     if (price_per_day) vehicle.price_per_day = price_per_day;
-    if (deposit_amount) vehicle.deposit_amount = deposit_amount;
+    if (deposit_percentage) vehicle.deposit_percentage = deposit_percentage;
     if (technical_status) vehicle.technical_status = technical_status;
     
     // Cập nhật hình ảnh nếu có
@@ -956,7 +994,7 @@ exports.getPublicVehicles = async (req, res) => {
           battery_capacity: { $first: '$battery_capacity' },
           max_range: { $first: '$max_range' },
           price_per_day: { $first: '$price_per_day' },
-          deposit_amount: { $first: '$deposit_amount' },
+          deposit_percentage: { $first: '$deposit_percentage' },
           // Chỉ đếm số xe available
           available_quantity: { $sum: 1 },
           // Một ảnh đại diện
@@ -991,7 +1029,7 @@ exports.getPublicVehicles = async (req, res) => {
           battery_capacity: 1,
           max_range: 1,
           price_per_day: 1,
-          deposit_amount: 1,
+          deposit_percentage: 1,
           available_quantity: 1,
           sample_image: 1,
           stations: {
@@ -1105,7 +1143,7 @@ exports.getPublicVehicleDetail = async (req, res) => {
       battery_capacity: vehicle.battery_capacity,
       max_range: vehicle.max_range,
       price_per_day: vehicle.price_per_day,
-      deposit_amount: vehicle.deposit_amount,
+      deposit_percentage: vehicle.deposit_percentage,
       images: vehicle.images,
       station: vehicle.station_id,
       similar_vehicles_count: sameModelCount,
@@ -1161,7 +1199,7 @@ exports.getStaffVehicles = async (req, res) => {
         max_range: 1,
         current_battery: 1,
         price_per_day: 1,
-        deposit_amount: 1,
+        deposit_percentage: 1,
         status: 1,
         technical_status: 1,
         images: 1,
@@ -1195,7 +1233,7 @@ exports.getStaffVehicles = async (req, res) => {
     const statistics = await Vehicle.aggregate([
       {
         $match: {
-          station_id: mongoose.Types.ObjectId(req.user.stationId),
+          station_id: new mongoose.Types.ObjectId(req.user.stationId),
           status: { $ne: 'draft' },
           is_active: true
         }
@@ -1338,7 +1376,7 @@ exports.exportPricingTemplate = async (req, res) => {
       color: 1,
       status: 1,
       price_per_day: 1,
-      deposit_amount: 1
+      deposit_percentage: 1
     });
 
     if (vehicles.length === 0) {
@@ -1393,7 +1431,7 @@ exports.importPricingUpdates = async (req, res) => {
     }
 
     // Cập nhật giá cho từng xe
-    const updatePromises = result.data.map(async ({ vehicle_code, new_price, new_deposit }) => {
+    const updatePromises = result.data.map(async ({ vehicle_code, new_price, new_deposit_percentage }) => {
       // Tìm xe theo mã xe
       const vehicle = await Vehicle.findOne({ name: vehicle_code });
       if (!vehicle) {
@@ -1404,12 +1442,12 @@ exports.importPricingUpdates = async (req, res) => {
         };
       }
 
-      // Cập nhật giá và cọc
+      // Cập nhật giá và phần trăm cọc
       const updated = await Vehicle.findByIdAndUpdate(
         vehicle._id,
         { 
           price_per_day: new_price,
-          deposit_amount: new_deposit
+          deposit_percentage: new_deposit_percentage
         },
         { new: true }
       );
@@ -1419,8 +1457,8 @@ exports.importPricingUpdates = async (req, res) => {
         vehicle_code,
         old_price: vehicle.price_per_day,
         new_price,
-        old_deposit: vehicle.deposit_amount,
-        new_deposit,
+        old_deposit_percentage: vehicle.deposit_percentage,
+        new_deposit_percentage,
         status: vehicle.status
       };
     });

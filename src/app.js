@@ -15,12 +15,19 @@ const rateLimit = require('express-rate-limit');
 
 // Import routes
 const vehicleRoutes = require('./routes/vehicle.routes');
+const bookingRoutes = require('./routes/booking.routes');
+const paymentRoutes = require('./routes/payment.routes');
+const contractRoutes = require('./routes/contract.routes');
+const rentalRoutes = require('./routes/rental.routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000; 
 
 // Trust proxy cho production (Render)
 app.set('trust proxy', 1);
+
+// Serve static files from public directory
+app.use('/qr-codes', express.static('public/qr-codes'));
 
 // Middleware để phân tích dữ liệu JSON
 app.use(express.json());
@@ -70,6 +77,10 @@ app.use('/api/users', userRoutes);
 
 // Sử dụng routes
 app.use('/api/vehicles', vehicleRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/contracts', contractRoutes);
+app.use('/api/rentals', rentalRoutes);
 
 // Định nghĩa một route cơ bản
 app.get('/', (req, res) => {
@@ -81,4 +92,8 @@ app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Swagger UI is available at http://localhost:${PORT}/api-docs`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Khởi động cron job cho auto-cancel bookings
+  require('./cron/bookingCron');
+  console.log('⏰ Auto-cancel cron job started');
 });

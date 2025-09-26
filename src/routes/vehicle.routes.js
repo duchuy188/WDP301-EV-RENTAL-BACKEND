@@ -3,7 +3,7 @@ const router = express.Router();
 const VehicleController = require('../controllers/VehicleController');
 const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
-const vehicleImageUpload = require('../middlewares/vehicleImageUpload');
+const { vehicleImageUpload } = require('../middlewares/vehicleImageUpload');
 const multer = require('multer');
 
 // Cấu hình storage cho file Excel

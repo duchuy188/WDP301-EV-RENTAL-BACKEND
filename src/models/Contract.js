@@ -55,7 +55,7 @@ const contractSchema = new mongoose.Schema({
   },
   content: { 
     type: String, 
-    required: true 
+    required: true
   }, // HTML content của hợp đồng
   terms: { 
     type: String, 

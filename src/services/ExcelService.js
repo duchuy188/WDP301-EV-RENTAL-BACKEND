@@ -142,8 +142,8 @@ class ExcelService {
         { header: 'Trạng Thái', key: 'status', width: 15 },
         { header: 'Giá Hiện Tại', key: 'current_price', width: 20 },
         { header: 'Giá Mới', key: 'new_price', width: 20 },
-        { header: 'Cọc Hiện Tại', key: 'current_deposit', width: 20 },
-        { header: 'Cọc Mới', key: 'new_deposit', width: 20 }
+        { header: 'Cọc Hiện Tại (%)', key: 'current_deposit_percentage', width: 20 },
+        { header: 'Cọc Mới (%)', key: 'new_deposit_percentage', width: 20 }
       ];
 
       // 3. Style cho header
@@ -163,8 +163,8 @@ class ExcelService {
           status: vehicle.status,
           current_price: vehicle.price_per_day,
           new_price: vehicle.price_per_day,
-          current_deposit: vehicle.deposit_amount,
-          new_deposit: vehicle.deposit_amount
+          current_deposit_percentage: vehicle.deposit_percentage,
+          new_deposit_percentage: vehicle.deposit_percentage
         });
       });
 
@@ -172,9 +172,9 @@ class ExcelService {
       const guideSheet = workbook.addWorksheet('Hướng Dẫn');
       guideSheet.addRow(['HƯỚNG DẪN CẬP NHẬT GIÁ XE']);
       guideSheet.addRow(['1. Nhập giá mới vào cột "Giá Mới"']);
-      guideSheet.addRow(['2. Nhập tiền cọc mới vào cột "Cọc Mới"']);
+      guideSheet.addRow(['2. Nhập phần trăm cọc mới vào cột "Cọc Mới (%)"']);
       guideSheet.addRow(['3. Giá phải từ 50,000đ đến 300,000đ']);
-      guideSheet.addRow(['4. Tiền cọc phải từ 500,000đ đến 3,000,000đ']);
+      guideSheet.addRow(['4. Phần trăm cọc phải từ 0% đến 100% (0% = không cọc, 100% = cọc full)']);
       guideSheet.addRow(['5. Xe đang được thuê (RENTED) vẫn được update giá mới']);
       guideSheet.addRow(['6. Hợp đồng đang active sẽ giữ nguyên giá cũ']);
 
@@ -208,7 +208,6 @@ class ExcelService {
 
       const worksheet = workbook.getWorksheet('Pricing Update');
       
-     
       const result = {
         data: [],
         errors: []
@@ -218,30 +217,27 @@ class ExcelService {
       for (let i = 2; i <= worksheet.rowCount; i++) {
         const row = worksheet.getRow(i);
         
-     
-        
         // Kiểm tra xem row có tồn tại không
         if (!row || !row.values || row.values.length === 0) {
           console.log(`Row ${i} is empty, skipping`);
           continue;
         }
         
-    
         // Lấy giá trị từ các cột, với fallback về null nếu cột không tồn tại
         const vehicle_code = row.getCell(1)?.value || null; // Cột A - Mã Xe (VH001)
         const new_price = row.getCell(6)?.value || null;    // Cột F - Giá Mới (150000)
-        const new_deposit = row.getCell(8)?.value || null;  // Cột H - Cọc Mới (1500000)
+        const new_deposit_percentage = row.getCell(8)?.value || null;  // Cột H - Cọc Mới (%) (1000)
 
         // Validate data
-        if (!vehicle_code || !new_price || !new_deposit) {
+        if (!vehicle_code || !new_price || !new_deposit_percentage) {
           console.log(`Row ${i} validation failed:`, {
             vehicle_code,
             new_price,
-            new_deposit
+            new_deposit_percentage
           });
           result.errors.push({
             row: i,
-            message: `Thiếu thông tin bắt buộc - Mã xe: ${vehicle_code || 'trống'}, Giá: ${new_price || 'trống'}, Cọc: ${new_deposit || 'trống'}`
+            message: `Thiếu thông tin bắt buộc - Mã xe: ${vehicle_code || 'trống'}, Giá: ${new_price || 'trống'}, Cọc (%): ${new_deposit_percentage || 'trống'}`
           });
           continue;
         }
@@ -255,11 +251,11 @@ class ExcelService {
           continue;
         }
 
-        // Validate cọc
-        if (new_deposit < 500000 || new_deposit > 3000000) {
+        // Validate phần trăm cọc
+        if (new_deposit_percentage < 0 || new_deposit_percentage > 100) {
           result.errors.push({
             row: i,
-            message: 'Tiền cọc không hợp lệ (500,000đ - 3,000,000đ)'
+            message: 'Phần trăm cọc không hợp lệ (0% - 100%)'
           });
           continue;
         }
@@ -268,7 +264,7 @@ class ExcelService {
         result.data.push({
           vehicle_code,
           new_price,
-          new_deposit
+          new_deposit_percentage
         });
       }
 
