@@ -11,12 +11,12 @@ const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 // Helper function để tạo vehicle ID
 const generateVehicleId = async () => {
   try {
-    // Tìm vehicle có ID lớn nhất
+  
     const lastVehicle = await Vehicle.findOne({}, {}, { sort: { 'name': -1 } })
       .where('name').regex(/^VH\d+/);
     
     if (!lastVehicle || !lastVehicle.name.startsWith('VH')) {
-      // Nếu chưa có vehicle nào, bắt đầu từ VH001
+     
       return 'VH001';
     }
     

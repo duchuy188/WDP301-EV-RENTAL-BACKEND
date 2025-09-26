@@ -16,6 +16,9 @@ const rateLimit = require('express-rate-limit');
 // Import routes
 const vehicleRoutes = require('./routes/vehicle.routes');
 const bookingRoutes = require('./routes/booking.routes');
+const paymentRoutes = require('./routes/payment.routes');
+const contractRoutes = require('./routes/contract.routes');
+const rentalRoutes = require('./routes/rental.routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000; 
@@ -75,6 +78,9 @@ app.use('/api/users', userRoutes);
 // Sử dụng routes
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/contracts', contractRoutes);
+app.use('/api/rentals', rentalRoutes);
 
 // Định nghĩa một route cơ bản
 app.get('/', (req, res) => {

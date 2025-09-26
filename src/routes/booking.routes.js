@@ -12,6 +12,7 @@ const {
 } = require('../controllers/BookingController');
 const authenticateToken = require('../middlewares/authMiddleware');
 const requireRole = require('../middlewares/roleMiddleware');
+const { vehicleImageUpload } = require('../middlewares/vehicleImageUpload');
 
 // User routes (EV Renter)
 router.post('/', authenticateToken, createBooking);
@@ -20,7 +21,7 @@ router.get('/:id', authenticateToken, getBookingDetails);
 router.delete('/:id', authenticateToken, cancelBooking);
 
 // Staff routes (Station Staff)
-router.put('/:id/confirm', authenticateToken, requireRole(['Station Staff', 'Admin']), confirmBooking);
+router.put('/:id/confirm', authenticateToken, requireRole(['Station Staff', 'Admin']), vehicleImageUpload.array('files', 5), confirmBooking);
 router.get('/station/list', authenticateToken, requireRole(['Station Staff', 'Admin']), getStationBookings);
 
 // QR Code routes

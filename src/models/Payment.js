@@ -13,7 +13,7 @@ const paymentSchema = new mongoose.Schema({
   rental_id: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Rental',
-    required: true 
+    required: false // Không bắt buộc vì deposit payment chưa có rental
   },
   user_id: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -34,7 +34,12 @@ const paymentSchema = new mongoose.Schema({
   },
   payment_method: { 
     type: String, 
-    enum: ['cash', 'banking'],
+    enum: [
+      'cash',           // Tiền mặt
+      'qr_code',        // QR Code thanh toán
+      'bank_transfer',  // Chuyển khoản ngân hàng
+      'vnpay'           // VNPay online
+    ],
     required: true 
   },
   
@@ -73,6 +78,30 @@ const paymentSchema = new mongoose.Schema({
     default: '' 
   },
   payment_gateway: { 
+    type: String, 
+    default: '' 
+  },
+  
+  // QR Code thông tin
+  qr_code_data: { 
+    type: String, 
+    default: '' 
+  },
+  qr_code_image: { 
+    type: String, 
+    default: '' 
+  },
+  
+  // VNPay thông tin
+  vnpay_url: { 
+    type: String, 
+    default: '' 
+  },
+  vnpay_transaction_no: { 
+    type: String, 
+    default: '' 
+  },
+  vnpay_bank_code: { 
     type: String, 
     default: '' 
   },

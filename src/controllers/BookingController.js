@@ -489,7 +489,7 @@ const getBookingDetails = async (req, res) => {
 const confirmBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const { vehicle_condition_before, staff_notes } = req.body;
+    const { vehicle_condition_before, staff_notes } = req.body || {};
     const staff_id = req.user.id;
     
     // Check if user is staff
@@ -517,11 +517,10 @@ const confirmBooking = async (req, res) => {
       });
     }
     
-    // Check if QR code has been used (check-in completed)
+    // Auto check-in when confirming booking
     if (!booking.qr_used_at) {
-      return res.status(400).json({ 
-        message: 'Booking chưa được check-in. Vui lòng quét QR code trước' 
-      });
+      booking.qr_used_at = new Date();
+      await booking.save();
     }
     
     // Check KYC status if needed
@@ -538,29 +537,27 @@ const confirmBooking = async (req, res) => {
      // qr_used_at đã được set trong useQRCode, không cần set lại
     await booking.save();
     
-    // Create payment (deposit)
-    const payment = await Payment.create({
-      code: 'PAY' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-      rental_id: null, // Will be updated when rental is created
-      user_id: booking.user_id._id,
-      booking_id: booking._id,
-      amount: booking.deposit_amount,
-      payment_method: 'cash', // Default, can be updated
-      payment_type: 'deposit',
-      status: 'pending',
-      processed_by: staff_id
-    });
-    
     // Upload vehicle images before handover
     let imagesBefore = [];
+    console.log('🔍 Debug - req.files:', req.files);
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        const result = await uploadToCloudinary(file.buffer, 'vehicle-conditions');
-        imagesBefore.push(result.url);
+        console.log('🔍 Debug - file:', file);
+        // File đã được upload lên Cloudinary bởi multer middleware
+        imagesBefore.push(file.path);
       }
     }
 
-    // Create rental
+    // Prepare vehicle condition data
+    const vehicleConditionData = {
+      mileage: vehicle_condition_before?.mileage || 0,
+      battery_level: vehicle_condition_before?.battery_level || booking.vehicle_id.current_battery || 100,
+      exterior_condition: vehicle_condition_before?.exterior_condition || 'good',
+      interior_condition: vehicle_condition_before?.interior_condition || 'good',
+      notes: vehicle_condition_before?.notes || staff_notes || ''
+    };
+
+    // Create rental first
     const rental = await Rental.create({
       code: 'RENT' + Math.random().toString(36).substr(2, 6).toUpperCase(),
       booking_id: booking._id,
@@ -569,22 +566,25 @@ const confirmBooking = async (req, res) => {
       station_id: booking.station_id._id,
       actual_start_time: new Date(),
       pickup_staff_id: staff_id,
-      vehicle_condition_before: vehicle_condition_before || {
-        mileage: 0,
-        battery_level: booking.vehicle_id.current_battery,
-        exterior_condition: 'good',
-        interior_condition: 'good',
-        notes: staff_notes || ''
-      },
+      vehicle_condition_before: vehicleConditionData,
       images_before: imagesBefore,
       staff_notes: staff_notes || '',
       status: 'active',
       created_by: staff_id
     });
-    
-    // Update payment with rental_id
-    payment.rental_id = rental._id;
-    await payment.save();
+
+    // Create payment (deposit) after rental is created
+    const payment = await Payment.create({
+      code: 'PAY' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+      rental_id: rental._id,
+      user_id: booking.user_id._id,
+      booking_id: booking._id,
+      amount: booking.deposit_amount,
+      payment_method: 'cash', // Default, can be updated via PaymentController
+      payment_type: 'deposit',
+      status: 'pending',
+      processed_by: staff_id
+    });
     
     // Create contract
     const contractTemplate = await ContractTemplate.findOne({ is_active: true });
@@ -597,8 +597,7 @@ const confirmBooking = async (req, res) => {
         station_id: booking.station_id._id,
         template_id: contractTemplate._id,
         title: contractTemplate.title,
-        content: contractTemplate.content,
-        terms: contractTemplate.terms,
+        content: contractTemplate.content_template, 
         valid_from: booking.start_date,
         valid_until: booking.end_date,
         staff_signed_by: staff_id,
