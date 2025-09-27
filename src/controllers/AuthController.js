@@ -468,13 +468,15 @@ exports.refreshToken = async (req, res) => {
             }
 
             // Nếu muốn trả về JWT của hệ thống, thêm đoạn tạo token ở đây
-            // const token = createJWT(user);
+                // Tạo JWT token cho user Google
+                const jwt = require('jsonwebtoken');
+                const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
-            return res.json({
-                message: 'Login successful',
-                user,
-                // token,
-            });
+                return res.json({
+                    message: 'Login successful',
+                    user,
+                    token,
+                });
         } catch (err) {
             console.error('Lỗi xác thực hoặc lưu user Google:', err);
             return res.status(401).json({ error: 'Invalid Firebase ID token' });
