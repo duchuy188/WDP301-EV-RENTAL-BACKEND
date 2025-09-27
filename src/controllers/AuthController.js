@@ -428,3 +428,55 @@ exports.refreshToken = async (req, res) => {
         res.status(500).json({ message: 'Lỗi khi làm mới token', error: error.message });
     }
 };
+    // Đăng nhập bằng Google qua Firebase ID Token
+    const admin = require('../config/firebase');
+
+    exports.loginWithGoogle = async (req, res) => {
+        const { idToken } = req.body;
+        if (!idToken) return res.status(400).json({ error: 'Missing idToken' });
+
+        try {
+            // Xác thực token với Firebase
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            console.log('Đã xác thực Firebase ID token:', decodedToken);
+            const { uid, email, name, picture } = decodedToken;
+
+            // Tìm hoặc tạo user trong DB
+            let user = await User.findOne({ email });
+            if (!user) {
+                console.log('Tạo user Google mới với email:', email);
+                const bcrypt = require('bcrypt');
+                const googlePassword = await bcrypt.hash('google-oauth', 10);
+                user = await User.create({
+                    fullname: name || '',
+                    email,
+                    passwordHash: googlePassword,
+                    role: 'EV Renter',
+                    avatar: picture || '',
+                    avatarPublicId: '',
+                    phone: '',
+                    address: '',
+                    provider: 'google',
+                    firebaseUid: uid,
+                    kycStatus: 'not_submitted',
+                    status: 'active',
+                    stationId: null,
+                });
+                console.log('User Google đã được lưu:', user);
+            } else {
+                console.log('User Google đã tồn tại:', user);
+            }
+
+            // Nếu muốn trả về JWT của hệ thống, thêm đoạn tạo token ở đây
+            // const token = createJWT(user);
+
+            return res.json({
+                message: 'Login successful',
+                user,
+                // token,
+            });
+        } catch (err) {
+            console.error('Lỗi xác thực hoặc lưu user Google:', err);
+            return res.status(401).json({ error: 'Invalid Firebase ID token' });
+        }
+    };

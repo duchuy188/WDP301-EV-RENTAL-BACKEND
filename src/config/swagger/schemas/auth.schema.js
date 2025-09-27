@@ -41,6 +41,15 @@
  *           example: "your_refresh_token_here"
  *       required:
  *         - refreshToken
+
+ *     GoogleLogin:
+ *       type: object
+ *       properties:
+ *         idToken:
+ *           type: string
+ *           example: "eyJhbGciOiJSUzI1NiIsImtpZCI6IjU..."
+ *       required:
+ *         - idToken
  *
  *     # Status Enums
  *     UserStatus:

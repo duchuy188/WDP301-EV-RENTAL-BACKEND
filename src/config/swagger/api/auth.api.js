@@ -49,6 +49,27 @@
 
 /**
  * @swagger
+ * /api/auth/login/google:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Đăng nhập bằng Google qua Firebase ID Token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/GoogleLogin'
+ *     responses:
+ *       200:
+ *         description: Đăng nhập Google thành công
+ *       401:
+ *         description: Token không hợp lệ
+ *       500:
+ *         description: Lỗi khi đăng nhập Google
+ */
+
+/**
+ * @swagger
  * /api/auth/logout:
  *   post:
  *     tags: [Auth]
