@@ -19,6 +19,7 @@ const bookingRoutes = require('./routes/booking.routes');
 const paymentRoutes = require('./routes/payment.routes');
 const contractRoutes = require('./routes/contract.routes');
 const rentalRoutes = require('./routes/rental.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000; 
@@ -81,6 +82,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/contracts', contractRoutes);
 app.use('/api/rentals', rentalRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Định nghĩa một route cơ bản
 app.get('/', (req, res) => {
