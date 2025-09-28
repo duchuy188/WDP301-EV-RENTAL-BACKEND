@@ -1,4 +1,3 @@
-
 const Booking = require('../models/Booking');
 const User = require('../models/User');
 const Vehicle = require('../models/Vehicle');
@@ -530,89 +529,111 @@ const confirmBooking = async (req, res) => {
       });
     }
     
-    // Update booking status
-    booking.status = 'confirmed';
-    booking.confirmed_at = new Date();
-    booking.confirmed_by = staff_id;
-     // qr_used_at đã được set trong useQRCode, không cần set lại
-    await booking.save();
-    
-    // Upload vehicle images before handover
-    let imagesBefore = [];
-    console.log('🔍 Debug - req.files:', req.files);
-    if (req.files && req.files.length > 0) {
-      for (const file of req.files) {
-        console.log('🔍 Debug - file:', file);
-        // File đã được upload lên Cloudinary bởi multer middleware
-        imagesBefore.push(file.path);
-      }
-    }
+    let rental = null;
+    let payment = null;
+    let contract = null;
+    let vehicleUpdated = false;
+    let bookingUpdated = false;
 
-    // Prepare vehicle condition data
-    const vehicleConditionData = {
-      mileage: vehicle_condition_before?.mileage || 0,
-      battery_level: vehicle_condition_before?.battery_level || booking.vehicle_id.current_battery || 100,
-      exterior_condition: vehicle_condition_before?.exterior_condition || 'good',
-      interior_condition: vehicle_condition_before?.interior_condition || 'good',
-      notes: vehicle_condition_before?.notes || staff_notes || ''
-    };
-
-    // Create rental first
-    const rental = await Rental.create({
-      code: 'RENT' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-      booking_id: booking._id,
-      user_id: booking.user_id._id,
-      vehicle_id: booking.vehicle_id._id,
-      station_id: booking.station_id._id,
-      actual_start_time: new Date(),
-      pickup_staff_id: staff_id,
-      vehicle_condition_before: vehicleConditionData,
-      images_before: imagesBefore,
-      staff_notes: staff_notes || '',
-      status: 'active',
-      created_by: staff_id
-    });
-
-    // Create payment (deposit) after rental is created
-    const payment = await Payment.create({
-      code: 'PAY' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-      rental_id: rental._id,
-      user_id: booking.user_id._id,
-      booking_id: booking._id,
-      amount: booking.deposit_amount,
-      payment_method: 'cash', // Default, can be updated via PaymentController
-      payment_type: 'deposit',
-      status: 'pending',
-      processed_by: staff_id
-    });
-    
-    // Create contract
-    const contractTemplate = await ContractTemplate.findOne({ is_active: true });
-    if (contractTemplate) {
-      const contract = await Contract.create({
-        code: 'CON' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-        rental_id: rental._id,
+    try {
+      // 1. Tạo rental
+      rental = await Rental.create({
+        code: 'RENT' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+        booking_id: booking._id,
         user_id: booking.user_id._id,
         vehicle_id: booking.vehicle_id._id,
         station_id: booking.station_id._id,
-        template_id: contractTemplate._id,
-        title: contractTemplate.title,
-        content: contractTemplate.content_template, 
-        valid_from: booking.start_date,
-        valid_until: booking.end_date,
-        staff_signed_by: staff_id,
+        actual_start_time: new Date(),
+        pickup_staff_id: staff_id,
+        vehicle_condition_before: {
+          mileage: vehicle_condition_before?.mileage || 0,
+          battery_level: vehicle_condition_before?.battery_level || booking.vehicle_id.current_battery || 100,
+          exterior_condition: vehicle_condition_before?.exterior_condition || 'good',
+          interior_condition: vehicle_condition_before?.interior_condition || 'good',
+          notes: vehicle_condition_before?.notes || staff_notes || ''
+        },
+        images_before: [],
+        staff_notes: staff_notes || '',
+        status: 'active',
         created_by: staff_id
       });
+      
+      // 2. Tạo payment
+      payment = await Payment.create({
+        code: 'PAY' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+        rental_id: rental._id,
+        user_id: booking.user_id._id,
+        booking_id: booking._id,
+        amount: booking.deposit_amount,
+        payment_method: 'cash',
+        payment_type: 'deposit',
+        status: 'pending',
+        processed_by: staff_id
+      });
+      
+      
+      const contractTemplate = await ContractTemplate.findOne({ is_active: true });
+      if (contractTemplate) {
+        contract = await Contract.create({
+          code: 'CON' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+          rental_id: rental._id,
+          user_id: booking.user_id._id,
+          vehicle_id: booking.vehicle_id._id,
+          station_id: booking.station_id._id,
+          template_id: contractTemplate._id,
+          title: contractTemplate.title,
+          content: contractTemplate.content_template, 
+          terms: contractTemplate.terms_template, 
+          valid_from: booking.start_date,
+          valid_until: booking.end_date,
+          staff_signed_by: staff_id,
+          created_by: staff_id
+        });
+      }
+      
+      // 4. Update vehicle status
+      await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
+        status: 'rented'
+      });
+      vehicleUpdated = true;
+      
+      // 5. Update booking status
+      booking.status = 'confirmed';
+      booking.confirmed_at = new Date();
+      booking.confirmed_by = staff_id;
+      await booking.save();
+      bookingUpdated = true;
+      
+      // 6. Update station stats (có thể lỗi, nhưng không quan trọng)
+      try {
+        const station = await Station.findById(booking.station_id._id);
+        await station.syncVehicleCount();
+      } catch (stationError) {
+        console.warn('Warning: Station sync failed, but booking confirmed:', stationError.message);
+        // Không throw error, chỉ warning
+      }
+      
+    } catch (error) {
+      // Rollback đầy đủ
+      if (rental) await Rental.findByIdAndDelete(rental._id);
+      if (payment) await Payment.findByIdAndDelete(payment._id);
+      if (contract) await Contract.findByIdAndDelete(contract._id);
+      
+      if (vehicleUpdated) {
+        await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
+          status: 'reserved'
+        });
+      }
+      
+      if (bookingUpdated) {
+        booking.status = 'pending';
+        booking.confirmed_at = null;
+        booking.confirmed_by = null;
+        await booking.save();
+      }
+      
+      throw error;
     }
-    
-    // Update vehicle status
-    await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
-      status: 'rented'
-    });
-    
-    // Update station stats
-    const station = await Station.findById(booking.station_id._id);
-    await station.syncVehicleCount();
     
     // Format timezone for response
     const formattedBooking = {
@@ -628,7 +649,7 @@ const confirmBooking = async (req, res) => {
     
     const formattedRental = {
       ...rental.toObject(),
-      images_before: imagesBefore,
+      images_before: [], 
       actual_start_time: formatVietnamTime(rental.actual_start_time),
       createdAt: formatVietnamTime(rental.createdAt),
       updatedAt: formatVietnamTime(rental.updatedAt)

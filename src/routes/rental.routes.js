@@ -18,12 +18,12 @@ router.get('/admin', authenticateToken, requireRole(['Admin']), RentalController
 router.get('/:id', authenticateToken, RentalController.getRentalDetails);
 
 // GET /api/rentals/:id/checkout-info - Lấy thông tin checkout
-router.get('/:id/checkout-info', authenticateToken, requireRole(['staff', 'admin']), RentalController.getCheckoutInfo);
+router.get('/:id/checkout-info', authenticateToken, requireRole(['Station Staff', 'admin']), RentalController.getCheckoutInfo);
 
 // PUT /api/rentals/:id/checkout - Xử lý checkout (tự động tính phí)
-router.put('/:id/checkout', authenticateToken, requireRole(['staff', 'admin']), RentalController.processCheckout);
+router.put('/:id/checkout', authenticateToken, requireRole(['Station Staff', 'admin']), RentalController.processCheckout);
 
 // POST /api/rentals/:id/return-photos - Upload ảnh và báo cáo tình trạng xe
-router.post('/:id/return-photos', authenticateToken, requireRole(['staff', 'admin']), uploadMultiple, RentalController.uploadReturnPhotos);
+router.post('/:id/return-photos', authenticateToken, requireRole(['Station Staff', 'admin']), uploadMultiple, RentalController.uploadReturnPhotos);
 
 module.exports = router;
