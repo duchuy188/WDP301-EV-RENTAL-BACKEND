@@ -10,6 +10,8 @@ router.post('/register', AuthController.register);
 
 // Đăng nhập người dùng
 router.post('/login', AuthController.login);
+// Đăng nhập bằng Google
+router.post('/login/google', AuthController.loginWithGoogle);
 
 // Đăng xuất người dùng
 router.post('/logout', AuthController.logout);
