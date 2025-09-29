@@ -21,11 +21,11 @@ const checkDuplicateIdentity = async (identityCard) => {
   return !!existing;
 };
 
-const checkDuplicateLicense = async (licenseNumber) => {
+const checkDuplicateLicense = async (licenseNumber, currentUserId) => {
   if (!licenseNumber) return false;
   const existing = await KYC.findOne({ 
     licenseNumber: licenseNumber,
-    licenseNumber: { $ne: '' }  
+    userId: { $ne: currentUserId } // Loại trừ user hiện tại
   });
   return !!existing;
 };
@@ -275,7 +275,7 @@ exports.uploadDriverLicenseFront = async (req, res) => {
     
     // Thêm check duplicate
     if (kyc.licenseNumber) {
-      const isDuplicate = await checkDuplicateLicense(kyc.licenseNumber);
+      const isDuplicate = await checkDuplicateLicense(kyc.licenseNumber, req.user.id);
       if (isDuplicate) {
         return res.status(400).json({ 
           message: 'Số GPLX đã được sử dụng bởi tài khoản khác' 
