@@ -559,37 +559,33 @@ const confirmBooking = async (req, res) => {
       });
       
       // 2. Tạo payment
+      let paymentType, paymentAmount;
+
+      if (booking.total_days === 1 && booking.deposit_amount === 0) {
+        // Thuê 1 ngày, thanh toán ngay toàn bộ
+        paymentType = 'rental_fee';
+        paymentAmount = booking.total_price;
+      } else {
+        // Thuê nhiều ngày, cọc trước
+        paymentType = 'deposit';
+        paymentAmount = booking.deposit_amount;
+      }
+
       payment = await Payment.create({
         code: 'PAY' + Math.random().toString(36).substr(2, 6).toUpperCase(),
         rental_id: rental._id,
         user_id: booking.user_id._id,
         booking_id: booking._id,
-        amount: booking.deposit_amount,
+        amount: paymentAmount,
         payment_method: 'cash',
-        payment_type: 'deposit',
+        payment_type: paymentType,
         status: 'pending',
         processed_by: staff_id
       });
       
       
-      const contractTemplate = await ContractTemplate.findOne({ is_active: true });
-      if (contractTemplate) {
-        contract = await Contract.create({
-          code: 'CON' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-          rental_id: rental._id,
-          user_id: booking.user_id._id,
-          vehicle_id: booking.vehicle_id._id,
-          station_id: booking.station_id._id,
-          template_id: contractTemplate._id,
-          title: contractTemplate.title,
-          content: contractTemplate.content_template, 
-          terms: contractTemplate.terms_template, 
-          valid_from: booking.start_date,
-          valid_until: booking.end_date,
-          staff_signed_by: staff_id,
-          created_by: staff_id
-        });
-      }
+      // Contract sẽ được tạo riêng qua API khi cần
+      // (không tạo tự động vì chưa có thông tin payment)
       
       // 4. Update vehicle status
       await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {

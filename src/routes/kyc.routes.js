@@ -26,6 +26,16 @@ router.get('/status',
   KycController.getMyKycStatus
 );
 
+router.get('/identity-card', 
+  authMiddleware, 
+  KycController.getMyIdentityCard
+);
+
+router.get('/driver-license', 
+  authMiddleware, 
+  KycController.getMyDriverLicense
+);
+
 // Routes cho nhân viên
 router.get('/pending', 
   authMiddleware, 

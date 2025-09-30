@@ -26,9 +26,9 @@ class ContractService {
       let exists = true;
       
       while (exists) {
-        // Tạo code ngẫu nhiên: CT + 8 ký tự
-        const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
-        code = `CT${randomPart}`;
+        // Tạo code ngẫu nhiên: EVRC + 6 ký tự
+        const randomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
+        code = `EVRCT${randomPart}`;
         
         const Contract = require('../models/Contract');
         exists = await Contract.findOne({ code });
@@ -399,6 +399,30 @@ class ContractService {
                 </table>
             </div>
 
+            ${contract.rental_id?.booking_id ? `
+            <div class="section">
+                <div class="section-title">Thông tin giá</div>
+                <table class="info-table">
+                    <tr>
+                        <td class="label">Giá/ngày:</td>
+                        <td>${contract.rental_id.booking_id.price_per_day?.toLocaleString('vi-VN')} VND</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Số ngày thuê:</td>
+                        <td>${contract.rental_id.booking_id.total_days} ngày</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Tổng tiền:</td>
+                        <td>${contract.rental_id.booking_id.total_price?.toLocaleString('vi-VN')} VND</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Tiền cọc:</td>
+                        <td>${contract.rental_id.booking_id.deposit_amount?.toLocaleString('vi-VN')} VND</td>
+                    </tr>
+                </table>
+            </div>
+            ` : ''}
+
             ${contract.special_conditions ? `
             <div class="section">
                 <div class="section-title">Điều kiện đặc biệt</div>
@@ -406,10 +430,6 @@ class ContractService {
             </div>
             ` : ''}
 
-            <div class="section">
-                <div class="section-title">Nội dung hợp đồng</div>
-                <div class="content">${contract.content}</div>
-            </div>
         </div>
 
         <div class="signature-section">

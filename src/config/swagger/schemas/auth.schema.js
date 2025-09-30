@@ -54,7 +54,7 @@
  *     # Status Enums
  *     UserStatus:
  *       type: string
- *       enum: [active, suspended, blocked]
+ *       enum: [active, suspended]
  *       description: Trạng thái tài khoản người dùng
  *       example: "active"
  *

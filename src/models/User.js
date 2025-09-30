@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema({
   kycStatus: { type: String, enum: ['not_submitted', 'pending', 'approved', 'rejected'], default: 'not_submitted' },
   
   // Trạng thái tài khoản
-  status: { type: String, enum: ['active', 'suspended', 'blocked'], default: 'active' },
+  status: { type: String, enum: ['active', 'suspended'], default: 'active' },
   
   // Thêm trường tham chiếu đến KYC
   kycId: { type: mongoose.Schema.Types.ObjectId, ref: 'KYC' },

@@ -64,8 +64,74 @@ const createDefaultContractTemplate = async () => {
 
           <div class="rental-period">
             <h3>THỜI GIAN THUÊ:</h3>
-            <p><strong>Từ ngày:</strong> {{start_date}}</p>
-            <p><strong>Đến ngày:</strong> {{end_date}}</p>
+            <p><strong>Từ ngày:</strong> {{start_date}} lúc {{start_time}}</p>
+            <p><strong>Đến ngày:</strong> {{end_date}} lúc {{end_time}}</p>
+          </div>
+
+          <div class="price-info">
+            <h3>THÔNG TIN GIÁ:</h3>
+            <table class="price-table">
+              <tr>
+                <td><strong>Giá/ngày:</strong></td>
+                <td>{{price_per_day}} VND</td>
+              </tr>
+              <tr>
+                <td><strong>Số ngày thuê:</strong></td>
+                <td>{{total_days}} ngày</td>
+              </tr>
+              <tr>
+                <td><strong>Tổng tiền:</strong></td>
+                <td>{{total_price}} VND</td>
+              </tr>
+              <tr>
+                <td><strong>Tiền cọc:</strong></td>
+                <td>{{deposit_amount}} VND</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="payment-info">
+            <h3>THÔNG TIN THANH TOÁN:</h3>
+            <table class="payment-table">
+              <tr>
+                <td><strong>Trạng thái cọc:</strong></td>
+                <td>{{deposit_paid}}</td>
+              </tr>
+              {{#if deposit_payment_method}}
+              <tr>
+                <td><strong>Phương thức cọc:</strong></td>
+                <td>{{deposit_payment_method}}</td>
+              </tr>
+              {{/if}}
+              {{#if deposit_payment_date}}
+              <tr>
+                <td><strong>Ngày thanh toán cọc:</strong></td>
+                <td>{{deposit_payment_date}}</td>
+              </tr>
+              {{/if}}
+              <tr>
+                <td><strong>Trạng thái phí thuê:</strong></td>
+                <td>{{rental_fee_paid}}</td>
+              </tr>
+              {{#if rental_fee_payment_method}}
+              <tr>
+                <td><strong>Phương thức thanh toán:</strong></td>
+                <td>{{rental_fee_payment_method}}</td>
+              </tr>
+              {{/if}}
+              {{#if rental_fee_payment_date}}
+              <tr>
+                <td><strong>Ngày thanh toán:</strong></td>
+                <td>{{rental_fee_payment_date}}</td>
+              </tr>
+              {{/if}}
+              {{#if additional_fees_count}}
+              <tr>
+                <td><strong>Phí phụ trội:</strong></td>
+                <td>{{additional_fees_count}} khoản - {{additional_fees_total}} VND</td>
+              </tr>
+              {{/if}}
+            </table>
           </div>
 
           <div class="special-conditions">
@@ -300,8 +366,74 @@ const createVipContractTemplate = async () => {
 
           <div class="rental-period">
             <h3>THỜI GIAN THUÊ:</h3>
-            <p><strong>Từ ngày:</strong> {{start_date}}</p>
-            <p><strong>Đến ngày:</strong> {{end_date}}</p>
+            <p><strong>Từ ngày:</strong> {{start_date}} lúc {{start_time}}</p>
+            <p><strong>Đến ngày:</strong> {{end_date}} lúc {{end_time}}</p>
+          </div>
+
+          <div class="price-info">
+            <h3>THÔNG TIN GIÁ VIP:</h3>
+            <table class="price-table vip">
+              <tr>
+                <td><strong>Giá/ngày:</strong></td>
+                <td>{{price_per_day}} VND</td>
+              </tr>
+              <tr>
+                <td><strong>Số ngày thuê:</strong></td>
+                <td>{{total_days}} ngày</td>
+              </tr>
+              <tr>
+                <td><strong>Tổng tiền:</strong></td>
+                <td>{{total_price}} VND</td>
+              </tr>
+              <tr>
+                <td><strong>Tiền cọc:</strong></td>
+                <td>{{deposit_amount}} VND</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="payment-info">
+            <h3>THÔNG TIN THANH TOÁN VIP:</h3>
+            <table class="payment-table vip">
+              <tr>
+                <td><strong>Trạng thái cọc:</strong></td>
+                <td>{{deposit_paid}}</td>
+              </tr>
+              {{#if deposit_payment_method}}
+              <tr>
+                <td><strong>Phương thức cọc:</strong></td>
+                <td>{{deposit_payment_method}}</td>
+              </tr>
+              {{/if}}
+              {{#if deposit_payment_date}}
+              <tr>
+                <td><strong>Ngày thanh toán cọc:</strong></td>
+                <td>{{deposit_payment_date}}</td>
+              </tr>
+              {{/if}}
+              <tr>
+                <td><strong>Trạng thái phí thuê:</strong></td>
+                <td>{{rental_fee_paid}}</td>
+              </tr>
+              {{#if rental_fee_payment_method}}
+              <tr>
+                <td><strong>Phương thức thanh toán:</strong></td>
+                <td>{{rental_fee_payment_method}}</td>
+              </tr>
+              {{/if}}
+              {{#if rental_fee_payment_date}}
+              <tr>
+                <td><strong>Ngày thanh toán:</strong></td>
+                <td>{{rental_fee_payment_date}}</td>
+              </tr>
+              {{/if}}
+              {{#if additional_fees_count}}
+              <tr>
+                <td><strong>Phí phụ trội (giảm 50%):</strong></td>
+                <td>{{additional_fees_count}} khoản - {{additional_fees_total}} VND</td>
+              </tr>
+              {{/if}}
+            </table>
           </div>
 
           <div class="vip-benefits">

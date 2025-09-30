@@ -586,6 +586,116 @@ exports.getPendingKycRequests = async (req, res) => {
   }
 };
 
+// Lấy thông tin CCCD của người dùng hiện tại
+exports.getMyIdentityCard = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+    }
+    
+    const kyc = await KYC.findOne({ userId: req.user.id });
+    if (!kyc || !kyc.identityCardFrontUploaded) {
+      return res.status(200).json({
+        success: true,
+        message: 'Chưa có thông tin CCCD',
+        data: {
+          identityCard: null
+        }
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Lấy thông tin CCCD thành công',
+      data: {
+        identityCard: {
+          id: kyc.identityCard,
+          name: kyc.identityName,
+          dob: kyc.identityDob,
+          address: kyc.identityAddress,
+          sex: kyc.identitySex,
+          nationality: kyc.identityNationality,
+          issueDate: kyc.identityIssueDate,
+          issueLocation: kyc.identityIssueLoc,
+          features: kyc.identityFeatures,
+          religion: kyc.identityReligion,
+          ethnicity: kyc.identityEthnicity,
+          frontImage: kyc.identityCardFrontImage,
+          backImage: kyc.identityCardBackImage,
+          frontUploaded: kyc.identityCardFrontUploaded,
+          backUploaded: kyc.identityCardBackUploaded,
+          type: kyc.identityCardType,
+          typeNew: kyc.identityCardTypeNew
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi lấy thông tin CCCD:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu',
+      error: process.env.NODE_ENV === 'production' ? 'Lỗi hệ thống' : error.message
+    });
+  }
+};
+
+// Lấy thông tin GPLX của người dùng hiện tại
+exports.getMyDriverLicense = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+    }
+    
+    const kyc = await KYC.findOne({ userId: req.user.id });
+    if (!kyc || !kyc.licenseFrontUploaded) {
+      return res.status(200).json({
+        success: true,
+        message: 'Chưa có thông tin GPLX',
+        data: {
+          driverLicense: null
+        }
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Lấy thông tin GPLX thành công',
+      data: {
+        driverLicense: {
+          id: kyc.licenseNumber,
+          name: kyc.licenseName,
+          dob: kyc.licenseDob,
+          nationality: kyc.licenseNation,
+          address: kyc.licenseAddress,
+          placeIssue: kyc.licensePlaceIssue,
+          issueDate: kyc.licenseIssueDate,
+          class: kyc.licenseClass,
+          classList: kyc.licenseClassList,
+          expiry: kyc.licenseExpiry,
+          expiryText: kyc.licenseExpiryText,
+          frontImage: kyc.licenseImage,
+          backImage: kyc.licenseBackImage,
+          frontUploaded: kyc.licenseFrontUploaded,
+          backUploaded: kyc.licenseBackUploaded,
+          uploaded: kyc.licenseUploaded,
+          type: kyc.licenseTypeOcr
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi lấy thông tin GPLX:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu',
+      error: process.env.NODE_ENV === 'production' ? 'Lỗi hệ thống' : error.message
+    });
+  }
+};
+
 // Lấy thông tin KYC của người dùng hiện tại
 exports.getMyKycStatus = async (req, res) => {
   try {

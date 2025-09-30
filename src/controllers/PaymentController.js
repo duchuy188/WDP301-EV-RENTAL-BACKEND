@@ -84,10 +84,10 @@ const createPayment = async (req, res) => {
       });
     }
 
-    // Validate rental_id cho rental_fee và additional_fee
-    if ((payment_type === 'rental_fee' || payment_type === 'additional_fee') && !rental_id) {
+    // Validate rental_id cho additional_fee (rental_fee có thể tạo từ booking mà chưa có rental)
+    if (payment_type === 'additional_fee' && !rental_id) {
       return res.status(400).json({ 
-        message: 'rental_id là bắt buộc cho rental_fee và additional_fee',
+        message: 'rental_id là bắt buộc cho additional_fee',
         payment_type: payment_type,
         rental_id: rental_id || 'MISSING'
       });
