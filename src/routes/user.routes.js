@@ -53,6 +53,13 @@ router.get('/stats/overview',
   UserController.getUserStats
 );
 
+// Lấy thống kê cá nhân (chỉ EV Renter) - PHẢI ĐẶT TRƯỚC /:id
+router.get('/personal-analytics', 
+  authMiddleware, 
+  roleMiddleware(['EV Renter']), 
+  UserController.getUserPersonalStats
+);
+
 // Lấy chi tiết user - PHẢI ĐẶT CUỐI CÙNG
 router.get('/:id', 
   authMiddleware, 

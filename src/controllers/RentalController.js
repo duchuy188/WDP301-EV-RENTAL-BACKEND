@@ -181,6 +181,37 @@ class RentalController {
 
       await rental.save();
 
+      // Cập nhật UserStats
+      try {
+        const { UserStats } = require('../models');
+        let userStats = await UserStats.findOne({ user_id: rental.user_id._id });
+        
+        if (!userStats) {
+          userStats = new UserStats({ user_id: rental.user_id._id });
+        }
+
+        // Tính toán dữ liệu rental
+        const distance = vehicle_condition_after.mileage - rental.vehicle_condition_before.mileage;
+        const days = (rental.actual_end_time - rental.actual_start_time) / (1000 * 60 * 60 * 24);
+        const spent = rental.total_price + total_fees;
+        
+        // Lấy thông tin vehicle và station
+        const vehicle = await Vehicle.findById(rental.vehicle_id._id);
+        const station = await Station.findById(rental.station_id._id);
+        
+        await userStats.updateStats({
+          distance: Math.max(0, distance),
+          spent: spent,
+          days: Math.max(0, days),
+          vehicle_type: vehicle?.type,
+          station_id: rental.station_id._id,
+          rental_date: rental.actual_start_time
+        });
+      } catch (statsError) {
+        console.error('Error updating user stats:', statsError);
+        // Không fail checkout vì stats update lỗi
+      }
+
       // Cập nhật trạng thái xe
       await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
         status: 'available',
@@ -391,7 +422,7 @@ class RentalController {
       } = req.query;
 
       const filter = {
-        station_id: req.user.station_id // Staff chỉ xem rentals tại station của mình
+        station_id: req.user.stationId // Staff chỉ xem rentals tại station của mình
       };
       
       if (status) filter.status = status;

@@ -1,4 +1,4 @@
-const { User, Station } = require('../models');
+const { User, Station, UserStats } = require('../models');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { sendEmail, getStaffAccountEmailTemplate } = require('../config/nodemailer');
@@ -411,7 +411,7 @@ exports.updateUser = async (req, res) => {
     if (req.user.role === 'Admin') {
       if (status) {
         // Kiểm tra status hợp lệ
-        if (!['active', 'suspended', 'blocked'].includes(status)) {
+        if (!['active', 'suspended'].includes(status)) {
           return res.status(400).json({ message: 'Trạng thái user không hợp lệ' });
         }
         user.status = status;
@@ -462,7 +462,7 @@ exports.toggleUserStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!status || !['active', 'suspended', 'blocked'].includes(status)) {
+    if (!status || !['active', 'suspended'].includes(status)) {
       return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
     }
 
@@ -583,7 +583,6 @@ exports.getUserStats = async (req, res) => {
     const totalUsers = await User.countDocuments();
     const activeUsers = await User.countDocuments({ status: 'active' });
     const suspendedUsers = await User.countDocuments({ status: 'suspended' });
-    const blockedUsers = await User.countDocuments({ status: 'blocked' });
 
     const usersByRole = await User.aggregate([
       { $group: { _id: '$role', count: { $sum: 1 } } }
@@ -597,7 +596,6 @@ exports.getUserStats = async (req, res) => {
       total: totalUsers,
       active: activeUsers,
       suspended: suspendedUsers,
-      blocked: blockedUsers,
       byRole: usersByRole,
       byStatus: usersByStatus
     });
@@ -605,5 +603,124 @@ exports.getUserStats = async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi lấy thống kê users:', error);
     res.status(500).json({ message: 'Lỗi server khi lấy thống kê' });
+  }
+};
+
+// Lấy thống kê cá nhân cho EV Renter
+exports.getUserPersonalStats = async (req, res) => {
+  try {
+    // Chỉ EV Renter mới có quyền xem thống kê cá nhân
+    if (req.user.role !== 'EV Renter') {
+      return res.status(403).json({ message: 'Chỉ EV Renter mới có quyền xem thống kê cá nhân' });
+    }
+
+    // Tìm UserStats của user hiện tại
+    let userStats = await UserStats.findOne({ user_id: req.user._id })
+      .populate('station_preferences.station_id', 'name address');
+
+    // Nếu chưa có UserStats, tạo mới
+    if (!userStats) {
+      userStats = new UserStats({
+        user_id: req.user._id,
+        total_rentals: 0,
+        total_distance: 0,
+        total_spent: 0,
+        total_days: 0,
+        peak_hours: [],
+        peak_days: [],
+        vehicle_preferences: [],
+        station_preferences: [],
+        monthly_stats: [],
+        last_rental_date: null
+      });
+      await userStats.save();
+    }
+
+    // Tính toán thống kê bổ sung
+    const avgSpentPerRental = userStats.total_rentals > 0 ? 
+      Math.round(userStats.total_spent / userStats.total_rentals) : 0;
+    
+    const avgDistancePerRental = userStats.total_rentals > 0 ? 
+      Math.round(userStats.total_distance / userStats.total_rentals) : 0;
+
+    // Sắp xếp peak hours và days
+    const sortedPeakHours = userStats.peak_hours
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const sortedPeakDays = userStats.peak_days
+      .sort((a, b) => b.count - a.count)
+      .map(day => ({
+        ...day,
+        dayName: ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'][day.day]
+      }));
+
+    // Sắp xếp vehicle preferences
+    const sortedVehiclePreferences = userStats.vehicle_preferences
+      .sort((a, b) => b.count - a.count);
+
+    // Sắp xếp station preferences
+    const sortedStationPreferences = userStats.station_preferences
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Sắp xếp monthly stats (6 tháng gần nhất)
+    const sortedMonthlyStats = userStats.monthly_stats
+      .sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      })
+      .slice(0, 6);
+
+    // Tạo insights
+    const insights = [];
+    if (userStats.total_rentals > 0) {
+      insights.push(`Bạn đã thuê xe ${userStats.total_rentals} lần`);
+      insights.push(`Tổng quãng đường: ${userStats.total_distance} km`);
+      insights.push(`Tổng chi phí: ${userStats.total_spent.toLocaleString('vi-VN')} VND`);
+      
+      if (sortedPeakHours.length > 0) {
+        const topHour = sortedPeakHours[0];
+        insights.push(`Giờ thuê nhiều nhất: ${topHour.hour}:00 (${topHour.count} lần)`);
+      }
+      
+      if (sortedPeakDays.length > 0) {
+        const topDay = sortedPeakDays[0];
+        insights.push(`Ngày thuê nhiều nhất: ${topDay.dayName} (${topDay.count} lần)`);
+      }
+    } else {
+      insights.push('Bạn chưa có lịch sử thuê xe nào');
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy thống kê cá nhân thành công',
+      data: {
+        overview: {
+          total_rentals: userStats.total_rentals,
+          total_distance: userStats.total_distance,
+          total_spent: userStats.total_spent,
+          total_days: userStats.total_days,
+          avg_spent_per_rental: avgSpentPerRental,
+          avg_distance_per_rental: avgDistancePerRental,
+          last_rental_date: userStats.last_rental_date
+        },
+        peak_hours: sortedPeakHours,
+        peak_days: sortedPeakDays,
+        vehicle_preferences: sortedVehiclePreferences,
+        station_preferences: sortedStationPreferences,
+        monthly_stats: sortedMonthlyStats,
+        insights: insights,
+        last_updated: userStats.last_updated
+      }
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi lấy thống kê cá nhân:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Lỗi server khi lấy thống kê cá nhân',
+      error: error.message 
+    });
   }
 };

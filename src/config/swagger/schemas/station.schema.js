@@ -243,7 +243,7 @@
  *           example: "https://res.cloudinary.com/example/avatar.jpg"
  *         status:
  *           type: string
- *           enum: [active, suspended, blocked]
+ *           enum: [active, suspended]
  *           example: "active"
  *
  *     Pagination:

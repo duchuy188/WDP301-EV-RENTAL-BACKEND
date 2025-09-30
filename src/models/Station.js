@@ -153,7 +153,7 @@ stationSchema.methods.syncVehicleCount = async function() {
     this.available_vehicles = counts[0].available;
     this.rented_vehicles = counts[0].rented;
     this.maintenance_vehicles = counts[0].maintenance;
-    await this.save();
+    await this.save({ validateBeforeSave: false }); // Bỏ qua validation khi sync
   }
 };
 

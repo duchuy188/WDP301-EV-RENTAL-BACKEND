@@ -287,6 +287,181 @@
 
 /**
  * @swagger
+ * /api/kyc/identity-card:
+ *   get:
+ *     summary: Lấy thông tin CCCD của người dùng hiện tại
+ *     tags: [KYC]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thông tin CCCD
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Lấy thông tin CCCD thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     identityCard:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                           example: "123456789"
+ *                         name:
+ *                           type: string
+ *                           example: "Nguyễn Văn A"
+ *                         dob:
+ *                           type: string
+ *                           example: "01/01/1990"
+ *                         address:
+ *                           type: string
+ *                           example: "123 Đường ABC, Quận 1, TP.HCM"
+ *                         sex:
+ *                           type: string
+ *                           example: "Nam"
+ *                         nationality:
+ *                           type: string
+ *                           example: "Việt Nam"
+ *                         issueDate:
+ *                           type: string
+ *                           example: "01/01/2020"
+ *                         issueLocation:
+ *                           type: string
+ *                           example: "Công an TP.HCM"
+ *                         features:
+ *                           type: string
+ *                           example: "Nốt ruồi nhỏ bên trái"
+ *                         religion:
+ *                           type: string
+ *                           example: "Không"
+ *                         ethnicity:
+ *                           type: string
+ *                           example: "Kinh"
+ *                         frontImage:
+ *                           type: string
+ *                           example: "https://cloudinary.com/image1.jpg"
+ *                         backImage:
+ *                           type: string
+ *                           example: "https://cloudinary.com/image2.jpg"
+ *                         frontUploaded:
+ *                           type: boolean
+ *                           example: true
+ *                         backUploaded:
+ *                           type: boolean
+ *                           example: true
+ *                         type:
+ *                           type: string
+ *                           example: "new_front"
+ *                         typeNew:
+ *                           type: string
+ *                           example: "cccd_12_front"
+ *       401:
+ *         description: Không được phép truy cập
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
+ * /api/kyc/driver-license:
+ *   get:
+ *     summary: Lấy thông tin GPLX của người dùng hiện tại
+ *     tags: [KYC]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thông tin GPLX
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Lấy thông tin GPLX thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     driverLicense:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                           example: "123456789"
+ *                         name:
+ *                           type: string
+ *                           example: "Nguyễn Văn A"
+ *                         dob:
+ *                           type: string
+ *                           example: "01/01/1990"
+ *                         nationality:
+ *                           type: string
+ *                           example: "Việt Nam"
+ *                         address:
+ *                           type: string
+ *                           example: "123 Đường ABC, Quận 1, TP.HCM"
+ *                         placeIssue:
+ *                           type: string
+ *                           example: "Sở GTVT TP.HCM"
+ *                         issueDate:
+ *                           type: string
+ *                           example: "01/01/2020"
+ *                         class:
+ *                           type: string
+ *                           example: "A1"
+ *                         classList:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example: ["A1", "A2"]
+ *                         expiry:
+ *                           type: string
+ *                           format: date-time
+ *                           example: "2025-01-01T00:00:00.000Z"
+ *                         expiryText:
+ *                           type: string
+ *                           example: "01/01/2025"
+ *                         frontImage:
+ *                           type: string
+ *                           example: "https://cloudinary.com/image1.jpg"
+ *                         backImage:
+ *                           type: string
+ *                           example: "https://cloudinary.com/image2.jpg"
+ *                         frontUploaded:
+ *                           type: boolean
+ *                           example: true
+ *                         backUploaded:
+ *                           type: boolean
+ *                           example: true
+ *                         uploaded:
+ *                           type: boolean
+ *                           example: true
+ *                         type:
+ *                           type: string
+ *                           example: "old_front"
+ *       401:
+ *         description: Không được phép truy cập
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
  * /api/kyc/pending:
  *   get:
  *     summary: Lấy danh sách yêu cầu KYC đang chờ xử lý

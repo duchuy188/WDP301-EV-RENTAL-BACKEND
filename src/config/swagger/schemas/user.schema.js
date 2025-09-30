@@ -23,7 +23,7 @@
  *           example: "EV Renter"
  *         status:
  *           type: string
- *           enum: [active, suspended, blocked]
+ *           enum: [active, suspended]
  *           example: "active"
  *         stationId:
  *           type: string
@@ -118,7 +118,7 @@
  *           example: "0987654321"
  *         status:
  *           type: string
- *           enum: [active, suspended, blocked]
+ *           enum: [active, suspended]
  *           description: Chỉ Admin mới có quyền thay đổi
  *         stationId:
  *           type: string
@@ -129,7 +129,7 @@
  *       properties:
  *         status:
  *           type: string
- *           enum: [active, suspended, blocked]
+ *           enum: [active, suspended]
  *           example: "suspended"
  *       required:
  *         - status
@@ -146,9 +146,6 @@
  *         suspended:
  *           type: integer
  *           example: 20
- *         blocked:
- *           type: integer
- *           example: 10
  *         byRole:
  *           type: array
  *           items:
