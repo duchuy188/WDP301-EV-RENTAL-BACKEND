@@ -49,4 +49,33 @@ router.post('/verify',
   KycController.verifyKyc
 );
 
+// Staff upload KYC cho user
+router.post('/staff/identity-card/front', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']),
+  identityCardUpload.single('image'), 
+  KycController.staffUploadIdentityCardFront
+);
+
+router.post('/staff/identity-card/back', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']),
+  identityCardUpload.single('image'), 
+  KycController.staffUploadIdentityCardBack
+);
+
+router.post('/staff/license/front', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']),
+  licenseUpload.single('image'), 
+  KycController.staffUploadDriverLicenseFront
+);
+
+router.post('/staff/license/back', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']),
+  licenseUpload.single('image'), 
+  KycController.staffUploadDriverLicenseBack
+);
+
 module.exports = router;

@@ -696,6 +696,461 @@ exports.getMyDriverLicense = async (req, res) => {
   }
 };
 
+// Staff upload CCCD mặt trước cho user
+exports.staffUploadIdentityCardFront = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt trước CMND/CCCD' });
+    }
+
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp userId' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+    }
+
+    const kyc = await findOrCreateKyc(userId);
+    const ocrResult = await verifyIdentityCard(req.file.buffer);
+    
+    if (ocrResult.errorCode !== 0) {
+      return res.status(400).json({ 
+        message: 'Không thể xác thực CMND/CCCD', 
+        error: ocrResult.errorMessage 
+      });
+    }
+
+    const idData = ocrResult.data[0];
+    
+    if (idData.type === 'old_back' || idData.type === 'new_back' || idData.type === 'chip_back') {
+      return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt trước CMND/CCCD' });
+    }
+    
+    // Cập nhật thông tin KYC
+    kyc.identityCardType = idData.type || '';
+    kyc.identityName = idData.name || '';
+    kyc.identityDob = idData.dob || '';
+    kyc.identityAddress = idData.address || '';
+    kyc.identityCard = idData.id || '';
+    
+    // Kiểm tra duplicate
+    if (kyc.identityCard) {
+      const isDuplicate = await checkDuplicateIdentity(kyc.identityCard);
+      if (isDuplicate) {
+        return res.status(400).json({ 
+          message: 'Số CMND/CCCD đã được sử dụng bởi tài khoản khác' 
+        });
+      }
+    }
+    
+    // Upload ảnh lên Cloudinary
+    const uploadResult = await uploadToCloudinary(req.file.buffer, 'identity_cards');
+    kyc.identityCardFrontImage = uploadResult.url;
+    kyc.identityCardFrontImagePublicId = uploadResult.publicId;
+    
+    // Lưu kết quả OCR
+    if (!kyc.identityOcr) {
+      kyc.identityOcr = {};
+    }
+    kyc.identityOcr.front = idData;
+    
+    kyc.identityCardFrontUploaded = true;
+    kyc.status = 'pending';
+    
+    // So sánh tên giữa CCCD và GPLX nếu đã có cả hai
+    if (kyc.identityCardBackUploaded && kyc.licenseFrontUploaded) {
+      if (kyc.identityOcr && kyc.identityOcr.front && kyc.licenseOcr && kyc.licenseOcr.front) {
+        const nameComparison = compareIdentityAndLicenseNames(kyc.identityOcr.front, kyc.licenseOcr.front);
+        kyc.nameComparison = nameComparison;
+        
+        if (!nameComparison.match) {
+          kyc.validationNotes = `Cảnh báo: ${nameComparison.message}`;
+        }
+      }
+    }
+    
+    kyc.uploadedByStaff = true;
+    kyc.staffUploader = req.user.id;
+    
+    await kyc.save();
+    
+    user.kycStatus = kyc.status;
+    user.kycId = kyc._id;
+    await user.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Staff đã tải lên mặt trước CMND/CCCD thành công',
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          fullname: user.fullname
+        },
+        identityCard: {
+          id: kyc.identityCard,
+          name: kyc.identityName,
+          dob: kyc.identityDob,
+          address: kyc.identityAddress,
+          frontImage: kyc.identityCardFrontImage
+        },
+        kycStatus: kyc.status,
+        needsBackImage: !kyc.identityCardBackUploaded,
+        validation: {
+          nameComparison: kyc.nameComparison || null,
+          validationNotes: kyc.validationNotes || null
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi staff upload mặt trước CMND/CCCD:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu',
+      error:
+        process.env.NODE_ENV === 'production' ? 'Lỗi hệ thống' : error.message
+    });
+  }
+};
+
+// Staff upload CCCD mặt sau cho user
+exports.staffUploadIdentityCardBack = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt sau CMND/CCCD' });
+    }
+
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp userId' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+    }
+
+    const kyc = await findOrCreateKyc(userId);
+    const ocrResult = await verifyIdentityCard(req.file.buffer);
+    
+    if (ocrResult.errorCode !== 0) {
+      return res.status(400).json({ 
+        message: 'Không thể xác thực CMND/CCCD', 
+        error: ocrResult.errorMessage 
+      });
+    }
+
+    const idData = ocrResult.data[0];
+    
+    if (idData.type !== 'old_back' && idData.type !== 'new_back' && idData.type !== 'chip_back') {
+      return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt sau CMND/CCCD' });
+    }
+    
+    // Cập nhật thông tin từ mặt sau
+    kyc.identityIssueDate = idData.issue_date || '';
+    kyc.identityIssueLoc = idData.issue_loc || '';
+    
+    // Upload ảnh lên Cloudinary
+    const uploadResult = await uploadToCloudinary(req.file.buffer, 'identity_cards');
+    kyc.identityCardBackImage = uploadResult.url;
+    kyc.identityCardBackImagePublicId = uploadResult.publicId;
+    
+    // Lưu kết quả OCR
+    if (!kyc.identityOcr) {
+      kyc.identityOcr = {};
+    }
+    kyc.identityOcr.back = idData;
+    
+    kyc.identityCardBackUploaded = true;
+    kyc.status = 'pending';
+    
+    // So sánh tên giữa CCCD và GPLX nếu đã có cả hai
+    if (kyc.identityCardFrontUploaded && kyc.licenseFrontUploaded && kyc.licenseBackUploaded) {
+      if (kyc.identityOcr && kyc.identityOcr.front && kyc.licenseOcr && kyc.licenseOcr.front) {
+        const nameComparison = compareIdentityAndLicenseNames(kyc.identityOcr.front, kyc.licenseOcr.front);
+        kyc.nameComparison = nameComparison;
+        
+        if (!nameComparison.match) {
+          kyc.validationNotes = `Cảnh báo: ${nameComparison.message}`;
+        }
+      }
+    }
+    
+    kyc.uploadedByStaff = true;
+    kyc.staffUploader = req.user.id;
+    
+    await kyc.save();
+    
+    user.kycStatus = kyc.status;
+    user.kycId = kyc._id;
+    await user.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Staff đã tải lên mặt sau CMND/CCCD thành công',
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          fullname: user.fullname
+        },
+        identityCard: {
+          issueDate: kyc.identityIssueDate,
+          issueLocation: kyc.identityIssueLoc,
+          backImage: kyc.identityCardBackImage
+        },
+        kycStatus: kyc.status,
+        needsFrontImage: !kyc.identityCardFrontUploaded,
+        validation: {
+          nameComparison: kyc.nameComparison || null,
+          validationNotes: kyc.validationNotes || null
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi staff upload mặt sau CMND/CCCD:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu',
+      error: process.env.NODE_ENV === 'production' ? 'Lỗi hệ thống' : error.message
+    });
+  }
+};
+
+// Staff upload GPLX mặt trước cho user
+exports.staffUploadDriverLicenseFront = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt trước giấy phép lái xe' });
+    }
+
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp userId' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+    }
+
+    const kyc = await findOrCreateKyc(userId);
+    const ocrResult = await verifyDriverLicense(req.file.buffer);
+    
+    if (ocrResult.errorCode !== 0) {
+      return res.status(400).json({ 
+        message: 'Không thể xác thực giấy phép lái xe', 
+        error: ocrResult.errorMessage 
+      });
+    }
+
+    const licenseData = ocrResult.data[0];
+    
+    if (licenseData.type === 'old-back' || (!licenseData.id && licenseData.class)) {
+      return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt trước giấy phép lái xe' });
+    }
+    
+    // Cập nhật thông tin KYC
+    kyc.licenseName = licenseData.name || '';
+    kyc.licenseDob = licenseData.dob || '';
+    kyc.licenseAddress = licenseData.address || '';
+    kyc.licenseClass = licenseData.class || '';
+    kyc.licenseNumber = licenseData.id || '';
+    
+    // Kiểm tra duplicate
+    if (kyc.licenseNumber) {
+      const isDuplicate = await checkDuplicateLicense(kyc.licenseNumber, userId);
+      if (isDuplicate) {
+        return res.status(400).json({ 
+          message: 'Số GPLX đã được sử dụng bởi tài khoản khác' 
+        });
+      }
+    }
+    
+    // Kiểm tra hạng bằng lái xe
+    const licenseClassValidation = validateLicenseClass(licenseData.class);
+    if (!licenseClassValidation.isValid) {
+      return res.status(400).json({ 
+        message: licenseClassValidation.message 
+      });
+    }
+    
+    // Upload ảnh lên Cloudinary
+    const uploadResult = await uploadToCloudinary(req.file.buffer, 'licenses');
+    kyc.licenseImage = uploadResult.url;
+    kyc.licenseImagePublicId = uploadResult.publicId;
+    
+    // Lưu kết quả OCR
+    if (!kyc.licenseOcr) {
+      kyc.licenseOcr = {};
+    }
+    kyc.licenseOcr.front = licenseData;
+    
+    kyc.licenseFrontUploaded = true;
+    kyc.licenseUploaded = true;
+    kyc.status = 'pending';
+    
+    // So sánh tên giữa CCCD và GPLX nếu đã có cả hai
+    if (kyc.identityCardFrontUploaded && kyc.identityCardBackUploaded) {
+      if (kyc.identityOcr && kyc.identityOcr.front && kyc.licenseOcr && kyc.licenseOcr.front) {
+        const nameComparison = compareIdentityAndLicenseNames(kyc.identityOcr.front, kyc.licenseOcr.front);
+        kyc.nameComparison = nameComparison;
+        
+        if (!nameComparison.match) {
+          kyc.validationNotes = `Cảnh báo: ${nameComparison.message}`;
+        }
+      }
+    }
+    
+    kyc.uploadedByStaff = true;
+    kyc.staffUploader = req.user.id;
+    
+    await kyc.save();
+    
+    user.kycStatus = kyc.status;
+    user.kycId = kyc._id;
+    await user.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Staff đã tải lên mặt trước giấy phép lái xe thành công',
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          fullname: user.fullname
+        },
+        license: {
+          id: kyc.licenseNumber,
+          name: kyc.licenseName,
+          class: kyc.licenseClass,
+          image: kyc.licenseImage
+        },
+        kycStatus: kyc.status,
+        needsBackImage: !kyc.licenseBackUploaded,
+        validation: {
+          licenseClassValid: licenseClassValidation.isValid,
+          licenseClassMessage: licenseClassValidation.message,
+          nameComparison: kyc.nameComparison || null,
+          validationNotes: kyc.validationNotes || null
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi staff upload mặt trước GPLX:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu',
+      error: process.env.NODE_ENV === 'production' ? 'Lỗi hệ thống' : error.message
+    });
+  }
+};
+
+// Staff upload GPLX mặt sau cho user
+exports.staffUploadDriverLicenseBack = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt sau giấy phép lái xe' });
+    }
+
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp userId' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+    }
+
+    const kyc = await findOrCreateKyc(userId);
+    const ocrResult = await verifyDriverLicense(req.file.buffer);
+    
+    if (ocrResult.errorCode !== 0) {
+      return res.status(400).json({ 
+        message: 'Không thể xác thực giấy phép lái xe', 
+        error: ocrResult.errorMessage 
+      });
+    }
+
+    const licenseData = ocrResult.data[0];
+    
+    if (licenseData.type !== 'old-back' && licenseData.id) {
+      return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt sau giấy phép lái xe' });
+    }
+    
+    // Upload ảnh lên Cloudinary
+    const uploadResult = await uploadToCloudinary(req.file.buffer, 'licenses');
+    kyc.licenseBackImage = uploadResult.url;
+    kyc.licenseBackImagePublicId = uploadResult.publicId;
+    
+    // Lưu kết quả OCR
+    if (!kyc.licenseOcr) {
+      kyc.licenseOcr = {};
+    }
+    kyc.licenseOcr.back = licenseData;
+    
+    kyc.licenseBackUploaded = true;
+    kyc.status = 'pending';
+    
+    // So sánh tên giữa CCCD và GPLX nếu đã có cả hai
+    if (kyc.identityCardFrontUploaded && kyc.identityCardBackUploaded && kyc.licenseFrontUploaded) {
+      if (kyc.identityOcr && kyc.identityOcr.front && kyc.licenseOcr && kyc.licenseOcr.front) {
+        const nameComparison = compareIdentityAndLicenseNames(kyc.identityOcr.front, kyc.licenseOcr.front);
+        kyc.nameComparison = nameComparison;
+        
+        if (!nameComparison.match) {
+          kyc.validationNotes = `Cảnh báo: ${nameComparison.message}`;
+        }
+      }
+    }
+    
+    kyc.uploadedByStaff = true;
+    kyc.staffUploader = req.user.id;
+    
+    await kyc.save();
+    
+    user.kycStatus = kyc.status;
+    user.kycId = kyc._id;
+    await user.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Staff đã tải lên mặt sau giấy phép lái xe thành công',
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          fullname: user.fullname
+        },
+        license: {
+          backImage: kyc.licenseBackImage
+        },
+        kycStatus: kyc.status,
+        needsFrontImage: !kyc.licenseFrontUploaded,
+        validation: {
+          nameComparison: kyc.nameComparison || null,
+          validationNotes: kyc.validationNotes || null
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi staff upload mặt sau GPLX:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu',
+      error: process.env.NODE_ENV === 'production' ? 'Lỗi hệ thống' : error.message
+    });
+  }
+};
+
 // Lấy thông tin KYC của người dùng hiện tại
 exports.getMyKycStatus = async (req, res) => {
   try {

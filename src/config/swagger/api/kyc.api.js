@@ -570,3 +570,349 @@
  *       500:
  *         description: Lỗi server
  */
+
+/**
+ * @swagger
+ * /api/kyc/staff/identity-card/front:
+ *   post:
+ *     summary: Staff upload mặt trước CMND/CCCD cho user
+ *     tags: [KYC]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh mặt trước CMND/CCCD
+ *               userId:
+ *                 type: string
+ *                 description: ID của user cần upload KYC
+ *     responses:
+ *       200:
+ *         description: Staff upload thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Staff đã tải lên mặt trước CMND/CCCD thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         fullname:
+ *                           type: string
+ *                     identityCard:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         dob:
+ *                           type: string
+ *                         address:
+ *                           type: string
+ *                         frontImage:
+ *                           type: string
+ *                     kycStatus:
+ *                       type: string
+ *                     needsBackImage:
+ *                       type: boolean
+ *                     validation:
+ *                       type: object
+ *                       properties:
+ *                         nameComparison:
+ *                           type: object
+ *                           properties:
+ *                             match:
+ *                               type: boolean
+ *                             score:
+ *                               type: number
+ *                             message:
+ *                               type: string
+ *                         validationNotes:
+ *                           type: string
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       401:
+ *         description: Không được phép truy cập
+ *       403:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
+ * /api/kyc/staff/identity-card/back:
+ *   post:
+ *     summary: Staff upload mặt sau CMND/CCCD cho user
+ *     tags: [KYC]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh mặt sau CMND/CCCD
+ *               userId:
+ *                 type: string
+ *                 description: ID của user cần upload KYC
+ *     responses:
+ *       200:
+ *         description: Staff upload thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Staff đã tải lên mặt sau CMND/CCCD thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         fullname:
+ *                           type: string
+ *                     identityCard:
+ *                       type: object
+ *                       properties:
+ *                         issueDate:
+ *                           type: string
+ *                         issueLocation:
+ *                           type: string
+ *                         backImage:
+ *                           type: string
+ *                     kycStatus:
+ *                       type: string
+ *                     needsFrontImage:
+ *                       type: boolean
+ *                     validation:
+ *                       type: object
+ *                       properties:
+ *                         nameComparison:
+ *                           type: object
+ *                           properties:
+ *                             match:
+ *                               type: boolean
+ *                             score:
+ *                               type: number
+ *                             message:
+ *                               type: string
+ *                         validationNotes:
+ *                           type: string
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       401:
+ *         description: Không được phép truy cập
+ *       403:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
+ * /api/kyc/staff/license/front:
+ *   post:
+ *     summary: Staff upload mặt trước GPLX cho user
+ *     tags: [KYC]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh mặt trước GPLX
+ *               userId:
+ *                 type: string
+ *                 description: ID của user cần upload KYC
+ *     responses:
+ *       200:
+ *         description: Staff upload thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Staff đã tải lên mặt trước giấy phép lái xe thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         fullname:
+ *                           type: string
+ *                     license:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         class:
+ *                           type: string
+ *                         image:
+ *                           type: string
+ *                     kycStatus:
+ *                       type: string
+ *                     needsBackImage:
+ *                       type: boolean
+ *                     validation:
+ *                       type: object
+ *                       properties:
+ *                         licenseClassValid:
+ *                           type: boolean
+ *                         licenseClassMessage:
+ *                           type: string
+ *                         nameComparison:
+ *                           type: object
+ *                           properties:
+ *                             match:
+ *                               type: boolean
+ *                             score:
+ *                               type: number
+ *                             message:
+ *                               type: string
+ *                         validationNotes:
+ *                           type: string
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       401:
+ *         description: Không được phép truy cập
+ *       403:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
+ * /api/kyc/staff/license/back:
+ *   post:
+ *     summary: Staff upload mặt sau GPLX cho user
+ *     tags: [KYC]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh mặt sau GPLX
+ *               userId:
+ *                 type: string
+ *                 description: ID của user cần upload KYC
+ *     responses:
+ *       200:
+ *         description: Staff upload thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Staff đã tải lên mặt sau giấy phép lái xe thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         fullname:
+ *                           type: string
+ *                     license:
+ *                       type: object
+ *                       properties:
+ *                         backImage:
+ *                           type: string
+ *                     kycStatus:
+ *                       type: string
+ *                     needsFrontImage:
+ *                       type: boolean
+ *                     validation:
+ *                       type: object
+ *                       properties:
+ *                         nameComparison:
+ *                           type: object
+ *                           properties:
+ *                             match:
+ *                               type: boolean
+ *                             score:
+ *                               type: number
+ *                             message:
+ *                               type: string
+ *                         validationNotes:
+ *                           type: string
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       401:
+ *         description: Không được phép truy cập
+ *       403:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi server
+ */
