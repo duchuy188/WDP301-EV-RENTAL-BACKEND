@@ -49,6 +49,11 @@ class ContractService {
    */
   static async renderContractTemplate(template, data) {
     try {
+      // Register Handlebars helpers
+      handlebars.registerHelper('and', function(a, b) {
+        return a && b;
+      });
+      
       // Compile template với Handlebars
       const compiledTemplate = handlebars.compile(template);
       
@@ -337,99 +342,8 @@ class ContractService {
         </div>
 
         <div class="content">
-            <div class="section">
-                <div class="section-title">Thông tin khách hàng</div>
-                <table class="info-table">
-                    <tr>
-                        <td class="label">Họ và tên:</td>
-                        <td>${contract.user_id.fullname}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Email:</td>
-                        <td>${contract.user_id.email}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Số điện thoại:</td>
-                        <td>${contract.user_id.phone || 'N/A'}</td>
-                    </tr>
-                </table>
-            </div>
-
-            <div class="section">
-                <div class="section-title">Thông tin xe</div>
-                <table class="info-table">
-                    <tr>
-                        <td class="label">Tên xe:</td>
-                        <td>${contract.vehicle_id.name}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Biển số:</td>
-                        <td>${contract.vehicle_id.license_plate}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Model:</td>
-                        <td>${contract.vehicle_id.model}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Màu sắc:</td>
-                        <td>${contract.vehicle_id.color}</td>
-                    </tr>
-                </table>
-            </div>
-
-            <div class="section">
-                <div class="section-title">Thông tin thuê</div>
-                <table class="info-table">
-                    <tr>
-                        <td class="label">Điểm thuê:</td>
-                        <td>${contract.station_id.name}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Địa chỉ:</td>
-                        <td>${contract.station_id.address}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Ngày bắt đầu:</td>
-                        <td>${formatDate(contract.valid_from)}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Ngày kết thúc:</td>
-                        <td>${formatDate(contract.valid_until)}</td>
-                    </tr>
-                </table>
-            </div>
-
-            ${contract.rental_id?.booking_id ? `
-            <div class="section">
-                <div class="section-title">Thông tin giá</div>
-                <table class="info-table">
-                    <tr>
-                        <td class="label">Giá/ngày:</td>
-                        <td>${contract.rental_id.booking_id.price_per_day?.toLocaleString('vi-VN')} VND</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Số ngày thuê:</td>
-                        <td>${contract.rental_id.booking_id.total_days} ngày</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Tổng tiền:</td>
-                        <td>${contract.rental_id.booking_id.total_price?.toLocaleString('vi-VN')} VND</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Tiền cọc:</td>
-                        <td>${contract.rental_id.booking_id.deposit_amount?.toLocaleString('vi-VN')} VND</td>
-                    </tr>
-                </table>
-            </div>
-            ` : ''}
-
-            ${contract.special_conditions ? `
-            <div class="section">
-                <div class="section-title">Điều kiện đặc biệt</div>
-                <p>${contract.special_conditions}</p>
-            </div>
-            ` : ''}
-
+            <!-- Tất cả content được xử lý trong template -->
+            ${contract.content || ''}
         </div>
 
         <div class="signature-section">

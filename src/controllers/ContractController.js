@@ -15,8 +15,10 @@ const Booking = require('../models/Booking');
 const User = require('../models/User');
 const Vehicle = require('../models/Vehicle');
 const Station = require('../models/Station');
+const Payment = require('../models/Payment');
 const ContractService = require('../services/ContractService');
 const nodemailer = require('../config/nodemailer');
+const { formatVietnamTime } = require('../config/timezone');
 
 // Gửi email hợp đồng cho customer
 const sendContractEmail = async (contract) => {
@@ -88,10 +90,24 @@ const createContract = async (req, res) => {
 
     // Tìm rental
     const rental = await Rental.findById(rental_id)
-      .populate('booking_id', 'code start_date end_date user_id vehicle_id station_id')
+      .populate('booking_id', 'code start_date end_date user_id vehicle_id station_id total_price deposit_amount price_per_day total_days')
       .populate('user_id', 'fullname email phone')
       .populate('vehicle_id', 'name license_plate model color')
       .populate('station_id', 'name address');
+
+    // Lấy thông tin payment - Tìm cả rental_id và booking_id
+    const payments = await Payment.find({ 
+      $or: [
+        { rental_id: rental_id },
+        { booking_id: rental.booking_id._id }
+      ],
+      is_active: true 
+    }).sort({ createdAt: -1 });
+
+    // Phân loại payments
+    const depositPayment = payments.find(p => p.payment_type === 'deposit');
+    const rentalFeePayment = payments.find(p => p.payment_type === 'rental_fee');
+    const additionalFeePayments = payments.filter(p => p.payment_type === 'additional_fee');
 
     if (!rental) {
       return res.status(404).json({ 
@@ -146,12 +162,45 @@ const createContract = async (req, res) => {
       vehicle_color: rental.vehicle_id.color,
       station_name: rental.station_id.name,
       station_address: rental.station_id.address,
-      start_date: rental.booking_id.start_date,
-      end_date: rental.booking_id.end_date,
+      start_date: formatVietnamTime(rental.booking_id.start_date, 'DD/MM/YYYY'),
+      end_date: formatVietnamTime(rental.booking_id.end_date, 'DD/MM/YYYY'),
+      start_time: rental.booking_id.pickup_time || '08:00',
+      end_time: rental.booking_id.return_time || '18:00',
       contract_code: contractCode,
-      created_date: new Date(),
+      created_date: formatVietnamTime(new Date(), 'DD/MM/YYYY'),
       special_conditions: special_conditions || '',
-      notes: notes || ''
+      notes: notes || '',
+      
+      // Thông tin giá từ booking
+      price_per_day: rental.booking_id.price_per_day?.toLocaleString('vi-VN') || '0',
+      total_days: rental.booking_id.total_days || 0,
+      total_price: rental.booking_id.total_price?.toLocaleString('vi-VN') || '0',
+      deposit_amount: rental.booking_id.deposit_amount?.toLocaleString('vi-VN') || '0',
+      
+      // Thông tin thanh toán - Business logic dựa trên total_days
+      has_deposit: rental.booking_id.total_days >= 3 && rental.booking_id.deposit_amount > 0,
+      remaining_amount: rental.booking_id.total_days >= 3 ? 
+        (rental.booking_id.total_price - rental.booking_id.deposit_amount).toLocaleString('vi-VN') : 
+        '0',
+      
+      // Deposit info chỉ hiện khi >= 3 ngày  
+      deposit_paid: rental.booking_id.total_days >= 3 ? 
+        (depositPayment && depositPayment.status === 'completed' ? 'Đã thanh toán' : 'Chưa thanh toán') : 
+        'Không cần cọc',
+      deposit_payment_status: rental.booking_id.total_days >= 3 ? (depositPayment?.status || 'none') : 'none',
+      deposit_payment_method: rental.booking_id.total_days >= 3 ? (depositPayment?.payment_method || '') : '',
+      deposit_payment_date: rental.booking_id.total_days >= 3 ? (depositPayment?.completed_at ? formatVietnamTime(depositPayment.completed_at, 'DD/MM/YYYY HH:mm') : '') : '',
+      
+      // Rental fee info khác nhau theo total_days
+      rental_fee_paid: rental.booking_id.total_days >= 3 ? 
+        (rentalFeePayment && rentalFeePayment.status === 'completed' ? 'Đã thanh toán' : 'Chưa thanh toán') : 
+        'Đã thanh toán', // Thuê < 3 ngày đã trả đầy đủ khi nhận xe
+      rental_fee_payment_status: rental.booking_id.total_days >= 3 ? (rentalFeePayment?.status || 'none') : 'completed',
+      rental_fee_payment_method: rental.booking_id.total_days >= 3 ? (rentalFeePayment?.payment_method || '') : 'cash',
+      rental_fee_payment_date: rental.booking_id.total_days >= 3 ? (rentalFeePayment?.completed_at ? formatVietnamTime(rentalFeePayment.completed_at, 'DD/MM/YYYY HH:mm') : '') : '',
+      
+      additional_fees_count: additionalFeePayments.length,
+      additional_fees_total: additionalFeePayments.reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString('vi-VN')
     };
 
     const renderedContent = await ContractService.renderContractTemplate(template.content_template, contractData);
@@ -179,6 +228,13 @@ const createContract = async (req, res) => {
     // Populate contract data
     const populatedContract = await Contract.findById(contract._id)
       .populate('rental_id', 'code status')
+      .populate({
+        path: 'rental_id',
+        populate: {
+          path: 'booking_id',
+          select: 'total_price deposit_amount price_per_day total_days'
+        }
+      })
       .populate('user_id', 'fullname email phone')
       .populate('vehicle_id', 'name license_plate model')
       .populate('station_id', 'name address')
@@ -187,8 +243,11 @@ const createContract = async (req, res) => {
       .populate('created_by', 'fullname email');
 
     return res.status(201).json({
+      success: true,
       message: 'Tạo contract thành công',
-      contract: ContractService.formatContractResponse(populatedContract)
+      data: {
+        contract: ContractService.formatContractResponse(populatedContract)
+      }
     });
 
   } catch (error) {
@@ -204,6 +263,13 @@ const getContractDetails = async (req, res) => {
 
     const contract = await Contract.findById(id)
       .populate('rental_id', 'code status')
+      .populate({
+        path: 'rental_id',
+        populate: {
+          path: 'booking_id',
+          select: 'total_price deposit_amount price_per_day total_days'
+        }
+      })
       .populate('user_id', 'fullname email phone')
       .populate('vehicle_id', 'name license_plate model color')
       .populate('station_id', 'name address')
@@ -228,8 +294,11 @@ const getContractDetails = async (req, res) => {
     }
 
     return res.status(200).json({
+      success: true,
       message: 'Lấy chi tiết contract thành công',
-      contract: ContractService.formatContractResponse(contract)
+      data: {
+        contract: ContractService.formatContractResponse(contract)
+      }
     });
 
   } catch (error) {
@@ -351,8 +420,11 @@ const signContract = async (req, res) => {
       .populate('created_by', 'fullname email');
 
     return res.status(200).json({
+      success: true,
       message: 'Ký contract thành công',
-      contract: ContractService.formatContractResponse(populatedContract)
+      data: {
+        contract: ContractService.formatContractResponse(populatedContract)
+      }
     });
 
   } catch (error) {
@@ -368,6 +440,13 @@ const generateContractPDF = async (req, res) => {
 
     const contract = await Contract.findById(id)
       .populate('rental_id', 'code status')
+      .populate({
+        path: 'rental_id',
+        populate: {
+          path: 'booking_id',
+          select: 'total_price deposit_amount price_per_day total_days'
+        }
+      })
       .populate('user_id', 'fullname email phone')
       .populate('vehicle_id', 'name license_plate model color')
       .populate('station_id', 'name address')
@@ -414,8 +493,11 @@ const generateContractPDF = async (req, res) => {
       
       // Fallback: return contract data without PDF
       return res.status(200).json({
+        success: false,
         message: 'Contract found, nhưng không thể tạo PDF',
-        contract: ContractService.formatContractResponse(contract),
+        data: {
+          contract: ContractService.formatContractResponse(contract)
+        },
         error: 'PDF generation failed'
       });
     }
@@ -490,13 +572,16 @@ const getContracts = async (req, res) => {
     );
 
     return res.status(200).json({
+      success: true,
       message: 'Lấy danh sách contracts thành công',
-      contracts: formattedContracts,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
+      data: {
+        contracts: formattedContracts,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(total / parseInt(limit))
+        }
       }
     });
 
@@ -538,8 +623,11 @@ const cancelContract = async (req, res) => {
     await contract.save();
 
     return res.status(200).json({
+      success: true,
       message: 'Hủy contract thành công',
-      contract: ContractService.formatContractResponse(contract)
+      data: {
+        contract: ContractService.formatContractResponse(contract)
+      }
     });
 
   } catch (error) {

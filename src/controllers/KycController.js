@@ -1223,3 +1223,150 @@ exports.getMyKycStatus = async (req, res) => {
     });
   }
 };
+
+// Lấy danh sách users chưa submit KYC hoặc KYC rejected (dành cho staff)
+exports.getUsersNotSubmittedKyc = async (req, res) => {
+  try {
+    // Kiểm tra quyền hạn - chỉ Station Staff và Admin
+    if (req.user.role !== 'Station Staff' && req.user.role !== 'Admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền thực hiện hành động này'
+      });
+    }
+    
+    const { 
+      page = 1, 
+      limit = 20, 
+      search = '', 
+      kycStatus,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+    
+    const skip = (page - 1) * limit;
+    
+    // Query để tìm users không có KYC hoặc KYC rejected/not_submitted
+    const query = {
+      $or: [
+        { kycStatus: { $in: ['not_submitted', 'rejected'] } },
+        { kycStatus: { $exists: false } },
+        { kycStatus: null }
+      ]
+    };
+    
+    // Filter theo kycStatus
+    if (kycStatus && kycStatus !== 'all') {
+      query.$and = [
+        ...(query.$and || []),
+        { kycStatus: kycStatus }
+      ];
+    }
+    
+    // Search theo email, fullname, phone
+    if (search && search.trim()) {
+      query.$and = [
+        ...(query.$and || []),
+        {
+          $or: [
+            { fullname: { $regex: search.trim(), $options: 'i' } },
+            { email: { $regex: search.trim(), $options: 'i' } },
+            { phone: { $regex: search.trim(), $options: 'i' } }
+          ]
+        }
+      ];
+    }
+    
+    // Sort options
+    const sort = {};
+    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    
+    // Lấy users với pagination và sorting
+    const users = await User.find(query)
+      .select('_id fullname email phone kycStatus createdAt lastLoginAt')
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    // Đếm total users matching query
+    const total = await User.countDocuments(query);
+    
+    // Enrich với thông tin KYC của từng user
+    const usersWithKycInfo = await Promise.all(
+      users.map(async (user) => {
+        const kyc = await KYC.findOne({ userId: user._id });
+        return {
+          id: user._id,
+          fullname: user.fullname,
+          email: user.email,
+          phone: user.phone,
+          kycStatus: user.kycStatus || 'not_submitted',
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
+          kycInfo: kyc ? {
+            rejectionReason: kyc.rejectionReason || null,
+            identityUploaded: kyc.identityCardFrontUploaded || false,
+            identityBackUploaded: kyc.identityCardBackUploaded || false,
+            licenseUploaded: kyc.licenseFrontUploaded || false,
+            licenseBackUploaded: kyc.licenseBackUploaded || false,
+            lastUpdated: kyc.lastUpdatedAt,
+            staffUploaded: kyc.uploadedByStaff || false,
+            validationScore: kyc.validationScore || null
+          } : {
+            rejectionReason: null,
+            identityUploaded: false,
+            identityBackUploaded: false,
+            licenseUploaded: false,
+            licenseBackUploaded: false,
+            lastUpdated: null,
+            staffUploaded: false,
+            validationScore: null
+          }
+        };
+      })
+    );
+    
+    // Tính stats tổng quan
+    const stats = {
+      notSubmitted: await User.countDocuments({ 
+        $or: [
+          { kycStatus: 'not_submitted' },
+          { kycStatus: { $exists: false } },
+          { kycStatus: null }
+        ]
+      }),
+      rejected: await User.countDocuments({ kycStatus: 'rejected' }),
+      pending: await User.countDocuments({ kycStatus: 'pending' }),
+      approved: await User.countDocuments({ kycStatus: 'approved' })
+    };
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách users không có KYC thành công',
+      data: {
+        users: usersWithKycInfo,
+        pagination: { 
+          page: parseInt(page), 
+          limit: parseInt(limit), 
+          total, 
+          pages: Math.ceil(total / limit) 
+        },
+        filters: {
+          search: search || '',
+          kycStatus: kycStatus || 'all',
+          sortBy,
+          sortOrder
+        },
+        stats
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi lấy danh sách users không có KYC:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu',
+      error: process.env.NODE_ENV === 'production' ? 'Lỗi hệ thống' : error.message
+    });
+  }
+};

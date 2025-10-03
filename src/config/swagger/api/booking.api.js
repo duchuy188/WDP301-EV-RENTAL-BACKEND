@@ -172,6 +172,28 @@
  *         schema:
  *           type: string
  *         description: Tìm kiếm theo mã đặt xe, tên người dùng, email, số điện thoại hoặc tên xe
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *           example: "2025-01-15"
+ *         description: Ngày bắt đầu lọc (YYYY-MM-DD)
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *           example: "2025-01-20"
+ *         description: Ngày kết thúc lọc (YYYY-MM-DD)
+ *       - in: query
+ *         name: dateType
+ *         schema:
+ *           type: string
+ *           enum: [booking, pickup, return]
+ *           default: booking
+ *           example: "pickup"
+ *         description: Loại ngày để lọc - booking(ngày tạo), pickup(ngày lấy xe), return(ngày trả xe)
  *     responses:
  *       200:
  *         description: Lấy đặt xe của trạm thành công

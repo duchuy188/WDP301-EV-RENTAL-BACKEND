@@ -49,6 +49,12 @@ router.post('/verify',
   KycController.verifyKyc
 );
 
+router.get('/users-not-submitted', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff']), 
+  KycController.getUsersNotSubmittedKyc
+);
+
 // Staff upload KYC cho user
 router.post('/staff/identity-card/front', 
   authMiddleware, 
