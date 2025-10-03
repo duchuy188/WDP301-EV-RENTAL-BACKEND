@@ -584,8 +584,7 @@ const confirmBooking = async (req, res) => {
       });
       
       
-      // Contract sẽ được tạo riêng qua API khi cần
-      // (không tạo tự động vì chưa có thông tin payment)
+     
       
       // 4. Update vehicle status
       await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
@@ -821,7 +820,15 @@ const getAllBookings = async (req, res) => {
 // Get station bookings (Staff)
 const getStationBookings = async (req, res) => {
   try {
-    const { status, page = 1, limit = 10, search } = req.query;
+    const { 
+      status, 
+      page = 1, 
+      limit = 10, 
+      search,
+      startDate,
+      endDate,
+      dateType = 'booking' // 'booking' (ngày tạo), 'pickup' (ngày lấy xe), 'return' (ngày trả xe)
+    } = req.query;
     const staff_id = req.user.id;
     
     // Check if user is staff
@@ -852,6 +859,39 @@ const getStationBookings = async (req, res) => {
         { 'user_id.phone': { $regex: search, $options: 'i' } },
         { 'vehicle_id.name': { $regex: search, $options: 'i' } }
       ];
+    }
+    
+    // Date filters
+    if (startDate || endDate) {
+      const dateQuery = {};
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0); // Start of day
+        dateQuery.$gte = start;
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // End of day
+        dateQuery.$lte = end;
+      }
+      
+      // Apply date filter based on dateType
+      switch (dateType) {
+        case 'pickup':
+          // Combine start_date + pickup_time
+          query.start_date = dateQuery;
+          query.pickup_time = { $exists: true };
+          break;
+        case 'return':
+          query.end_date = dateQuery;
+          break;
+        case 'booking':
+        default:
+          query.createdAt = dateQuery;
+          break;
+      }
     }
     
     // Pagination

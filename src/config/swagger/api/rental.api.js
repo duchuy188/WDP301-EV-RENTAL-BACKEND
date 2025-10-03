@@ -12,7 +12,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [active, completed]
+ *           enum: [active, pending_payment, completed]
  *         description: Lọc theo trạng thái
  *         example: "active"
  *       - in: query
@@ -57,7 +57,7 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- * 
+ *
  * /api/rentals/staff:
  *   get:
  *     summary: Lấy rentals tại station của staff
@@ -70,7 +70,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [active, completed]
+ *           enum: [active, pending_payment, completed]
  *         description: Lọc theo trạng thái
  *         example: "active"
  *       - in: query
@@ -115,7 +115,7 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- * 
+ *
  * /api/rentals/admin:
  *   get:
  *     summary: Lấy tất cả rentals (Admin only)
@@ -128,7 +128,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [active, completed]
+ *           enum: [active, pending_payment, completed]
  *         description: Lọc theo trạng thái
  *         example: "active"
  *       - in: query
@@ -185,7 +185,7 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- * 
+ *
  * /api/rentals/{id}:
  *   get:
  *     summary: Lấy chi tiết rental
@@ -232,7 +232,7 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- * 
+ *
  * /api/rentals/{id}/checkout-info:
  *   get:
  *     summary: Lấy thông tin checkout
@@ -279,79 +279,11 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- * 
- * /api/rentals/{id}/checkout:
+ *
+ * /api/rentals/{id}/checkout-normal:
  *   put:
- *     summary: Xử lý checkout
- *     description: Thực hiện checkout cho rental
- *     tags: [Rentals]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: ID của rental
- *         example: "60f7b3b3b3b3b3b3b3b3b3b3"
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/CheckoutRequest'
- *           examples:
- *             checkout_example:
- *               summary: Checkout example
- *               value:
- *                 vehicle_condition_after:
- *                   mileage: 1050
- *                   battery_level: 75
- *                   exterior_condition: "good"
- *                   interior_condition: "excellent"
- *                   notes: "Có vết trầy nhỏ ở cánh cửa"
- *                 late_fee: 50000
- *                 damage_fee: 0
- *                 other_fees: 0
- *                 staff_notes: "Khách hàng trả xe đúng giờ"
- *                 customer_notes: "Xe chạy tốt"
- *     responses:
- *       200:
- *         description: Checkout thành công
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/CheckoutResponse'
- *       400:
- *         description: Dữ liệu không hợp lệ
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       403:
- *         description: Không có quyền truy cập
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       404:
- *         description: Không tìm thấy rental
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       500:
- *         description: Lỗi server
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- * 
- * /api/rentals/{id}/return-photos:
- *   post:
- *     summary: Upload ảnh và báo cáo tình trạng xe
- *     description: Upload ảnh khi trả xe và báo cáo tình trạng xe (mileage, battery, exterior, interior)
+ *     summary: Checkout bình thường
+ *     description: Staff thực hiện checkout cho rental không có phí phát sinh
  *     tags: [Rentals]
  *     security:
  *       - bearerAuth: []
@@ -400,20 +332,29 @@
  *               inspection_notes:
  *                 type: string
  *                 description: Ghi chú kiểm tra xe
- *                 example: "Xe sạch sẽ, không hư hỏng"
+ *                 example: "Xe sạch sẽ, không có hư hỏng"
  *               damage_description:
  *                 type: string
  *                 description: Mô tả hư hỏng (nếu có)
- *                 example: "Có vết trầy nhỏ ở cánh cửa trái"
+ *                 example: "Không có hư hỏng"
+ *               payment_method:
+ *                 type: string
+ *                 enum: [cash, vnpay]
+ *                 default: cash
+ *                 description: Phương thức thanh toán
+ *                 example: "cash"
+ *               customer_notes:
+ *                 type: string
+ *                 description: Ghi chú từ khách hàng (tùy chọn)
+ *                 example: "Xe chạy tốt, không có vấn đề gì"
  *             required:
- *               - photos
  *               - mileage
  *               - battery_level
  *               - exterior_condition
  *               - interior_condition
  *     responses:
  *       200:
- *         description: Upload ảnh và báo cáo tình trạng xe thành công
+ *         description: Checkout bình thường thành công
  *         content:
  *           application/json:
  *             schema:
@@ -424,46 +365,73 @@
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Upload ảnh và báo cáo tình trạng xe thành công"
+ *                   example: "Checkout bình thường thành công"
  *                 data:
  *                   type: object
  *                   properties:
- *                     images_after:
- *                       type: array
- *                       items:
- *                         type: string
- *                       example: ["https://res.cloudinary.com/...", "https://res.cloudinary.com/..."]
- *                     new_images:
- *                       type: array
- *                       items:
- *                         type: string
- *                       example: ["https://res.cloudinary.com/...", "https://res.cloudinary.com/..."]
- *                     vehicle_condition_after:
+ *                     rental:
  *                       type: object
  *                       properties:
- *                         mileage:
+ *                         id:
+ *                           type: string
+ *                           example: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *                         code:
+ *                           type: string
+ *                           example: "RENT123456"
+ *                         actual_end_time:
+ *                           type: string
+ *                           format: date-time
+ *                         total_fees:
  *                           type: number
- *                           example: 1050
- *                         battery_level:
+ *                           example: 0
+ *                         status:
+ *                           type: string
+ *                           enum: [active, pending_payment, completed]
+ *                           example: "pending_payment"
+ *                     fee_breakdown:
+ *                       type: object
+ *                       properties:
+ *                         late_fee:
  *                           type: number
- *                           example: 75
- *                         exterior_condition:
- *                           type: string
- *                           example: "good"
- *                         interior_condition:
- *                           type: string
- *                           example: "excellent"
- *                         notes:
- *                           type: string
- *                           example: "Xe sạch sẽ, không hư hỏng"
- *                     inspection_notes:
+ *                           example: 0
+ *                         damage_fee:
+ *                           type: number
+ *                           example: 0
+ *                         other_fees:
+ *                           type: number
+ *                           example: 0
+ *                         total_fees:
+ *                           type: number
+ *                           example: 0
+ *                     payments:
+ *                       type: array
+ *                       example:
+ *                         - id: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *                           type: "deposit"
+ *                           amount: 500000
+ *                           status: "pending"
+ *                           description: "Thanh toán cọc còn lại cho thuê xe RENT123456"
+ *                     total_paid:
+ *                       type: number
+ *                       description: Tổng số tiền cần thanh toán
+ *                       example: 500000
+ *                     vehicle_status:
  *                       type: string
- *                       example: "Xe sạch sẽ, không hư hỏng"
- *                     damage_description:
- *                       type: string
- *                       example: "Có vết trầy nhỏ ở cánh cửa trái"
+ *                       enum: [available, maintenance]
+ *                       description: Trạng thái xe sau checkout
+ *                       example: "available"
+ *                     images:
+ *                       type: object
+ *                       nullable: true
+ *                       description: "Chỉ hiển thị khi có upload hình ảnh"
+ *                       properties:
+ *                         uploaded:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                             description: "URL các ảnh mới upload"
  *       400:
- *         description: Không có ảnh hoặc thiếu thông tin tình trạng xe
+ *         description: Dữ liệu không hợp lệ
  *         content:
  *           application/json:
  *             schema:
@@ -486,11 +454,11 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- * 
- * /api/rentals/{id}/calculate-fees:
- *   post:
- *     summary: Tính phí phát sinh
- *     description: Tính toán các phí phát sinh khi trả xe
+ *
+ * /api/rentals/{id}/checkout-fees:
+ *   put:
+ *     summary: Checkout có phí phát sinh
+ *     description: Staff thực hiện checkout cho rental có phí phát sinh
  *     tags: [Rentals]
  *     security:
  *       - bearerAuth: []
@@ -505,34 +473,194 @@
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/CalculateFeesRequest'
- *           examples:
- *             calculate_fees_example:
- *               summary: Calculate fees example
- *               value:
- *                 return_time: "2025-01-25T19:00:00.000Z"
- *                 vehicle_condition_after:
- *                   mileage: 1050
- *                   battery_level: 75
- *                   exterior_condition: "good"
- *                   interior_condition: "excellent"
- *                   notes: "Có vết trầy nhỏ"
- *                 damage_description: "Có vết trầy xước ở cánh cửa trái"
+ *             type: object
+ *             properties:
+ *               photos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Các file ảnh (tối đa 10 ảnh)
+ *                 maxItems: 10
+ *               mileage:
+ *                 type: number
+ *                 description: Số km sau khi trả xe
+ *                 example: 1050
+ *               battery_level:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: Mức pin sau khi trả xe (%)
+ *                 example: 75
+ *               exterior_condition:
+ *                 type: string
+ *                 enum: [excellent, good, fair, poor]
+ *                 description: Tình trạng ngoại thất
+ *                 example: "good"
+ *               interior_condition:
+ *                 type: string
+ *                 enum: [excellent, good, fair, poor]
+ *                 description: Tình trạng nội thất
+ *                 example: "excellent"
+ *               inspection_notes:
+ *                 type: string
+ *                 description: Ghi chú kiểm tra xe
+ *                 example: "Xe sạch sẽ, không có hư hỏng"
+ *               damage_description:
+ *                 type: string
+ *                 description: Mô tả hư hỏng (nếu có)
+ *                 example: "Có vết trầy nhỏ ở cánh cửa trái"
+ *               payment_method:
+ *                 type: string
+ *                 enum: [cash, vnpay]
+ *                 default: cash
+ *                 description: Phương thức thanh toán
+ *                 example: "vnpay"
+ *               customer_notes:
+ *                 type: string
+ *                 description: Ghi chú từ khách hàng (tùy chọn)
+ *                 example: "Xe chạy tốt, không có vấn đề gì"
+ *               late_fee:
+ *                 type: number
+ *                 minimum: 0
+ *                 default: 0
+ *                 description: Phí trễ giờ (Staff tự nhập)
+ *                 example: 50000
+ *               damage_fee:
+ *                 type: number
+ *                 minimum: 0
+ *                 default: 0
+ *                 description: Phí hư hỏng xe (Staff tự nhập)
+ *                 example: 75000
+ *               other_fees:
+ *                 type: number
+ *                 minimum: 0
+ *                 default: 0
+ *                 description: Phí phụ trội khác (Staff tự nhập)
+ *                 example: 25000
+ *             required:
+ *               - mileage
+ *               - battery_level
+ *               - exterior_condition
+ *               - interior_condition
  *     responses:
  *       200:
- *         description: Tính phí thành công
+ *         description: Checkout có phí phát sinh thành công
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/CalculateFeesResponse'
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Checkout có phí phát sinh thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     rental:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                           example: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *                         code:
+ *                           type: string
+ *                           example: "RENT123456"
+ *                         actual_end_time:
+ *                           type: string
+ *                           format: date-time
+ *                         total_fees:
+ *                           type: number
+ *                           example: 150000
+ *                         status:
+ *                           type: string
+ *                           enum: [active, pending_payment, completed]
+ *                           example: "pending_payment"
+ *                     fee_breakdown:
+ *                       type: object
+ *                       properties:
+ *                         late_fee:
+ *                           type: number
+ *                           example: 50000
+ *                         damage_fee:
+ *                           type: number
+ *                           example: 75000
+ *                         other_fees:
+ *                           type: number
+ *                           example: 25000
+ *                         total_fees:
+ *                           type: number
+ *                           example: 150000
+ *                     payments:
+ *                       type: array
+ *                       example:
+ *                         - id: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *                           type: "deposit"
+ *                           amount: 500000
+ *                           status: "pending"
+ *                           description: "Thanh toán cọc còn lại cho thuê xe RENT123456"
+ *                           payment_method: "vnpay"
+ *                         - id: "60f7b3b3b3b3b3b3b3b3b3b4"
+ *                           type: "additional_fee"
+ *                           amount: 150000
+ *                           status: "pending"
+ *                           description: "Phí phát sinh thuê xe RENT123456"
+ *                           payment_method: "vnpay"
+ *                     total_paid:
+ *                       type: number
+ *                       description: Tổng số tiền cần thanh toán
+ *                       example: 650000
+ *                     vehicle_status:
+ *                       type: string
+ *                       enum: [available, maintenance]
+ *                       description: Trạng thái xe sau checkout
+ *                       example: "maintenance"
+ *                     payment_urls:
+ *                       type: object
+ *                       nullable: true
+ *                       description: "VNPay payment URLs (nếu có)"
+ *                       additionalProperties:
+ *                         type: object
+ *                         properties:
+ *                           paymentUrl:
+ *                             type: string
+ *                           orderId:
+ *                             type: string
+ *                           amount:
+ *                             type: number
+ *                           paymentType:
+ *                             type: string
+ *                     images:
+ *                       type: object
+ *                       nullable: true
+ *                       description: "Chỉ hiển thị khi có upload hình ảnh"
+ *                       properties:
+ *                         uploaded:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                             description: "URL các ảnh mới upload"
  *       400:
- *         description: Rental không hợp lệ
+ *         description: Dữ liệu không hợp lệ hoặc không có phí phát sinh
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Endpoint này dành cho trường hợp có phí phát sinh"
+ *                 suggestion:
+ *                   type: string
+ *                   example: "Sử dụng endpoint /checkout-normal thay vì"
  *       403:
  *         description: Không có quyền truy cập
  *         content:

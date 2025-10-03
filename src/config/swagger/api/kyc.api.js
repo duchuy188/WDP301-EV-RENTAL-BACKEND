@@ -916,3 +916,105 @@
  *       500:
  *         description: Lỗi server
  */
+
+/**
+ * @swagger
+ * /api/kyc/users-not-submitted:
+ *   get:
+ *     summary: Lấy danh sách users chưa submit KYC
+ *     description: Staff/Admin có thể tìm kiếm và lọc users chưa có KYC hoặc bị rejected
+ *     tags: [KYC]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Số trang
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Số lượng users per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Tìm kiếm theo email, fullname, phone
+ *         example: "nguyenvana@gmail.com"
+ *       - in: query
+ *         name: kycStatus
+ *         schema:
+ *           type: string
+ *           enum: [all, not_submitted, rejected]
+ *           default: all
+ *         description: Filter theo trạng thái KYC
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, lastLoginAt, fullname]
+ *           default: createdAt
+ *         description: Sort theo field nào
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Thứ tự sắp xếp
+ *     responses:
+ *       200:
+ *         description: Danh sách users cần upload KYC
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     users:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           fullname:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                           phone:
+ *                             type: string
+ *                           kycStatus:
+ *                             type: string
+ *                           kycInfo:
+ *                             type: object
+ *                             properties:
+ *                               identityUploaded:
+ *                                 type: boolean
+ *                               licenseUploaded:
+ *                                 type: boolean
+ *                               staffUploaded:
+ *                                 type: boolean
+ *                     pagination:
+ *                       type: object
+ *                     stats:
+ *                       type: object
+ *       403:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi server
+ */

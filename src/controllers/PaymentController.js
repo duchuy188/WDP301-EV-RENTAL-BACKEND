@@ -246,6 +246,29 @@ const confirmPayment = async (req, res) => {
     payment.completed_at = new Date();
     await payment.save();
 
+    // Check and complete rental if all payments are done
+    if (payment.rental_id) {
+      try {
+        const Rental = require('../models/Rental');
+        const remainingPendingPayments = await Payment.countDocuments({
+          rental_id: payment.rental_id,
+          status: 'pending'
+        });
+        
+        // If no pending payments for this rental, mark rental as completed
+        if (remainingPendingPayments === 0) {
+          await Rental.findByIdAndUpdate(payment.rental_id, {
+            status: 'completed',
+            actual_end_time: new Date()
+          });
+          console.log(`✅ Rental ${payment.rental_id} completed - all payments done`);
+        }
+      } catch (rentalUpdateError) {
+        console.error('Error updating rental status:', rentalUpdateError);
+        // Don't fail payment confirmation if rental update fails
+      }
+    }
+
     // Gửi email notification
     await sendPaymentSuccessEmail(payment, payment.user_id);
 
@@ -637,10 +660,46 @@ const handleVNPayCallback = async (req, res) => {
       
       await payment.save();
       
+      // Check and complete rental if all payments are done
+      if (payment.rental_id || payment.booking_id) {
+        try {
+          const Rental = require('../models/Rental');
+          
+          // Find rental by rental_id or by booking_id
+          let rental = null;
+          if (payment.rental_id) {
+            rental = await Rental.findById(payment.rental_id);
+          } else if (payment.booking_id) {
+            rental = await Rental.findOne({ booking_id: payment.booking_id });
+          }
+          
+          if (rental && rental.status === 'pending_payment') {
+            // Check remaining pending payments for this rental
+            const remainingPendingPayments = await Payment.countDocuments({
+              $or: [
+                { rental_id: rental._id },
+                { booking_id: rental.booking_id }
+              ],
+              status: 'pending',
+              is_active: true
+            });
+            
+            // If no pending payments for this rental, mark rental as completed
+            if (remainingPendingPayments === 0) {
+              await Rental.findByIdAndUpdate(rental._id, {
+                status: 'completed'
+              });
+            }
+          }
+        } catch (rentalUpdateError) {
+          console.error('Error updating rental status:', rentalUpdateError);
+          // Don't fail payment confirmation if rental update fails
+        }
+      }
+      
       // Gửi email notification
       await sendPaymentSuccessEmail(payment, payment.user_id);
       
-      console.log(`Payment ${payment.code} completed successfully via VNPay`);
       
     } else {
       payment.status = 'cancelled';  
@@ -649,7 +708,6 @@ const handleVNPayCallback = async (req, res) => {
       
       await payment.save();
       
-      console.log(`Payment ${payment.code} cancelled via VNPay: ${callbackResult.message}`);
     }
 
     // Trả về kết quả JSON thay vì redirect
