@@ -556,11 +556,6 @@
  *               maintenance_reason:
  *                 type: string
  *                 description: Lý do bảo trì (bắt buộc khi chuyển sang maintenance)
- *               priority:
- *                 type: string
- *                 enum: [low, medium, high, urgent]
- *                 default: medium
- *                 description: Mức độ ưu tiên bảo trì
  *     responses:
  *       200:
  *         description: Cập nhật thành công
@@ -612,7 +607,7 @@
  * @swagger
  * /api/vehicles/{id}/maintenance:
  *   post:
- *     summary: Báo cáo bảo trì xe
+ *     summary: Báo cáo bảo trì xe cho staff
  *     tags: [Vehicles]
  *     security:
  *       - bearerAuth: []
@@ -635,11 +630,6 @@
  *               reason:
  *                 type: string
  *                 description: Lý do bảo trì
- *               priority:
- *                 type: string
- *                 enum: [low, medium, high, urgent]
- *                 default: medium
- *                 description: Mức độ ưu tiên
  *               images:
  *                 type: array
  *                 items:

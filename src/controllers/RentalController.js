@@ -159,7 +159,15 @@ class RentalController {
       rental.total_fees = 0;
       rental.staff_notes = staff_notes;
       rental.customer_notes = customer_notes;
-      rental.status = 'pending_payment';
+      
+      // XỬ LÝ STATUS DỰA TRÊN SỐ NGÀY THUÊ
+      if (rental.booking_id.total_days < 3) {
+        // Thuê < 3 ngày: Đã thanh toán full → completed ngay
+        rental.status = 'completed';
+      } else {
+        // Thuê >= 3 ngày: Cần thanh toán cọc còn lại → pending_payment
+        rental.status = 'pending_payment';
+      }
       
       // THAY THẾ ảnh cũ bằng ảnh mới (không duplicate)
       if (uploadedImages.length > 0) {
@@ -285,7 +293,7 @@ class RentalController {
             code: rental.code,
             actual_end_time: rental.actual_end_time,
             total_fees: total_fees,
-            status: rental.status // pending_payment until payments completed
+            status: rental.status // completed cho < 3 ngày, pending_payment cho >= 3 ngày
           },
           fee_breakdown: {
             late_fee: 0,
@@ -306,7 +314,15 @@ class RentalController {
           payment_urls: Object.keys(paymentUrls).length > 0 ? paymentUrls : undefined,
           images: uploadedImages.length > 0 ? {
             uploaded: uploadedImages
-          } : null
+          } : null,
+          // Thêm thông tin về logic xử lý
+          checkout_info: {
+            rental_days: rental.booking_id.total_days,
+            payment_required: rental.booking_id.total_days >= 3,
+            status_reason: rental.booking_id.total_days < 3 
+              ? 'Đã thanh toán full khi confirm' 
+              : 'Cần thanh toán cọc còn lại'
+          }
         }
       });
     } catch (error) {

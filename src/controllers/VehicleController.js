@@ -888,7 +888,13 @@ exports.getVehicleStatistics = async (req, res) => {
 exports.reportMaintenance = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason, priority = 'medium', images = [] } = req.body;
+    const { reason, priority = 'medium' } = req.body;
+    
+    // ✅ Lấy images từ req.files (file upload)
+    let images = [];
+    if (req.files && req.files.length > 0) {
+      images = req.files.map(file => file.path); // file.path chứa URL từ Cloudinary
+    }
     
     // Validate
     if (!reason) {

@@ -509,6 +509,45 @@ exports.verifyKyc = async (req, res) => {
     }
     
     if (action === 'approve') {
+      // Kiểm tra đầy đủ giấy tờ trước khi approve
+      if (!kyc.identityCardFrontUploaded) {
+        return res.status(400).json({ 
+          message: 'Không thể approve: Chưa upload CCCD mặt trước' 
+        });
+      }
+      
+      if (!kyc.identityCardBackUploaded) {
+        return res.status(400).json({ 
+          message: 'Không thể approve: Chưa upload CCCD mặt sau' 
+        });
+      }
+      
+      if (!kyc.licenseFrontUploaded) {
+        return res.status(400).json({ 
+          message: 'Không thể approve: Chưa upload GPLX mặt trước' 
+        });
+      }
+      
+      if (!kyc.licenseBackUploaded) {
+        return res.status(400).json({ 
+          message: 'Không thể approve: Chưa upload GPLX mặt sau' 
+        });
+      }
+      
+      // Kiểm tra thông tin cơ bản
+      if (!kyc.identityCard || !kyc.licenseNumber) {
+        return res.status(400).json({ 
+          message: 'Không thể approve: Thiếu thông tin CMND/CCCD hoặc GPLX' 
+        });
+      }
+      
+      // Kiểm tra hạng bằng lái xe (xe máy chỉ cần A, A1, A2)
+      if (!kyc.licenseClass || !['A', 'A1', 'A2'].includes(kyc.licenseClass)) {
+        return res.status(400).json({ 
+          message: 'Không thể approve: Hạng bằng lái xe không hợp lệ. Chỉ chấp nhận A, A1, A2 cho xe máy điện' 
+        });
+      }
+      
       kyc.status = 'approved';
       kyc.approvedBy = req.user.id;
       kyc.approvedAt = new Date();

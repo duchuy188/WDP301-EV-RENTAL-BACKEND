@@ -20,6 +20,8 @@ const paymentRoutes = require('./routes/payment.routes');
 const contractRoutes = require('./routes/contract.routes');
 const rentalRoutes = require('./routes/rental.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
+const maintenanceRoutes = require('./routes/maintenance.routes');
+const feedbackRoutes = require('./routes/feedback.routes');
 const aiRoutes = require('./routes/ai.routes');
 const chatbotRoutes = require('./routes/chatbot.routes');
 
@@ -85,6 +87,8 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/contracts', contractRoutes);
 app.use('/api/rentals', rentalRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/feedback', feedbackRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 

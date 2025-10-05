@@ -1171,6 +1171,114 @@ const getContractSignedTemplate = (contract) => {
     `;
 };
 
+// Template email walk-in customer - Green EV Theme
+const getWalkInCustomerEmailTemplate = (customerName, email, password) => {
+    return `
+    <!DOCTYPE html>
+    <html lang="vi">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Tài Khoản Walk-in - EV Rental</title>
+        ${getCommonStyles()}
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                <div class="logo-container">
+                    <div class="logo-icon">
+                        <img src="https://res.cloudinary.com/dcrbmfhbo/image/upload/v1758043354/Gemini_Generated_Image_c89jtfc89jtfc89j_z5gt9t.png" alt="EV Rental Logo" style="width: 64px; height: 64px; object-fit: contain;" />
+                    </div>
+                    <div class="logo">EV Rental</div>
+                </div>
+                <div class="subtitle">Chào mừng khách hàng walk-in!</div>
+                <div class="eco-badge">Walk-in Customer</div>
+                <div class="eco-badge">Instant Access</div>
+            </div>
+            
+            <div class="content">
+                <div class="greeting">Xin chào ${customerName}!</div>
+                
+                <div class="message">
+                    🎉 <strong>Chúc mừng! Tài khoản EV Rental của bạn đã được tạo thành công!</strong><br><br>
+                    Cảm ơn bạn đã chọn dịch vụ thuê xe điện của chúng tôi. Tài khoản đã được tạo 
+                    để bạn có thể quản lý và theo dõi các chuyến thuê xe trong tương lai! 🌱⚡
+                </div>
+
+                <div class="features">
+                    <h3>Thông tin đăng nhập</h3>
+                    <ul style="background: white; padding: 20px; border-radius: 10px; border: 2px solid #48bb78;">
+                        <li><strong>📧 Email:</strong> <span style="color: #48bb78; font-weight: bold;">${email}</span></li>
+                        <li><strong>🔐 Mật khẩu tạm thời:</strong> <span style="color: #48bb78; font-weight: bold; font-size: 18px; background: #f0fff4; padding: 5px 10px; border-radius: 5px;">${password}</span></li>
+                        <li><strong>👤 Vai trò:</strong> EV Renter</li>
+                        <li><strong>📱 Hệ thống:</strong> EV Rental Mobile App & Website</li>
+                    </ul>
+                </div>
+
+                <div class="cta-container">
+                    <a href="#" class="cta-button">
+                        🚗⚡ Đăng Nhập Ngay
+                    </a>
+                </div>
+
+                <div class="warning-box">
+                    <strong>⚠️ Lưu ý bảo mật quan trọng:</strong><br><br>
+                    • <strong>Đổi mật khẩu ngay</strong> sau lần đăng nhập đầu tiên<br>
+                    • <strong>Không chia sẻ</strong> thông tin đăng nhập với ai khác<br>
+                    • <strong>Hoàn thiện KYC</strong> để sử dụng đầy đủ tính năng<br>
+                    • <strong>Báo cáo ngay</strong> nếu phát hiện hoạt động bất thường
+                </div>
+
+                <div style="background: linear-gradient(135deg, #f0fff4, #e6fffa); padding: 25px; border-radius: 15px; margin: 25px 0; border: 2px solid #48bb78;">
+                    <h3 style="color: #2d3748; margin-bottom: 20px; text-align: center; display: flex; align-items: center; justify-content: center;">
+                        🌱 <span style="margin: 0 10px;">Tính năng dành cho bạn</span> 🌱
+                    </h3>
+                    <div style="color: #4a5568; line-height: 1.8;">
+                        <p><strong>📱 EV Mobile App:</strong> Tải app để quản lý thuê xe mọi lúc mọi nơi</p>
+                        <p><strong>🔋 Charging Map:</strong> Tìm trạm sạc gần nhất với AI navigation</p>
+                        <p><strong>📊 Eco Dashboard:</strong> Theo dõi carbon footprint và điểm xanh</p>
+                        <p><strong>💚 Green Rewards:</strong> Tích lũy eco-points cho mỗi chuyến đi</p>
+                        <p><strong>📋 Booking History:</strong> Xem lịch sử thuê xe chi tiết</p>
+                    </div>
+                </div>
+
+                <div class="message" style="margin-top: 30px; background: linear-gradient(135deg, #f0fff4, #e6fffa); padding: 20px; border-radius: 12px; border-left: 4px solid #48bb78;">
+                    <strong>🚗💚 Cần hỗ trợ?</strong><br>
+                    Đội ngũ EV Support luôn sẵn sàng hỗ trợ bạn 24/7! Liên hệ qua:<br>
+                    📱 Hotline: 1900-EVGREEN (1900-384733)<br>
+                    📧 Email: evstationrental@gmail.com<br>
+                    💬 Live Chat trong app
+                </div>
+
+                <div class="message" style="text-align: center; margin-top: 40px; font-size: 18px; color: #2d3748;">
+                    <strong>🌟 Chào mừng bạn đến với cộng đồng EV Rental! 🌟</strong><br>
+                    <span style="color: #48bb78; font-weight: 600;">Ride Electric. Ride Future. Ride Green! 🏍️💚⚡</span>
+                </div>
+            </div>
+
+            <div class="footer">
+                <div class="social-links">
+                    <a href="#">🌱 EV Community</a>
+                    <a href="#">📱 Download App</a>
+                    <a href="#">🔋 Charging Map</a>
+                    <a href="#">💚 Green Support</a>
+                </div>
+                <p><strong>© ${new Date().getFullYear()} EV Rental</strong> - Your Green Journey Partner 🌍</p>
+                <p>🏢 Green HQ: 123 Đường Xanh, Eco Park, Q7, HCMC | 📞 1900-EVGREEN</p>
+                <p>🌿 <strong>Eco Commitment:</strong> 100% renewable energy | Carbon negative footprint</p>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                    <p style="font-size: 11px; color: #a0aec0;">
+                        Email này được gửi tự động khi tạo tài khoản walk-in<br>
+                        🌱 Mỗi email này được gửi bằng năng lượng tái tạo 100%
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+};
+
 // Template email checkout receipt - Green EV Theme
 const getCheckoutReceiptTemplate = (data) => {
     const {
@@ -1369,5 +1477,6 @@ module.exports = {
     getBookingCancellationTemplate,
     getPaymentSuccessTemplate,
     getContractSignedTemplate,
-    getCheckoutReceiptTemplate
+    getCheckoutReceiptTemplate,
+    getWalkInCustomerEmailTemplate
 };

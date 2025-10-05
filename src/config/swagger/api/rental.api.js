@@ -283,7 +283,12 @@
  * /api/rentals/{id}/checkout-normal:
  *   put:
  *     summary: Checkout bình thường
- *     description: Staff thực hiện checkout cho rental không có phí phát sinh
+ *     description: |
+ *       Staff thực hiện checkout cho rental không có phí phát sinh
+ *       
+ *       **Logic xử lý:**
+ *       - Thuê < 3 ngày: Status = 'completed' (đã thanh toán full khi confirm)
+ *       - Thuê >= 3 ngày: Status = 'pending_payment' (cần thanh toán cọc còn lại)
  *     tags: [Rentals]
  *     security:
  *       - bearerAuth: []
@@ -386,8 +391,9 @@
  *                           example: 0
  *                         status:
  *                           type: string
- *                           enum: [active, pending_payment, completed]
- *                           example: "pending_payment"
+ *                           enum: [completed, pending_payment]
+ *                           description: "completed cho thuê < 3 ngày, pending_payment cho thuê >= 3 ngày"
+ *                           example: "completed"
  *                     fee_breakdown:
  *                       type: object
  *                       properties:
@@ -430,6 +436,19 @@
  *                           items:
  *                             type: string
  *                             description: "URL các ảnh mới upload"
+ *                     checkout_info:
+ *                       type: object
+ *                       description: "Thông tin về logic xử lý checkout"
+ *                       properties:
+ *                         rental_days:
+ *                           type: number
+ *                           example: 2
+ *                         payment_required:
+ *                           type: boolean
+ *                           example: false
+ *                         status_reason:
+ *                           type: string
+ *                           example: "Đã thanh toán full khi confirm"
  *       400:
  *         description: Dữ liệu không hợp lệ
  *         content:
