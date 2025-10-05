@@ -7,6 +7,202 @@
 
 /**
  * @swagger
+ * /api/bookings/walk-in:
+ *   post:
+ *     summary: Tạo đặt xe walk-in (Chỉ Staff)
+ *     description: |
+ *       Staff tạo đặt xe cho khách hàng walk-in (chưa có tài khoản)
+ *       
+ *       **Quy trình walk-in:**
+ *       1. Staff tạo tài khoản tạm thời cho khách hàng
+ *       2. Tạo booking với booking_type: 'walk_in'
+ *       3. Gửi email thông tin đăng nhập cho khách hàng
+ *       4. Khách hàng có thể đăng nhập sau để quản lý booking
+ *       
+ *       **Lưu ý:** station_id sẽ được tự động lấy từ trạm của Staff đang đăng nhập
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - customer_name
+ *               - customer_phone
+ *               - model
+ *               - color
+ *               - start_date
+ *               - end_date
+ *               - pickup_time
+ *               - return_time
+ *             properties:
+ *               customer_name:
+ *                 type: string
+ *                 description: Tên khách hàng
+ *                 example: "Nguyễn Văn A"
+ *               customer_phone:
+ *                 type: string
+ *                 description: Số điện thoại khách hàng
+ *                 example: "0123456789"
+ *               customer_email:
+ *                 type: string
+ *                 description: Email khách hàng (tùy chọn)
+ *                 example: "nguyenvana@email.com"
+ *               customer_cmnd:
+ *                 type: string
+ *                 description: CMND/CCCD khách hàng (tùy chọn)
+ *                 example: "123456789"
+ *               model:
+ *                 type: string
+ *                 description: Model xe
+ *                 example: "Honda Lead"
+ *               color:
+ *                 type: string
+ *                 description: Màu xe
+ *                 example: "Đen"
+ *               start_date:
+ *                 type: string
+ *                 format: date
+ *                 description: Ngày bắt đầu thuê
+ *                 example: "2024-01-15"
+ *               end_date:
+ *                 type: string
+ *                 format: date
+ *                 description: Ngày kết thúc thuê
+ *                 example: "2024-01-16"
+ *               pickup_time:
+ *                 type: string
+ *                 description: Giờ nhận xe
+ *                 example: "08:00"
+ *               return_time:
+ *                 type: string
+ *                 description: Giờ trả xe
+ *                 example: "18:00"
+ *               special_requests:
+ *                 type: string
+ *                 description: Yêu cầu đặc biệt
+ *                 example: "Cần mũ bảo hiểm size L"
+ *               notes:
+ *                 type: string
+ *                 description: Ghi chú
+ *                 example: "Khách hàng lần đầu thuê xe điện"
+ *     responses:
+ *       201:
+ *         description: Tạo booking walk-in thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Tạo booking walk-in thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     booking:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                           example: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *                         code:
+ *                           type: string
+ *                           example: "BK123456"
+ *                         customer:
+ *                           type: object
+ *                           properties:
+ *                             name:
+ *                               type: string
+ *                               example: "Nguyễn Văn A"
+ *                             phone:
+ *                               type: string
+ *                               example: "0123456789"
+ *                             email:
+ *                               type: string
+ *                               example: "nguyenvana@email.com"
+ *                         vehicle:
+ *                           type: object
+ *                           properties:
+ *                             name:
+ *                               type: string
+ *                               example: "Honda Lead 2024"
+ *                             model:
+ *                               type: string
+ *                               example: "Honda Lead"
+ *                             color:
+ *                               type: string
+ *                               example: "Đen"
+ *                             license_plate:
+ *                               type: string
+ *                               example: "51A-12345"
+ *                         station:
+ *                           type: string
+ *                           example: "Trạm EV Quận 1"
+ *                         start_date:
+ *                           type: string
+ *                           format: date-time
+ *                           example: "2024-01-15T00:00:00.000Z"
+ *                         end_date:
+ *                           type: string
+ *                           format: date-time
+ *                           example: "2024-01-16T00:00:00.000Z"
+ *                         total_price:
+ *                           type: number
+ *                           example: 200000
+ *                         deposit_amount:
+ *                           type: number
+ *                           example: 100000
+ *                         qr_code:
+ *                           type: string
+ *                           example: "BK123456"
+ *                         qr_expires_at:
+ *                           type: string
+ *                           format: date-time
+ *                           example: "2024-01-16T00:00:00.000Z"
+ *                     next_steps:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["Upload KYC cho khách hàng", "Xác thực KYC", "Confirm booking để tạo rental"]
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Thiếu thông tin khách hàng bắt buộc (tên, số điện thoại)"
+ *       403:
+ *         description: Không có quyền truy cập - Chỉ Staff mới được tạo walk-in booking
+ *       500:
+ *         description: Lỗi server
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Lỗi server khi tạo booking walk-in"
+ *                 error:
+ *                   type: string
+ *                   example: "Database connection failed"
+ */
+
+/**
+ * @swagger
  * /api/bookings:
  *   post:
  *     summary: Tạo đặt xe mới

@@ -6,7 +6,7 @@ const Payment = require('../models/Payment');
 const Rental = require('../models/Rental');
 const Contract = require('../models/Contract');
 const ContractTemplate = require('../models/ContractTemplate');
-const { sendEmail, getBookingConfirmationTemplate, getBookingCancellationTemplate } = require('../config/nodemailer');
+const { sendEmail, getBookingConfirmationTemplate, getBookingCancellationTemplate, getWalkInCustomerEmailTemplate } = require('../config/nodemailer');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 const DepositService = require('../services/DepositService');
@@ -239,16 +239,16 @@ const createBooking = async (req, res) => {
     // Kiểm tra trùng lịch đặt xe (cả online và walk_in)
     const existingBooking = await Booking.findOne({
       vehicle_id: { $in: vehicleIds },
-      status: { $ne: 'cancelled' },
+      status: { $in: ['confirmed', 'in_progress', 'completed'] }, // Chỉ kiểm tra booking đã confirmed
       $or: [
         // Trường hợp 1: Booking mới nằm trong khoảng thời gian booking cũ
         {
           start_date: { $lte: startDate },
-          end_date: { $gte: startDate }
+          end_date: { $gt: startDate }
         },
         // Trường hợp 2: Booking cũ nằm trong khoảng thời gian booking mới
         {
-          start_date: { $lte: endDate },
+          start_date: { $lt: endDate },
           end_date: { $gte: endDate }
         },
         // Trường hợp 3: Booking mới bao trùm booking cũ
@@ -339,6 +339,32 @@ const createBooking = async (req, res) => {
       // Không throw error, chỉ log
     }
     
+    // Gửi email xác nhận booking cho walk-in customer
+    try {
+      const emailHtml = getBookingConfirmationTemplate(customer_name, {
+        bookingId: booking._id.toString(),
+        bookingCode: booking.code,
+        carModel: vehicle.name,
+        pickupTime: `${pickup_time} - ${startDate.toLocaleDateString('vi-VN')}`,
+        pickupLocation: station.name,
+        returnTime: `${return_time} - ${endDate.toLocaleDateString('vi-VN')}`,
+        totalCost: totalPrice.toLocaleString('vi-VN') + ' VND',
+        qrCode: booking.qr_code,
+        qrCodeImage: qrCodeData.imageUrl,
+        qrExpiresAt: booking.qr_expires_at.toLocaleString('vi-VN')
+      });
+      
+      await sendEmail({
+        to: customer_email || customer_phone + '@walkin.evrental.com',
+        subject: 'Xác nhận đặt xe điện - EV Rental (Walk-in)',
+        html: emailHtml
+      });
+      console.log(`✅ Email xác nhận booking đã được gửi cho walk-in customer: ${customer_email || customer_phone}`);
+    } catch (emailError) {
+      console.error('❌ Lỗi khi gửi email xác nhận booking:', emailError.message);
+      // Không throw error, chỉ log
+    }
+
     // Populate booking data for response
     const populatedBooking = await Booking.findById(booking._id)
       .populate('user_id', 'fullname email phone')
@@ -1034,8 +1060,309 @@ const scanQRCode = async (req, res) => {
 };
 
 
+// Create walk-in booking (Staff only)
+const createWalkInBooking = async (req, res) => {
+  try {
+    // Chỉ Staff mới được tạo walk-in booking
+    if (req.user.role !== 'Station Staff' && req.user.role !== 'Admin') {
+      return res.status(403).json({ 
+        message: 'Chỉ nhân viên mới có thể tạo booking walk-in' 
+      });
+    }
+
+    const {
+      // Thông tin khách hàng
+      customer_name,
+      customer_phone,
+      customer_email,
+      customer_cmnd,
+      
+      // Thông tin đặt xe
+      model,
+      color,
+      start_date,
+      end_date,
+      pickup_time,
+      return_time,
+      special_requests,
+      notes
+    } = req.body;
+
+    // Validate thông tin khách hàng
+    if (!customer_name || !customer_phone) {
+      return res.status(400).json({ 
+        message: 'Thiếu thông tin khách hàng bắt buộc (tên, số điện thoại)' 
+      });
+    }
+
+    // Validate thông tin đặt xe
+    if (!model || !color || !start_date || !end_date || !pickup_time || !return_time) {
+      return res.status(400).json({ 
+        message: 'Thiếu thông tin đặt xe bắt buộc' 
+      });
+    }
+
+    // Tự động lấy station_id từ Staff đang đăng nhập
+    const station_id = req.user.stationId;
+    
+    if (!station_id) {
+      return res.status(400).json({ 
+        message: 'Staff chưa được gán trạm. Vui lòng liên hệ Admin để được gán trạm.' 
+      });
+    }
+
+    // Tìm xe available TRƯỚC
+    const sameModelVehicles = await Vehicle.find({
+      model,
+      color,
+      station_id,
+      status: 'available',
+      is_active: true
+    });
+    
+    console.log(`🔍 Tìm xe ${model} màu ${color} tại trạm ${station_id}:`, sameModelVehicles.length, 'xe');
+    
+    if (sameModelVehicles.length === 0) {
+      return res.status(400).json({ 
+        message: `Không có xe ${model} màu ${color} available tại trạm này` 
+      });
+    }
+
+    // Kiểm tra trùng lịch TRƯỚC
+    const startDate = new Date(start_date);
+    const endDate = new Date(end_date);
+    const vehicleIds = sameModelVehicles.map(v => v._id);
+    
+    // Validate ngày tháng
+    if (startDate >= endDate) {
+      return res.status(400).json({ 
+        message: 'Ngày bắt đầu phải nhỏ hơn ngày kết thúc',
+        details: {
+          start_date: startDate.toISOString(),
+          end_date: endDate.toISOString()
+        }
+      });
+    }
+    
+    console.log(`📅 Kiểm tra trùng lịch từ ${startDate.toISOString()} đến ${endDate.toISOString()}`);
+    console.log(`🚗 Vehicle IDs:`, vehicleIds);
+    
+    const existingBooking = await Booking.findOne({
+      vehicle_id: { $in: vehicleIds },
+      status: { $in: ['confirmed', 'in_progress', 'completed'] }, // Chỉ kiểm tra booking đã confirmed
+      $or: [
+        {
+          start_date: { $lte: startDate },
+          end_date: { $gt: startDate }
+        },
+        {
+          start_date: { $lt: endDate },
+          end_date: { $gte: endDate }
+        },
+        {
+          start_date: { $gte: startDate },
+          end_date: { $lte: endDate }
+        }
+      ]
+    });
+
+    if (existingBooking) {
+      console.log(`❌ Tìm thấy booking trùng lịch:`, {
+        booking_id: existingBooking._id,
+        booking_code: existingBooking.code,
+        vehicle_id: existingBooking.vehicle_id,
+        start_date: existingBooking.start_date,
+        end_date: existingBooking.end_date,
+        status: existingBooking.status
+      });
+      
+      return res.status(400).json({ 
+        message: `Xe đã được đặt trong khoảng thời gian này`,
+        details: {
+          existing_booking: {
+            code: existingBooking.code,
+            start_date: existingBooking.start_date,
+            end_date: existingBooking.end_date,
+            status: existingBooking.status
+          }
+        }
+      });
+    }
+    
+    console.log(`✅ Không có booking trùng lịch, tiếp tục tạo booking...`);
+
+    // Tìm hoặc tạo user cho walk-in customer SAU KHI đã validate
+    let customer = await User.findOne({ 
+      $or: [
+        { phone: customer_phone },
+        { email: customer_email }
+      ]
+    });
+
+    if (!customer) {
+      // Tạo password random
+      const crypto = require('crypto');
+      const randomPassword = crypto.randomBytes(8).toString('hex');
+      const bcrypt = require('bcrypt');
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      // Tạo user mới
+      customer = await User.create({
+        fullname: customer_name,
+        phone: customer_phone,
+        email: customer_email || '',
+        passwordHash: hashedPassword,
+        role: 'EV Renter',
+        status: 'active',
+        kycStatus: 'not_submitted'
+      });
+
+      // Gửi email thông tin đăng nhập
+      try {
+        const emailHtml = getWalkInCustomerEmailTemplate(customer_name, customer_email || customer_phone + '@walkin.evrental.com', randomPassword);
+        await sendEmail({
+          to: customer_email || customer_phone + '@walkin.evrental.com',
+          subject: 'Tài khoản EV Rental - Thông tin đăng nhập',
+          html: emailHtml
+        });
+        console.log(`Email đã gửi thành công cho walk-in customer: ${customer_email || customer_phone}`);
+      } catch (emailError) {
+        console.error('Lỗi gửi email:', emailError);
+        // Không throw error, chỉ log để không ảnh hưởng đến việc tạo booking
+      }
+    }
+
+    // Chọn xe đầu tiên available
+    const vehicle = sameModelVehicles[0];
+    
+    // Calculate pricing
+    const pricePerDay = vehicle.price_per_day;
+    const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    const totalPrice = calculateTotalPrice(pricePerDay, totalDays);
+    const depositAmount = DepositService.calculateDeposit(pricePerDay, totalDays);
+    
+    // Generate booking code and QR code
+    const code = await generateBookingCode();
+    const qrCodeData = await generateQRCode(code);
+    const qrExpiresAt = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
+    
+    // Cập nhật trạng thái xe
+    const updatedVehicle = await Vehicle.findOneAndUpdate(
+      { _id: vehicle._id, status: 'available' },
+      { status: 'reserved' },
+      { new: true }
+    );
+    
+    if (!updatedVehicle || updatedVehicle.status !== 'reserved') {
+      return res.status(400).json({ 
+        message: 'Xe đã được đặt bởi người khác' 
+      });
+    }
+    
+    // Tạo booking
+    const booking = await Booking.create({
+      code,
+      user_id: customer._id,
+      vehicle_id: vehicle._id,
+      station_id,
+      start_date: startDate,
+      end_date: endDate,
+      pickup_time,
+      return_time,
+      booking_type: 'walk_in',
+      price_per_day: pricePerDay,
+      total_days: totalDays,
+      total_price: totalPrice,
+      deposit_amount: depositAmount,
+      special_requests: special_requests || '',
+      notes: notes || '',
+      qr_code: qrCodeData.text,
+      qr_expires_at: qrExpiresAt,
+      status: 'pending',
+      created_by: req.user._id
+    });
+
+    // Gửi email xác nhận booking cho walk-in customer
+    try {
+      const station = await Station.findById(station_id);
+      const emailHtml = getBookingConfirmationTemplate(customer_name, {
+        bookingId: booking._id.toString(),
+        bookingCode: booking.code,
+        carModel: vehicle.name,
+        pickupTime: `${pickup_time} - ${startDate.toLocaleDateString('vi-VN')}`,
+        pickupLocation: station.name,
+        returnTime: `${return_time} - ${endDate.toLocaleDateString('vi-VN')}`,
+        totalCost: totalPrice.toLocaleString('vi-VN') + ' VND',
+        qrCode: booking.qr_code,
+        qrCodeImage: qrCodeData.imageUrl,
+        qrExpiresAt: booking.qr_expires_at.toLocaleString('vi-VN')
+      });
+      
+      await sendEmail({
+        to: customer_email || customer_phone + '@walkin.evrental.com',
+        subject: 'Xác nhận đặt xe điện - EV Rental (Walk-in)',
+        html: emailHtml
+      });
+      console.log(`✅ Email xác nhận booking đã được gửi cho walk-in customer: ${customer_email || customer_phone}`);
+    } catch (emailError) {
+      console.error('❌ Lỗi khi gửi email xác nhận booking:', emailError.message);
+      // Không throw error, chỉ log
+    }
+
+    // Populate thông tin
+    await booking.populate([
+      { path: 'user_id', select: 'fullname email phone' },
+      { path: 'vehicle_id', select: 'name model color license_plate' },
+      { path: 'station_id', select: 'name address' }
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: 'Tạo booking walk-in thành công',
+      data: {
+        booking: {
+          id: booking._id,
+          code: booking.code,
+          customer: {
+            name: customer.fullname,
+            phone: customer.phone,
+            email: customer.email
+          },
+          vehicle: {
+            name: vehicle.name,
+            model: vehicle.model,
+            color: vehicle.color,
+            license_plate: vehicle.license_plate
+          },
+          station: booking.station_id.name,
+          start_date: booking.start_date,
+          end_date: booking.end_date,
+          total_price: booking.total_price,
+          deposit_amount: booking.deposit_amount,
+          qr_code: booking.qr_code,
+          qr_expires_at: booking.qr_expires_at
+        },
+        next_steps: [
+          'Upload KYC cho khách hàng',
+          'Xác thực KYC',
+          'Confirm booking để tạo rental'
+        ]
+      }
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi tạo booking walk-in:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Lỗi server khi tạo booking walk-in',
+      error: error.message 
+    });
+  }
+};
+
 module.exports = {
   createBooking,
+  createWalkInBooking,
   getUserBookings,
   getBookingDetails,
   confirmBooking,

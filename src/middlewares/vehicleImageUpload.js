@@ -7,7 +7,7 @@ const vehicleImageStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'ev-rental/vehicles',
-    allowed_formats: ['jpg', 'jpeg', 'png'],
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
     transformation: [{ width: 1200, height: 1200, crop: 'limit' }]
   }
 });
@@ -17,7 +17,7 @@ const returnImageStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'ev-rental/return-photos',
-    allowed_formats: ['jpg', 'jpeg', 'png'],
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
     transformation: [{ width: 1200, height: 1200, crop: 'limit' }]
   }
 });

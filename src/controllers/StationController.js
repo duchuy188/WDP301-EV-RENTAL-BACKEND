@@ -184,20 +184,24 @@ exports.getStationDetail = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy station' });
     }
     
-    // Lấy danh sách xe tại station
-    const { type, status, sort = 'name' } = req.query;
-    
-    const vehicleQuery = { station_id: id, is_active: true };
-    if (type) vehicleQuery.type = type;
-    if (status) vehicleQuery.status = status;
-    
-    let vehicleSort = {};
-    if (sort === 'name') vehicleSort = { name: 1 };
-    else if (sort === 'price') vehicleSort = { price_per_day: 1 };
-    
-    const vehicles = await Vehicle.find(vehicleQuery)
-      .sort(vehicleSort)
-      .select('name model type price_per_day status current_battery main_image');
+    // ✅ SỬA: Chỉ lấy thống kê xe, không lấy danh sách xe
+    const vehicleStats = await Vehicle.aggregate([
+      { $match: { station_id: id, is_active: true } },
+      { $group: {
+          _id: null,
+          total_vehicles: { $sum: 1 },
+          available_vehicles: { 
+            $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] }
+          },
+          rented_vehicles: { 
+            $sum: { $cond: [{ $eq: ['$status', 'rented'] }, 1, 0] }
+          },
+          maintenance_vehicles: { 
+            $sum: { $cond: [{ $eq: ['$status', 'maintenance'] }, 1, 0] }
+          }
+        }
+      }
+    ]);
     
     // Lấy số lượng nhân viên
     const staffCount = await User.countDocuments({ 
@@ -209,7 +213,13 @@ exports.getStationDetail = async (req, res) => {
     return res.status(200).json({
       station: {
         ...station._doc,
-        vehicles,
+        // Chỉ hiển thị thống kê xe, không hiển thị danh sách xe
+        vehicle_stats: vehicleStats[0] || {
+          total_vehicles: 0,
+          available_vehicles: 0,
+          rented_vehicles: 0,
+          maintenance_vehicles: 0
+        },
         staff_count: staffCount,
         createdAt: formatVietnamTime(station.createdAt, 'DD/MM/YYYY HH:mm:ss'),
         updatedAt: formatVietnamTime(station.updatedAt, 'DD/MM/YYYY HH:mm:ss')

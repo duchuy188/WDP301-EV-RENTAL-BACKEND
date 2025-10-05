@@ -32,4 +32,32 @@ router.get('/revenue/station-detail/:stationId',
     AnalyticsController.getStationRevenueDetail
 );
 
+// Thống kê giờ cao điểm/thấp điểm
+router.get('/peak-analysis',
+    authenticateToken,
+    requireRole(['Admin']),
+    AnalyticsController.getPeakAnalysis
+);
+
+// Thống kê bảo trì
+router.get('/maintenance',
+    authenticateToken,
+    requireRole(['Admin']),
+    AnalyticsController.getMaintenanceAnalytics
+);
+
+// Thống kê hiệu suất nhân viên
+router.get('/staff-performance',
+    authenticateToken,
+    requireRole(['Admin']),
+    AnalyticsController.getStaffPerformance
+);
+
+// Chi tiết hiệu suất nhân viên
+router.get('/staff-performance/:staffId',
+    authenticateToken,
+    requireRole(['Admin']),
+    AnalyticsController.getStaffPerformanceDetail
+);
+
 module.exports = router;
