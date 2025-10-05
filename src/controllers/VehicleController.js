@@ -112,7 +112,7 @@ exports.getVehicleDetail = async (req, res) => {
 // Tạo xe hàng loạt và xuất Excel template
 exports.bulkCreateVehicles = async (req, res) => {
   try {
-    // ✅ QUAN TRỌNG: Kiểm tra quyền hạn
+    //  QUAN TRỌNG: Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
@@ -901,6 +901,13 @@ exports.reportMaintenance = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy xe' });
     }
     
+    //  CHỈ CHO PHÉP BÁO CÁO XE AVAILABLE
+    if (vehicle.status !== 'available') {
+      return res.status(400).json({ 
+        message: `Chỉ có thể báo cáo bảo trì xe đang available. Xe hiện tại đang ${vehicle.status}` 
+      });
+    }
+    
     // Tạo mã bảo trì
     const maintenanceCode = `MT${Date.now().toString().substring(6)}`;
     
@@ -999,6 +1006,8 @@ exports.getPublicVehicles = async (req, res) => {
           available_quantity: { $sum: 1 },
           // Một ảnh đại diện
           sample_image: { $first: { $arrayElemAt: ['$images', 0] } },
+          // ✅ THÊM: Danh sách ID xe cụ thể
+          vehicle_ids: { $push: '$_id' },
           // Danh sách trạm có xe available
           stations: {
             $addToSet: {
@@ -1032,6 +1041,10 @@ exports.getPublicVehicles = async (req, res) => {
           deposit_percentage: 1,
           available_quantity: 1,
           sample_image: 1,
+          // ✅ THÊM: ID xe đầu tiên để xem chi tiết
+          sample_vehicle_id: { $arrayElemAt: ['$vehicle_ids', 0] },
+          // ✅ THÊM: Tất cả ID xe để booking
+          all_vehicle_ids: '$vehicle_ids',
           stations: {
             $map: {
               input: '$station_details',
@@ -1123,14 +1136,36 @@ exports.getPublicVehicleDetail = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy xe hoặc xe không khả dụng' });
     }
     
-    // Lấy số lượng xe cùng model/màu tại trạm
-    const sameModelCount = await Vehicle.countDocuments({
-      model: vehicle.model,
-      color: vehicle.color,
-      status: 'available',
-      station_id: vehicle.station_id,
-      _id: { $ne: vehicle._id }
-    });
+    
+    const allColors = await Vehicle.aggregate([
+      {
+        $match: {
+          model: vehicle.model,
+          status: 'available',
+          is_active: true,
+          station_id: { $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: '$color',
+          count: { $sum: 1 },
+          sample_vehicle_id: { $first: '$_id' },
+          price_per_day: { $first: '$price_per_day' },
+          deposit_percentage: { $first: '$deposit_percentage' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          color: '$_id',
+          available_quantity: '$count',
+          sample_vehicle_id: 1,
+          price_per_day: 1,
+          deposit_percentage: 1
+        }
+      }
+    ]);
     
     // Không trả về thông tin nội bộ
     const publicVehicle = {
@@ -1138,7 +1173,6 @@ exports.getPublicVehicleDetail = async (req, res) => {
       brand: vehicle.brand,
       model: vehicle.model,
       year: vehicle.year,
-      color: vehicle.color,
       type: vehicle.type,
       battery_capacity: vehicle.battery_capacity,
       max_range: vehicle.max_range,
@@ -1146,7 +1180,8 @@ exports.getPublicVehicleDetail = async (req, res) => {
       deposit_percentage: vehicle.deposit_percentage,
       images: vehicle.images,
       station: vehicle.station_id,
-      similar_vehicles_count: sameModelCount,
+    
+      available_colors: allColors,
       createdAt: formatVietnamTime(vehicle.createdAt),
       updatedAt: formatVietnamTime(vehicle.updatedAt)
     };
