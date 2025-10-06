@@ -1018,3 +1018,209 @@
  *       500:
  *         description: Lỗi server
  */
+
+/**
+ * @swagger
+ * /api/kyc/completed:
+ *   get:
+ *     summary: Lấy danh sách KYC đã completed (approved) với full thông tin
+ *     description: Staff/Admin có thể xem danh sách KYC đã được duyệt với đầy đủ thông tin CMND/CCCD và GPLX
+ *     tags: [KYC]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Số trang
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Số lượng KYC per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Tìm kiếm theo tên, CMND, GPLX
+ *         example: "Nguyễn Văn A"
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [approvedAt, lastUpdatedAt, identityName, identityCard, licenseNumber]
+ *           default: approvedAt
+ *         description: Sort theo field nào
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Thứ tự sắp xếp
+ *     responses:
+ *       200:
+ *         description: Danh sách KYC đã completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Lấy danh sách KYC đã completed thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     kycs:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           userId:
+ *                             type: object
+ *                             properties:
+ *                               _id:
+ *                                 type: string
+ *                               email:
+ *                                 type: string
+ *                               fullname:
+ *                                 type: string
+ *                               phone:
+ *                                 type: string
+ *                           identityCard:
+ *                             type: string
+ *                             example: "123456789"
+ *                           identityName:
+ *                             type: string
+ *                             example: "Nguyễn Văn A"
+ *                           identityDob:
+ *                             type: string
+ *                             example: "01/01/1990"
+ *                           identityAddress:
+ *                             type: string
+ *                             example: "123 Đường ABC, Quận 1, TP.HCM"
+ *                           identitySex:
+ *                             type: string
+ *                             example: "Nam"
+ *                           identityNationality:
+ *                             type: string
+ *                             example: "Việt Nam"
+ *                           identityIssueDate:
+ *                             type: string
+ *                             example: "01/01/2020"
+ *                           identityIssueLoc:
+ *                             type: string
+ *                             example: "Công an TP.HCM"
+ *                           identityFeatures:
+ *                             type: string
+ *                             example: "Nốt ruồi nhỏ bên trái"
+ *                           identityReligion:
+ *                             type: string
+ *                             example: "Không"
+ *                           identityEthnicity:
+ *                             type: string
+ *                             example: "Kinh"
+ *                           identityCardFrontImage:
+ *                             type: string
+ *                             example: "https://cloudinary.com/identity_front.jpg"
+ *                           identityCardBackImage:
+ *                             type: string
+ *                             example: "https://cloudinary.com/identity_back.jpg"
+ *                           licenseNumber:
+ *                             type: string
+ *                             example: "123456789"
+ *                           licenseName:
+ *                             type: string
+ *                             example: "Nguyễn Văn A"
+ *                           licenseDob:
+ *                             type: string
+ *                             example: "01/01/1990"
+ *                           licenseClass:
+ *                             type: string
+ *                             example: "A1"
+ *                           licenseExpiry:
+ *                             type: string
+ *                             format: date-time
+ *                             example: "2025-01-01T00:00:00.000Z"
+ *                           licenseExpiryText:
+ *                             type: string
+ *                             example: "01/01/2025"
+ *                           licenseImage:
+ *                             type: string
+ *                             example: "https://cloudinary.com/license_front.jpg"
+ *                           licenseBackImage:
+ *                             type: string
+ *                             example: "https://cloudinary.com/license_back.jpg"
+ *                           status:
+ *                             type: string
+ *                             example: "approved"
+ *                           validationScore:
+ *                             type: number
+ *                             example: 95
+ *                           nameComparison:
+ *                             type: object
+ *                             properties:
+ *                               match:
+ *                                 type: boolean
+ *                               score:
+ *                                 type: number
+ *                               message:
+ *                                 type: string
+ *                           validationNotes:
+ *                             type: string
+ *                           approvedAt:
+ *                             type: string
+ *                             format: date-time
+ *                             example: "2024-01-01T10:00:00.000Z"
+ *                           approvedBy:
+ *                             type: object
+ *                             properties:
+ *                               _id:
+ *                                 type: string
+ *                               fullname:
+ *                                 type: string
+ *                               email:
+ *                                 type: string
+ *                           lastUpdatedAt:
+ *                             type: string
+ *                             format: date-time
+ *                             example: "2024-01-01T10:00:00.000Z"
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage:
+ *                           type: integer
+ *                         totalPages:
+ *                           type: integer
+ *                         totalItems:
+ *                           type: integer
+ *                         itemsPerPage:
+ *                           type: integer
+ *                     stats:
+ *                       type: object
+ *                       properties:
+ *                         approved:
+ *                           type: integer
+ *                         rejected:
+ *                           type: integer
+ *                         pending:
+ *                           type: integer
+ *                         total:
+ *                           type: integer
+ *       403:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi server
+ */
