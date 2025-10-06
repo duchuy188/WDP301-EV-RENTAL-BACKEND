@@ -555,6 +555,13 @@ const confirmBooking = async (req, res) => {
       });
     }
     
+    // Xử lý ảnh đã upload
+    let uploadedImages = [];
+    if (req.files && req.files.length > 0) {
+      uploadedImages = req.files.map(file => file.path); 
+   
+    }
+    
     let rental = null;
     let payment = null;
     let contract = null;
@@ -578,7 +585,7 @@ const confirmBooking = async (req, res) => {
           interior_condition: vehicle_condition_before?.interior_condition || 'good',
           notes: vehicle_condition_before?.notes || staff_notes || ''
         },
-        images_before: [],
+        images_before: uploadedImages, // Sử dụng ảnh đã upload
         staff_notes: staff_notes || '',
         status: 'active',
         created_by: staff_id
@@ -630,7 +637,10 @@ const confirmBooking = async (req, res) => {
         const station = await Station.findById(booking.station_id._id);
         await station.syncVehicleCount();
       } catch (stationError) {
-        console.warn('Warning: Station sync failed, but booking confirmed:', stationError.message);
+        // Chỉ log trong development, không log warning
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Station sync failed:', stationError.message);
+        }
         // Không throw error, chỉ warning
       }
       
@@ -670,7 +680,7 @@ const confirmBooking = async (req, res) => {
     
     const formattedRental = {
       ...rental.toObject(),
-      images_before: [], 
+      images_before: uploadedImages, // Trả về ảnh đã upload
       actual_start_time: formatVietnamTime(rental.actual_start_time),
       createdAt: formatVietnamTime(rental.createdAt),
       updatedAt: formatVietnamTime(rental.updatedAt)
@@ -711,8 +721,8 @@ const cancelBooking = async (req, res) => {
       });
     }
     
-    // Check permission
-    if (booking.user_id._id.toString() !== user_id && req.user.role === 'EV Renter') {
+    // Check permission - cho phép Staff cancel booking của user
+    if (booking.user_id._id.toString() !== user_id && req.user.role !== 'Station Staff') {
       return res.status(403).json({ 
         message: 'Không có quyền hủy booking này' 
       });

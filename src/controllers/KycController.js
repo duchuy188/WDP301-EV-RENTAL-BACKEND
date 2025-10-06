@@ -608,7 +608,7 @@ exports.getPendingKycRequests = async (req, res) => {
       status: 'pending',
       identityCard: { $ne: '' } // Đảm bảo đã có CMND/CCCD
     }).populate('userId', '_id email fullname').select(
-      'userId identityCard identityCardFrontImage identityCardBackImage licenseNumber licenseImage licenseBackImage lastUpdatedAt identityName identityDob identityAddress licenseName licenseDob licenseClass validationScore nameComparison validationNotes'
+      'userId identityCard identityName identityDob identityAddress identitySex identityNationality identityIssueDate identityIssueLoc identityFeatures identityReligion identityEthnicity identityCardFrontImage identityCardBackImage licenseNumber licenseName licenseDob licenseNation licenseAddress licensePlaceIssue licenseIssueDate licenseClass licenseClassList licenseExpiry licenseExpiryText licenseImage licenseBackImage lastUpdatedAt validationScore nameComparison validationNotes'
     );
     
     return res.status(200).json({
@@ -768,11 +768,17 @@ exports.staffUploadIdentityCardFront = async (req, res) => {
       return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt trước CMND/CCCD' });
     }
     
-    // Cập nhật thông tin KYC
+    // Cập nhật thông tin KYC - Staff upload Identity Card Front
     kyc.identityCardType = idData.type || '';
+    kyc.identityCardTypeNew = idData.type_new || '';
     kyc.identityName = idData.name || '';
     kyc.identityDob = idData.dob || '';
+    kyc.identityHome = idData.home || '';
     kyc.identityAddress = idData.address || '';
+    kyc.identityAddressEntities = idData.address_entities || {};
+    kyc.identitySex = idData.sex || '';
+    kyc.identityNationality = idData.nationality || '';
+    kyc.identityDoe = idData.doe || '';
     kyc.identityCard = idData.id || '';
     
     // Kiểm tra duplicate
@@ -834,6 +840,8 @@ exports.staffUploadIdentityCardFront = async (req, res) => {
           name: kyc.identityName,
           dob: kyc.identityDob,
           address: kyc.identityAddress,
+          sex: kyc.identitySex,
+          nationality: kyc.identityNationality,
           frontImage: kyc.identityCardFrontImage
         },
         kycStatus: kyc.status,
@@ -890,6 +898,9 @@ exports.staffUploadIdentityCardBack = async (req, res) => {
     }
     
     // Cập nhật thông tin từ mặt sau
+    kyc.identityReligion = idData.religion || '';
+    kyc.identityEthnicity = idData.ethnicity || '';
+    kyc.identityFeatures = idData.features || '';
     kyc.identityIssueDate = idData.issue_date || '';
     kyc.identityIssueLoc = idData.issue_loc || '';
     
@@ -940,6 +951,9 @@ exports.staffUploadIdentityCardBack = async (req, res) => {
         identityCard: {
           issueDate: kyc.identityIssueDate,
           issueLocation: kyc.identityIssueLoc,
+          features: kyc.identityFeatures,
+          religion: kyc.identityReligion,
+          ethnicity: kyc.identityEthnicity,
           backImage: kyc.identityCardBackImage
         },
         kycStatus: kyc.status,
@@ -995,9 +1009,13 @@ exports.staffUploadDriverLicenseFront = async (req, res) => {
     }
     
     // Cập nhật thông tin KYC
+    kyc.licenseTypeOcr = licenseData.type || '';
     kyc.licenseName = licenseData.name || '';
     kyc.licenseDob = licenseData.dob || '';
+    kyc.licenseNation = licenseData.nation || '';
     kyc.licenseAddress = licenseData.address || '';
+    kyc.licensePlaceIssue = licenseData.place_issue || '';
+    kyc.licenseIssueDate = licenseData.date || '';
     kyc.licenseClass = licenseData.class || '';
     kyc.licenseNumber = licenseData.id || '';
     
@@ -1017,6 +1035,44 @@ exports.staffUploadDriverLicenseFront = async (req, res) => {
       return res.status(400).json({ 
         message: licenseClassValidation.message 
       });
+    }
+    
+    // Xử lý ngày hết hạn
+    if (licenseData.doe) {
+      // Xử lý trường hợp "KHÔNG THỜI HẠN" hoặc các giá trị đặc biệt khác
+      if (licenseData.doe === "KHÔNG THỜI HẠN") {
+        kyc.licenseExpiry = null;
+        kyc.licenseExpiryText = "KHÔNG THỜI HẠN";
+      } else {
+        try {
+          const [day, month, year] = licenseData.doe.split('/');
+          // Kiểm tra xem có đủ 3 phần không
+          if (day && month && year && !isNaN(parseInt(day)) && !isNaN(parseInt(month)) && !isNaN(parseInt(year))) {
+            // Đảm bảo năm có 4 chữ số
+            const fullYear = year.length === 2 ? `20${year}` : year;
+            // Tạo ngày với định dạng ISO
+            kyc.licenseExpiry = new Date(`${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+            
+            // Kiểm tra xem ngày có hợp lệ không
+            if (isNaN(kyc.licenseExpiry.getTime())) {
+              console.error('Ngày không hợp lệ:', licenseData.doe);
+              kyc.licenseExpiry = null;
+              kyc.licenseExpiryText = licenseData.doe;
+            }
+          } else {
+            console.error('Định dạng ngày không hợp lệ:', licenseData.doe);
+            kyc.licenseExpiry = null;
+            kyc.licenseExpiryText = licenseData.doe;
+          }
+        } catch (e) {
+          console.error('Lỗi khi parse ngày hết hạn:', e);
+          kyc.licenseExpiry = null;
+          kyc.licenseExpiryText = licenseData.doe;
+        }
+      }
+    } else {
+      kyc.licenseExpiry = null;
+      kyc.licenseExpiryText = '';
     }
     
     // Upload ảnh lên Cloudinary
@@ -1067,7 +1123,14 @@ exports.staffUploadDriverLicenseFront = async (req, res) => {
         license: {
           id: kyc.licenseNumber,
           name: kyc.licenseName,
+          dob: kyc.licenseDob,
+          nationality: kyc.licenseNation,
+          address: kyc.licenseAddress,
+          placeIssue: kyc.licensePlaceIssue,
+          issueDate: kyc.licenseIssueDate,
           class: kyc.licenseClass,
+          expiry: kyc.licenseExpiry,
+          expiryText: kyc.licenseExpiryText,
           image: kyc.licenseImage
         },
         kycStatus: kyc.status,
@@ -1124,6 +1187,15 @@ exports.staffUploadDriverLicenseBack = async (req, res) => {
       return res.status(400).json({ message: 'Vui lòng tải lên ảnh mặt sau giấy phép lái xe' });
     }
     
+    // Cập nhật thông tin từ mặt sau nếu có
+    if (licenseData.class) {
+      if (Array.isArray(licenseData.class)) {
+        kyc.licenseClassList = licenseData.class;
+      } else {
+        kyc.licenseClassList = [licenseData.class];
+      }
+    }
+    
     // Upload ảnh lên Cloudinary
     const uploadResult = await uploadToCloudinary(req.file.buffer, 'licenses');
     kyc.licenseBackImage = uploadResult.url;
@@ -1169,6 +1241,7 @@ exports.staffUploadDriverLicenseBack = async (req, res) => {
           fullname: user.fullname
         },
         license: {
+          classList: kyc.licenseClassList,
           backImage: kyc.licenseBackImage
         },
         kycStatus: kyc.status,
@@ -1402,6 +1475,88 @@ exports.getUsersNotSubmittedKyc = async (req, res) => {
     
   } catch (error) {
     console.error('Lỗi khi lấy danh sách users không có KYC:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu',
+      error: process.env.NODE_ENV === 'production' ? 'Lỗi hệ thống' : error.message
+    });
+  }
+};
+
+// Lấy danh sách KYC đã completed (approved) với full thông tin
+exports.getCompletedKycRequests = async (req, res) => {
+  try {
+    // Kiểm tra quyền hạn
+    if (req.user.role !== 'Station Staff' && req.user.role !== 'Admin') {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Bạn không có quyền thực hiện hành động này' 
+      });
+    }
+    
+    const { 
+      page = 1, 
+      limit = 20, 
+      search = '',
+      sortBy = 'approvedAt',
+      sortOrder = 'desc'
+    } = req.query;
+    
+    const skip = (page - 1) * limit;
+    
+    // Query để tìm KYC đã approved
+    const query = { status: 'approved' };
+    
+    // Search theo tên, email, CMND, GPLX
+    if (search && search.trim()) {
+      query.$or = [
+        { identityName: { $regex: search.trim(), $options: 'i' } },
+        { identityCard: { $regex: search.trim(), $options: 'i' } },
+        { licenseNumber: { $regex: search.trim(), $options: 'i' } }
+      ];
+    }
+    
+    // Sort options
+    const sort = {};
+    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    
+    // Lấy KYC với pagination và sorting
+    const kycs = await KYC.find(query)
+      .populate('userId', '_id email fullname phone')
+      .populate('approvedBy', '_id fullname email')
+      .select('userId identityCard identityName identityDob identityAddress identitySex identityNationality identityIssueDate identityIssueLoc identityFeatures identityReligion identityEthnicity identityCardFrontImage identityCardBackImage licenseNumber licenseName licenseDob licenseClass licenseExpiry licenseExpiryText licenseImage licenseBackImage status validationScore nameComparison validationNotes approvedAt approvedBy lastUpdatedAt')
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    
+    const total = await KYC.countDocuments(query);
+    
+    
+    const stats = {
+      approved: await KYC.countDocuments({ status: 'approved' }),
+      rejected: await KYC.countDocuments({ status: 'rejected' }),
+      pending: await KYC.countDocuments({ status: 'pending' }),
+      total: await KYC.countDocuments({})
+    };
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách KYC đã completed thành công',
+      data: {
+        kycs,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: parseInt(limit)
+        },
+        stats
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi lấy danh sách KYC completed:', error);
     return res.status(500).json({
       success: false,
       message: 'Lỗi khi xử lý yêu cầu',

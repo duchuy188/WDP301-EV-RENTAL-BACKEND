@@ -84,4 +84,11 @@ router.post('/staff/license/back',
   KycController.staffUploadDriverLicenseBack
 );
 
+// Lấy danh sách KYC đã completed
+router.get('/completed', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']), 
+  KycController.getCompletedKycRequests
+);
+
 module.exports = router;
