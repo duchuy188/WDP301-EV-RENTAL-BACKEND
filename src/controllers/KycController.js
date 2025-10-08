@@ -607,7 +607,11 @@ exports.getPendingKycRequests = async (req, res) => {
     const pendingKycs = await KYC.find({ 
       status: 'pending',
       identityCard: { $ne: '' } // Đảm bảo đã có CMND/CCCD
-    }).populate('userId', '_id email fullname').select(
+    }).populate({
+      path: 'userId',
+      match: { role: 'EV Renter' }, // CHỈ LẤY EV RENTER
+      select: '_id email fullname'
+    }).select(
       'userId identityCard identityName identityDob identityAddress identitySex identityNationality identityIssueDate identityIssueLoc identityFeatures identityReligion identityEthnicity identityCardFrontImage identityCardBackImage licenseNumber licenseName licenseDob licenseNation licenseAddress licensePlaceIssue licenseIssueDate licenseClass licenseClassList licenseExpiry licenseExpiryText licenseImage licenseBackImage lastUpdatedAt validationScore nameComparison validationNotes'
     );
     
@@ -1359,7 +1363,9 @@ exports.getUsersNotSubmittedKyc = async (req, res) => {
     const skip = (page - 1) * limit;
     
     // Query để tìm users không có KYC hoặc KYC rejected/not_submitted
+    // CHỈ LẤY EV RENTER
     const query = {
+      role: 'EV Renter',
       $or: [
         { kycStatus: { $in: ['not_submitted', 'rejected'] } },
         { kycStatus: { $exists: false } },
@@ -1522,7 +1528,11 @@ exports.getCompletedKycRequests = async (req, res) => {
     
     // Lấy KYC với pagination và sorting
     const kycs = await KYC.find(query)
-      .populate('userId', '_id email fullname phone')
+      .populate({
+        path: 'userId',
+        match: { role: 'EV Renter' }, // CHỈ LẤY EV RENTER
+        select: '_id email fullname phone'
+      })
       .populate('approvedBy', '_id fullname email')
       .select('userId identityCard identityName identityDob identityAddress identitySex identityNationality identityIssueDate identityIssueLoc identityFeatures identityReligion identityEthnicity identityCardFrontImage identityCardBackImage licenseNumber licenseName licenseDob licenseClass licenseExpiry licenseExpiryText licenseImage licenseBackImage status validationScore nameComparison validationNotes approvedAt approvedBy lastUpdatedAt')
       .sort(sort)

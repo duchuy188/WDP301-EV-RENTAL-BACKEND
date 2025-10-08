@@ -536,28 +536,93 @@ exports.getRiskyCustomers = async (req, res) => {
       return res.status(403).json({ message: 'Chỉ Admin mới có quyền xem danh sách khách hàng rủi ro' });
     }
 
-    const { page = 1, limit = 10 } = req.query;
+    const { 
+      page = 1, 
+      limit = 10, 
+      minRiskScore, 
+      riskLevel,
+      search 
+    } = req.query;
 
-    // Tìm users có role EV Renter và có nhiều feedback tiêu cực
-    // Hoặc có nhiều lần vi phạm (có thể thêm logic phức tạp hơn)
-    const query = {
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Tạo query cho UserStats
+    const userStatsQuery = {};
+    if (minRiskScore !== undefined) {
+      userStatsQuery.risk_score = { $gte: parseInt(minRiskScore) };
+    }
+    if (riskLevel) {
+      userStatsQuery.risk_level = riskLevel;
+    }
+
+    // Tìm UserStats theo filter
+    const userStats = await UserStats.find(userStatsQuery)
+      .sort({ risk_score: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Lấy userIds từ UserStats
+    const userIds = userStats.map(stat => stat.user_id);
+
+    // Tạo query cho User
+    const userQuery = {
+      _id: { $in: userIds },
       role: 'EV Renter',
       status: 'active'
     };
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    // Thêm search nếu có
+    if (search) {
+      userQuery.$and = [
+        {
+          $or: [
+            { fullname: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } },
+            { phone: { $regex: search, $options: 'i' } }
+          ]
+        }
+      ];
+    }
 
-    const riskyCustomers = await User.find(query)
+    // Lấy thông tin users
+    const users = await User.find(userQuery)
       .select('-password -refreshTokens')
-      .populate('kycId', 'status rejection_reason')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+      .populate('kycId', 'status rejection_reason');
 
-    const total = await User.countDocuments(query);
+    // Kết hợp với risk info
+    const customersWithRisk = users.map(customer => {
+      const userStat = userStats.find(stat => 
+        stat.user_id.toString() === customer._id.toString()
+      );
+      return {
+        ...customer.toObject(),
+        riskInfo: userStat ? {
+          risk_score: userStat.risk_score,
+          risk_level: userStat.risk_level,
+          total_violations: userStat.total_violations,
+          last_violation_date: userStat.last_violation_date
+        } : {
+          risk_score: 0,
+          risk_level: 'low',
+          total_violations: 0,
+          last_violation_date: null
+        }
+      };
+    });
+
+    // Tính total với cùng filter
+    const totalQuery = {};
+    if (minRiskScore !== undefined) {
+      totalQuery.risk_score = { $gte: parseInt(minRiskScore) };
+    }
+    if (riskLevel) {
+      totalQuery.risk_level = riskLevel;
+    }
+
+    const total = await UserStats.countDocuments(totalQuery);
 
     res.status(200).json({
-      customers: riskyCustomers,
+      customers: customersWithRisk,
       pagination: {
         total,
         page: parseInt(page),
@@ -569,6 +634,167 @@ exports.getRiskyCustomers = async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi lấy danh sách khách hàng rủi ro:', error);
     res.status(500).json({ message: 'Lỗi server khi lấy danh sách khách hàng rủi ro' });
+  }
+};
+
+// Lấy chi tiết khách hàng rủi ro
+exports.getRiskyCustomerDetail = async (req, res) => {
+  try {
+    // Chỉ Admin mới có quyền
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Chỉ Admin mới có quyền xem chi tiết khách hàng rủi ro' });
+    }
+
+    const { id } = req.params;
+
+    const user = await User.findById(id)
+      .select('-password -refreshTokens')
+      .populate('kycId', 'status rejection_reason')
+      .populate('stationId', 'name code address');
+
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy user' });
+    }
+
+    // Lấy UserStats để xem risk score
+    const userStats = await UserStats.findOne({ user_id: id });
+
+    res.status(200).json({
+      user: user,
+      riskInfo: userStats ? {
+        risk_score: userStats.risk_score,
+        risk_level: userStats.risk_level,
+        total_violations: userStats.total_violations,
+        last_violation_date: userStats.last_violation_date,
+        violations: userStats.violations
+      } : null
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi lấy chi tiết khách hàng rủi ro:', error);
+    res.status(500).json({ message: 'Lỗi server khi lấy chi tiết khách hàng rủi ro' });
+  }
+};
+
+// Kiểm tra risk score của user
+exports.checkRiskScore = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Kiểm tra quyền
+    if (req.user.role !== 'Admin' && req.user.role !== 'Station Staff') {
+      return res.status(403).json({ message: 'Không có quyền kiểm tra risk score' });
+    }
+
+    const userStats = await UserStats.findOne({ user_id: id });
+
+    if (!userStats) {
+      return res.status(404).json({ message: 'Không tìm thấy thống kê user' });
+    }
+
+    res.status(200).json({
+      user_id: id,
+      risk_score: userStats.risk_score,
+      risk_level: userStats.risk_level,
+      total_violations: userStats.total_violations,
+      last_violation_date: userStats.last_violation_date,
+      violations: userStats.violations.filter(v => !v.resolved) // Chỉ lấy violations chưa resolved
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi kiểm tra risk score:', error);
+    res.status(500).json({ message: 'Lỗi server khi kiểm tra risk score' });
+  }
+};
+
+// Reset risk score cho user
+exports.resetRiskScore = async (req, res) => {
+  try {
+    // Chỉ Admin mới có quyền
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Chỉ Admin mới có quyền reset risk score' });
+    }
+
+    const { id } = req.params;
+
+    const userStats = await UserStats.findOne({ user_id: id });
+
+    if (!userStats) {
+      return res.status(404).json({ message: 'Không tìm thấy thống kê user' });
+    }
+
+    // Reset risk score
+    userStats.resetRiskScore();
+    await userStats.save();
+
+    res.status(200).json({
+      message: 'Đã reset risk score thành công',
+      user_id: id,
+      risk_score: userStats.risk_score,
+      risk_level: userStats.risk_level
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi reset risk score:', error);
+    res.status(500).json({ message: 'Lỗi server khi reset risk score' });
+  }
+};
+
+// Thêm vi phạm cho user
+exports.addViolation = async (req, res) => {
+  try {
+    // Kiểm tra quyền
+    if (req.user.role !== 'Admin' && req.user.role !== 'Station Staff') {
+      return res.status(403).json({ message: 'Không có quyền thêm vi phạm' });
+    }
+
+    const { id } = req.params;
+    const { type, description, severity, points } = req.body;
+
+    // Validate required fields
+    if (!type || !description) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp type và description' });
+    }
+
+    // Tìm hoặc tạo UserStats
+    let userStats = await UserStats.findOne({ user_id: id });
+    if (!userStats) {
+      userStats = new UserStats({
+        user_id: id,
+        total_rentals: 0,
+        total_distance: 0,
+        total_spent: 0,
+        total_days: 0,
+        peak_hours: [],
+        peak_days: [],
+        vehicle_preferences: [],
+        station_preferences: [],
+        monthly_stats: [],
+        last_rental_date: null
+      });
+    }
+
+    // Thêm violation
+    const violation = userStats.addViolation({
+      type,
+      description,
+      severity: severity || 'low',
+      points: points || 5
+    });
+
+    await userStats.save();
+
+    res.status(200).json({
+      message: 'Đã thêm vi phạm thành công',
+      user_id: id,
+      violation: violation,
+      risk_score: userStats.risk_score,
+      risk_level: userStats.risk_level
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi thêm vi phạm:', error);
+    res.status(500).json({ message: 'Lỗi server khi thêm vi phạm' });
   }
 };
 

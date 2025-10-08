@@ -134,6 +134,17 @@ const createContract = async (req, res) => {
       });
     }
 
+    // YÊU CẦU: Phải có ít nhất một payment (deposit hoặc rental_fee) đã completed trước khi tạo contract
+    const hasCompletedPayment = payments.some(p => 
+      ['deposit', 'rental_fee'].includes(p.payment_type) && p.status === 'completed'
+    );
+
+    if (!hasCompletedPayment) {
+      return res.status(400).json({
+        message: 'Vui lòng hoàn tất thanh toán (cọc hoặc phí thuê) trước khi tạo hợp đồng'
+      });
+    }
+
     // Tìm template (mặc định nếu không có)
     let template;
     if (template_id) {

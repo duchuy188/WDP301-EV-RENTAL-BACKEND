@@ -541,6 +541,23 @@ const confirmBooking = async (req, res) => {
         message: 'Booking không ở trạng thái pending' 
       });
     }
+
+    // Chặn confirm nếu quá 2 giờ sau thời điểm nhận xe
+    const now = new Date();
+    const PICKUP_GRACE_MS = 2 * 60 * 60 * 1000; // 2 giờ
+
+    if (now > new Date(booking.start_date.getTime() + PICKUP_GRACE_MS)) {
+      return res.status(400).json({
+        message: 'Booking đã quá thời gian nhận xe (quá 2 giờ). Không thể xác nhận.'
+      });
+    }
+
+    // Tùy chọn: chặn luôn nếu đã bị hủy bởi cron trước đó (phòng race condition)
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({
+        message: 'Booking đã bị hủy. Không thể xác nhận.'
+      });
+    }
     
     // Auto check-in when confirming booking
     if (!booking.qr_used_at) {
@@ -591,7 +608,7 @@ const confirmBooking = async (req, res) => {
         created_by: staff_id
       });
       
-      // 2. Tạo payment
+      // 2. Chuẩn bị thông tin payment (không tạo payment tự động)
       let paymentType, paymentAmount;
 
       if (booking.total_days === 1 && booking.deposit_amount === 0) {
@@ -604,17 +621,8 @@ const confirmBooking = async (req, res) => {
         paymentAmount = booking.deposit_amount;
       }
 
-      payment = await Payment.create({
-        code: 'PAY' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-        rental_id: rental._id,
-        user_id: booking.user_id._id,
-        booking_id: booking._id,
-        amount: paymentAmount,
-        payment_method: 'cash',
-        payment_type: paymentType,
-        status: 'pending',
-        processed_by: staff_id
-      });
+      // Không tạo payment tự động - để frontend tạo riêng
+      // payment = await Payment.create({...});
       
       
      
@@ -647,7 +655,7 @@ const confirmBooking = async (req, res) => {
     } catch (error) {
       // Rollback đầy đủ
       if (rental) await Rental.findByIdAndDelete(rental._id);
-      if (payment) await Payment.findByIdAndDelete(payment._id);
+      // Không cần cleanup payment vì không tạo tự động
       if (contract) await Contract.findByIdAndDelete(contract._id);
       
       if (vehicleUpdated) {
@@ -689,8 +697,15 @@ const confirmBooking = async (req, res) => {
     res.status(200).json({
       message: 'Xác nhận booking thành công',
       booking: formattedBooking,
-      payment,
-      rental: formattedRental
+      rental: formattedRental,
+      payment_info: {
+        type: paymentType,
+        amount: paymentAmount,
+        rental_id: rental._id,
+        booking_id: booking._id,
+        user_id: booking.user_id._id,
+        message: 'Sử dụng thông tin này để tạo payment riêng'
+      }
     });
     
   } catch (error) {

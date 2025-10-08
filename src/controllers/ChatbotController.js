@@ -50,11 +50,13 @@ class ChatbotController {
         });
       }
 
-      // Lưu response của bot
+      // Lưu response của bot với intent và sentiment
       await conversation.addMessage('assistant', response.message, {
         suggestions: response.suggestions,
         actions: response.actions,
-        context: response.context
+        context: response.context,
+        intent: response.intent,
+        sentiment: response.sentiment
       });
 
       // Trả về response
@@ -64,6 +66,8 @@ class ChatbotController {
         suggestions: response.suggestions,
         actions: response.actions,
         context: response.context,
+        intent: response.intent,
+        sentiment: response.sentiment,
         session_id: currentSessionId,
         conversation_id: conversation._id
       });
