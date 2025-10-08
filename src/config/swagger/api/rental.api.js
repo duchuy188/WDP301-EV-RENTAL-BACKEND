@@ -285,6 +285,9 @@
  *     summary: Checkout bình thường
  *     description: |
  *       Staff thực hiện checkout cho rental không có phí phát sinh
+ *
+ *       Điều kiện tiên quyết:
+ *       - ĐÃ KÝ HỢP ĐỒNG: Phải tồn tại Contract của rental ở trạng thái `signed`.
  *       
  *       **Logic xử lý:**
  *       - Thuê < 3 ngày: Status = 'completed' (đã thanh toán full khi confirm)
@@ -450,11 +453,17 @@
  *                           type: string
  *                           example: "Đã thanh toán full khi confirm"
  *       400:
- *         description: Dữ liệu không hợp lệ
+ *         description: Dữ liệu không hợp lệ hoặc chưa ký hợp đồng
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               unsigned_contract:
+ *                 summary: Chưa ký hợp đồng
+ *                 value:
+ *                   success: false
+ *                   message: 'Chưa ký hợp đồng. Không thể checkout.'
  *       403:
  *         description: Không có quyền truy cập
  *         content:
@@ -477,7 +486,11 @@
  * /api/rentals/{id}/checkout-fees:
  *   put:
  *     summary: Checkout có phí phát sinh
- *     description: Staff thực hiện checkout cho rental có phí phát sinh
+ *     description: |
+ *       Staff thực hiện checkout cho rental có phí phát sinh
+ *
+ *       Điều kiện tiên quyết:
+ *       - ĐÃ KÝ HỢP ĐỒNG: Phải tồn tại Contract của rental ở trạng thái `signed`.
  *     tags: [Rentals]
  *     security:
  *       - bearerAuth: []
@@ -665,7 +678,7 @@
  *                             type: string
  *                             description: "URL các ảnh mới upload"
  *       400:
- *         description: Dữ liệu không hợp lệ hoặc không có phí phát sinh
+ *         description: Dữ liệu không hợp lệ, không có phí phát sinh, hoặc chưa ký hợp đồng
  *         content:
  *           application/json:
  *             schema:
@@ -676,10 +689,20 @@
  *                   example: false
  *                 message:
  *                   type: string
- *                   example: "Endpoint này dành cho trường hợp có phí phát sinh"
  *                 suggestion:
  *                   type: string
- *                   example: "Sử dụng endpoint /checkout-normal thay vì"
+ *             examples:
+ *               no_additional_fee:
+ *                 summary: Không có phí phát sinh
+ *                 value:
+ *                   success: false
+ *                   message: 'Endpoint này dành cho trường hợp có phí phát sinh'
+ *                   suggestion: 'Sử dụng endpoint /checkout-normal nếu không có phí phát sinh'
+ *               unsigned_contract:
+ *                 summary: Chưa ký hợp đồng
+ *                 value:
+ *                   success: false
+ *                   message: 'Chưa ký hợp đồng. Không thể checkout.'
  *       403:
  *         description: Không có quyền truy cập
  *         content:

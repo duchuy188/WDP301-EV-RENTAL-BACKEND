@@ -3,6 +3,7 @@ const Vehicle = require('../models/Vehicle');
 const Station = require('../models/Station');
 const User = require('../models/User');
 const Payment = require('../models/Payment');
+const Contract = require('../models/Contract');
 const PaymentService = require('../services/PaymentService');
 const VNPayService = require('../services/VNPayService');
 const { uploadToCloudinary } = require('../config/cloudinary');
@@ -130,6 +131,34 @@ class RentalController {
         });
       }
 
+      // YÊU CẦU: Phải có contract đã ký trước khi checkout
+      const signedContractWithFees = await Contract.findOne({
+        rental_id: rental._id,
+        status: 'signed',
+        is_active: true
+      });
+
+      if (!signedContractWithFees) {
+        return res.status(400).json({
+          success: false,
+          message: 'Chưa ký hợp đồng. Không thể checkout.'
+        });
+      }
+
+      // YÊU CẦU: Phải có contract đã ký trước khi checkout
+      const signedContractNormal = await Contract.findOne({
+        rental_id: rental._id,
+        status: 'signed',
+        is_active: true
+      });
+
+      if (!signedContractNormal) {
+        return res.status(400).json({
+          success: false,
+          message: 'Chưa ký hợp đồng. Không thể checkout.'
+        });
+      }
+
       // Validate vehicle condition
       if (!vehicle_condition_after || 
           !vehicle_condition_after.mileage || 
@@ -215,11 +244,20 @@ class RentalController {
         vehicleStatus = 'maintenance';
       }
 
-      await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
-        status: vehicleStatus,
-        current_mileage: vehicle_condition_after.mileage,
-        battery_level: vehicle_condition_after.battery_level
-      });
+      // CHỈ UPDATE VEHICLE STATUS NẾU RENTAL COMPLETED
+      if (rental.status === 'completed') {
+        await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
+          status: vehicleStatus,
+          current_mileage: vehicle_condition_after.mileage,
+          battery_level: vehicle_condition_after.battery_level
+        });
+      } else {
+        // Nếu pending_payment, chỉ update mileage và battery
+        await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
+          current_mileage: vehicle_condition_after.mileage,
+          battery_level: vehicle_condition_after.battery_level
+        });
+      }
 
       // Tạo payments cho checkout
       const payments = [];
@@ -436,6 +474,52 @@ class RentalController {
         rental.images_after = uploadedImages; // Replace thay vì append
       }
 
+      // Tạo payments cho checkout TRƯỚC KHI save rental
+      const payments = [];
+      
+      // INVALIDATE OLD PENDING PAYMENTS cho rental này
+      await Payment.updateMany(
+        { 
+          rental_id: rental._id,
+          status: 'pending',
+          is_active: true
+        },
+        { 
+          is_active: false,
+          notes: 'Invalidated due to new checkout with fees'
+        }
+      );
+      
+      // Tính tổng số tiền cần thanh toán
+      let totalAmount = total_fees; // Phí phát sinh (luôn có)
+      let paymentDescription = `Phí phát sinh thuê xe ${rental.code}`;
+      
+      if (rental.booking_id.total_days >= 3) {
+        // Thuê >= 3 ngày: Cộng thêm cọc còn lại
+        const remainingDeposit = rental.booking_id.total_price - rental.booking_id.deposit_amount;
+        if (remainingDeposit > 0) {
+          totalAmount += remainingDeposit;
+          paymentDescription = `Cọc còn lại + phí phát sinh thuê xe ${rental.code}`;
+        }
+      }
+      
+      // Tạo 1 payment duy nhất
+      const singlePayment = new Payment({
+        code: PaymentService.generatePaymentCode(),
+        rental_id: rental._id,
+        user_id: rental.user_id._id,
+        booking_id: rental.booking_id._id,
+        amount: totalAmount,
+        payment_method: payment_method,
+        status: 'pending',
+        description: paymentDescription,
+        payment_type: 'deposit', // Dùng 'deposit' vì gộp cọc + phí
+        processed_by: req.user._id
+      });
+      await singlePayment.save();
+      payments.push(singlePayment);
+
+      // Bây giờ mới save rental
       await rental.save();
 
       // Cập nhật UserStats
@@ -456,13 +540,39 @@ class RentalController {
         const vehicle = await Vehicle.findById(rental.vehicle_id._id);
         const station = await Station.findById(rental.station_id._id);
         
+        // Tạo violation_data nếu có phí phát sinh
+        let violation_data = null;
+        if (validatedLateFee > 0) {
+          violation_data = {
+            type: 'late_return',
+            description: `Trả xe muộn - Phí: ${validatedLateFee.toLocaleString('vi-VN')} VND`,
+            severity: 'medium',
+            points: 5
+          };
+        } else if (validatedDamageFee > 0) {
+          violation_data = {
+            type: 'damage',
+            description: `Làm hỏng xe - Phí: ${validatedDamageFee.toLocaleString('vi-VN')} VND`,
+            severity: 'high',
+            points: 10
+          };
+        } else if (validatedOtherFees > 0) {
+          violation_data = {
+            type: 'rule_violation',
+            description: `Vi phạm quy định - Phí: ${validatedOtherFees.toLocaleString('vi-VN')} VND`,
+            severity: 'low',
+            points: 5
+          };
+        }
+        
         await userStats.updateStats({
           distance: Math.max(0, distance),
           spent: spent,
           days: Math.max(0, days),
           vehicle_type: vehicle?.type,
           station_id: rental.station_id._id,
-          rental_date: rental.actual_start_time
+          rental_date: rental.actual_start_time,
+          violation_data: violation_data
         });
       } catch (statsError) {
         console.error('Error updating user stats:', statsError);
@@ -470,61 +580,12 @@ class RentalController {
       }
 
       // Cập nhật trạng thái xe dựa trên tình trạng
-      let vehicleStatus = 'available';
-      if (vehicle_condition_after.exterior_condition === 'poor' || 
-          vehicle_condition_after.interior_condition === 'poor' ||
-          damage_fee > 0 ||
-          vehicle_condition_after.battery_level < 20) { // Pin dưới 20% cần sạc
-        vehicleStatus = 'maintenance';
-      }
-
+      // CHỈ UPDATE MILEAGE VÀ BATTERY, KHÔNG ĐỔI STATUS
+      // Status sẽ được update khi payment completed
       await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
-        status: vehicleStatus,
         current_mileage: vehicle_condition_after.mileage,
         battery_level: vehicle_condition_after.battery_level
       });
-
-      // Tạo payments cho checkout
-      const payments = [];
-      
-      // 1. Thanh toán chính (cọc còn lại hoặc phí thuê còn lại)
-      if (rental.booking_id.total_days >= 3) {
-        // Thuê >= 3 ngày: Thanh toán cọc còn lại
-        const remainingDeposit = rental.booking_id.total_price - rental.booking_id.deposit_amount;
-        if (remainingDeposit > 0) {
-          const depositPayment = new Payment({
-            code: PaymentService.generatePaymentCode(),
-            rental_id: rental._id,
-            user_id: rental.user_id._id,
-            booking_id: rental.booking_id._id,
-            amount: remainingDeposit,
-            payment_method: payment_method,
-            status: 'pending',
-            description: `Thanh toán cọc còn lại cho thuê xe ${rental.code}`,
-            payment_type: 'deposit',
-            processed_by: req.user._id
-          });
-          await depositPayment.save();
-          payments.push(depositPayment);
-        }
-      }
-      // Thuê < 3 ngày: Đã thanh toán full khi confirm, không cần thanh toán thêm
-      
-      // 2. Phí phát sinh (có luôn vì đã validate total_fees > 0)
-      const additionalPayment = new Payment({
-        code: PaymentService.generatePaymentCode(),
-        rental_id: rental._id,
-        user_id: rental.user_id._id,
-        booking_id: rental.booking_id._id,
-        amount: total_fees,
-        payment_method: payment_method,
-        status: 'pending',
-        description: `Phí phát sinh thuê xe ${rental.code}`,
-        payment_type: 'additional_fee',
-        processed_by: req.user._id
-      });
-      await additionalPayment.save();
-      payments.push(additionalPayment);
 
       // Gửi email receipt
       try {

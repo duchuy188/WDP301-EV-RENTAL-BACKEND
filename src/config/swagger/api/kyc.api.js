@@ -464,7 +464,8 @@
  * @swagger
  * /api/kyc/pending:
  *   get:
- *     summary: Lấy danh sách yêu cầu KYC đang chờ xử lý
+ *     summary: Lấy danh sách yêu cầu KYC đang chờ xử lý (chỉ EV Renter)
+ *     description: Staff/Admin xem danh sách KYC pending của users có role EV Renter
  *     tags: [KYC]
  *     security:
  *       - bearerAuth: []
@@ -921,8 +922,8 @@
  * @swagger
  * /api/kyc/users-not-submitted:
  *   get:
- *     summary: Lấy danh sách users chưa submit KYC
- *     description: Staff/Admin có thể tìm kiếm và lọc users chưa có KYC hoặc bị rejected
+ *     summary: Lấy danh sách users chưa submit KYC (chỉ EV Renter)
+ *     description: Staff/Admin có thể tìm kiếm và lọc users có role EV Renter chưa có KYC hoặc bị rejected
  *     tags: [KYC]
  *     security:
  *       - bearerAuth: []
@@ -1023,8 +1024,8 @@
  * @swagger
  * /api/kyc/completed:
  *   get:
- *     summary: Lấy danh sách KYC đã completed (approved) với full thông tin
- *     description: Staff/Admin có thể xem danh sách KYC đã được duyệt với đầy đủ thông tin CMND/CCCD và GPLX
+ *     summary: Lấy danh sách KYC đã completed (approved) với full thông tin (chỉ EV Renter)
+ *     description: Staff/Admin có thể xem danh sách KYC đã được duyệt của users có role EV Renter với đầy đủ thông tin CMND/CCCD và GPLX
  *     tags: [KYC]
  *     security:
  *       - bearerAuth: []

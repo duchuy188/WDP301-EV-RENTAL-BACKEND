@@ -63,6 +63,43 @@ const userStatsSchema = new mongoose.Schema({
     default: null 
   },
   
+  // RISK MANAGEMENT FIELDS
+  risk_score: { 
+    type: Number, 
+    default: 0, 
+    min: 0, 
+    max: 100 
+  }, // Điểm rủi ro (0-100)
+  risk_level: { 
+    type: String, 
+    enum: ['low', 'medium', 'high', 'critical'], 
+    default: 'low' 
+  }, // Mức độ rủi ro
+  violations: [{
+    type: { 
+      type: String, 
+      enum: ['late_return', 'damage', 'no_show', 'payment_issue', 'rule_violation', 'other'] 
+    },
+    description: { type: String, required: true },
+    severity: { 
+      type: String, 
+      enum: ['low', 'medium', 'high'], 
+      default: 'low' 
+    },
+    points: { type: Number, default: 5 }, // Điểm trừ cho vi phạm
+    date: { type: Date, default: Date.now },
+    resolved: { type: Boolean, default: false },
+    resolved_date: { type: Date, default: null },
+    resolved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  }],
+  total_violations: { type: Number, default: 0 },
+  last_violation_date: { type: Date, default: null },
+  risk_notes: [{ 
+    note: String, 
+    added_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    added_at: { type: Date, default: Date.now }
+  }],
+  
   // Metadata
   last_updated: { 
     type: Date, 
@@ -75,10 +112,12 @@ userStatsSchema.index({ user_id: 1 }, { unique: true });
 userStatsSchema.index({ total_rentals: -1 });
 userStatsSchema.index({ total_spent: -1 });
 userStatsSchema.index({ last_rental_date: -1 });
+userStatsSchema.index({ risk_score: -1 }); // Thêm index cho risk score
+userStatsSchema.index({ risk_level: 1 }); // Thêm index cho risk level
 
 // Method để cập nhật thống kê
 userStatsSchema.methods.updateStats = async function(rentalData) {
-  const { distance, spent, days, vehicle_type, station_id, rental_date } = rentalData;
+  const { distance, spent, days, vehicle_type, station_id, rental_date, violation_data } = rentalData;
   
   // Cập nhật tổng quan
   this.total_rentals += 1;
@@ -143,8 +182,79 @@ userStatsSchema.methods.updateStats = async function(rentalData) {
     });
   }
   
+  // RISK MANAGEMENT: Thêm vi phạm nếu có
+  if (violation_data) {
+    this.addViolation(violation_data);
+  } else {
+    // Cập nhật risk score (giảm điểm theo thời gian)
+    this.updateRiskScore();
+  }
+  
   this.last_updated = new Date();
   await this.save();
+};
+
+// RISK MANAGEMENT METHODS - LOGIC 6 THÁNG
+userStatsSchema.methods.updateRiskScore = function() {
+  const now = new Date();
+  const sixMonthsAgo = new Date(now.getTime() - (6 * 30 * 24 * 60 * 60 * 1000));
+  
+  let newScore = 0;
+  
+  // CHỈ TÍNH VIOLATIONS TRONG 6 THÁNG GẦN ĐÂY
+  this.violations.forEach(violation => {
+    if (!violation.resolved && violation.date >= sixMonthsAgo) {
+      let points = violation.points || 5;
+      
+      // Nhân theo severity
+      switch (violation.severity) {
+        case 'low': points *= 1; break;
+        case 'medium': points *= 2; break;
+        case 'high': points *= 3; break;
+      }
+      
+      newScore += points;
+    }
+  });
+  
+  this.risk_score = Math.min(100, newScore);
+  
+  // Cập nhật risk level
+  if (this.risk_score >= 80) this.risk_level = 'critical';
+  else if (this.risk_score >= 60) this.risk_level = 'high';
+  else if (this.risk_score >= 30) this.risk_level = 'medium';
+  else this.risk_level = 'low';
+  
+  return this.risk_score;
+};
+
+userStatsSchema.methods.addViolation = function(violationData) {
+  const violation = {
+    type: violationData.type,
+    description: violationData.description,
+    severity: violationData.severity || 'low',
+    points: violationData.points || 5,
+    date: new Date()
+  };
+  
+  this.violations.push(violation);
+  this.total_violations += 1;
+  this.last_violation_date = new Date();
+  
+  // Cập nhật risk score
+  this.updateRiskScore();
+  
+  return violation;
+};
+
+userStatsSchema.methods.resetRiskScore = function() {
+  this.risk_score = 0;
+  this.risk_level = 'low';
+  this.violations.forEach(violation => {
+    violation.resolved = true;
+    violation.resolved_date = new Date();
+  });
+  this.last_updated = new Date();
 };
 
 const UserStats = mongoose.model('UserStats', userStatsSchema);

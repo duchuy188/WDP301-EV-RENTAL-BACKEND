@@ -689,6 +689,34 @@ const handleVNPayCallback = async (req, res) => {
               await Rental.findByIdAndUpdate(rental._id, {
                 status: 'completed'
               });
+              
+              // Update vehicle status khi rental completed
+              try {
+                const Vehicle = require('../models/Vehicle');
+                const rentalData = await Rental.findById(rental._id);
+                
+                if (rentalData) {
+                  let vehicleStatus = 'available';
+                  
+                  // Kiểm tra tình trạng xe để quyết định status
+                  if (rentalData.vehicle_condition_after) {
+                    const condition = rentalData.vehicle_condition_after;
+                    if (condition.exterior_condition === 'poor' || 
+                        condition.interior_condition === 'poor' ||
+                        rentalData.damage_fee > 0 ||
+                        condition.battery_level < 20) {
+                      vehicleStatus = 'maintenance';
+                    }
+                  }
+                  
+                  await Vehicle.findByIdAndUpdate(rentalData.vehicle_id, {
+                    status: vehicleStatus
+                  });
+                }
+              } catch (vehicleUpdateError) {
+                console.error('Error updating vehicle status:', vehicleUpdateError);
+                // Không fail payment vì vehicle update lỗi
+              }
             }
           }
         } catch (rentalUpdateError) {

@@ -1,6 +1,18 @@
 const AIService = require('../services/AIService');
 
 class AIController {
+  // Hàm tiện ích để dịch trend từ tiếng Anh sang tiếng Việt
+  static translateTrend(trend) {
+    const translations = {
+      'increasing': 'tăng',
+      'slightly_increasing': 'tăng nhẹ',
+      'stable': 'ổn định',
+      'slightly_decreasing': 'giảm nhẹ',
+      'decreasing': 'giảm'
+    };
+    
+    return translations[trend] || trend;
+  }
   // Dự báo nhu cầu tổng quan
   static async getDemandForecast(req, res) {
     try {
@@ -82,9 +94,14 @@ class AIController {
       
       res.json({
         success: true,
-        message: 'Gợi ý xe thành công',
+        message: 'Gợi ý xe máy điện thành công',
         data: {
-          ...recommendations,
+          totalStations: recommendations?.totalStations || 0,
+          totalVehiclesNeeded: recommendations?.totalVehiclesNeeded || 0,
+          estimatedInvestment: recommendations?.estimatedInvestment || 0,
+          recommendations: Array.isArray(recommendations?.recommendations) ? recommendations.recommendations : [],
+          generalRecommendations: Array.isArray(recommendations?.generalRecommendations) ? recommendations.generalRecommendations : [],
+          overallUtilization: recommendations?.overallUtilization || 0,
           generatedAt: new Date()
         }
       });
@@ -165,22 +182,31 @@ class AIController {
           weeklyTrend: demandForecast.weeklyTrend
         },
         trendAnalysis: {
-          overall: trendAnalysis.trends.overall,
+          overall: AIController.translateTrend(trendAnalysis.trends.overall),
           growthRate: trendAnalysis.trends.growthRate,
+          previousGrowthRate: trendAnalysis.trends.previousGrowthRate || 0,
+          seasonality: trendAnalysis.trends.seasonality || [],
+          cyclical: trendAnalysis.trends.cyclical || 'N/A',
           shortTermForecast: trendAnalysis.forecasts.shortTerm,
           longTermForecast: trendAnalysis.forecasts.longTerm
         },
         vehicleRecommendations: {
           totalNeeded: vehicleRecommendations.totalVehiclesNeeded,
           topPriorities: vehicleRecommendations.recommendations.slice(0, 5),
-          estimatedROI: vehicleRecommendations.recommendations.reduce((sum, rec) => sum + rec.estimatedROI, 0) / vehicleRecommendations.recommendations.length
+          estimatedROI: vehicleRecommendations.recommendations.length > 0 
+            ? vehicleRecommendations.recommendations.reduce((sum, rec) => sum + rec.estimatedROI, 0) / vehicleRecommendations.recommendations.length
+            : 0
         },
         insights: [
-          `Xu hướng tổng thể: ${trendAnalysis.trends.overall}`,
+          `Xu hướng tổng thể: ${AIController.translateTrend(trendAnalysis.trends.overall)}`,
           `Tăng trưởng: ${trendAnalysis.trends.growthRate}%`,
           `Cần thêm ${vehicleRecommendations.totalVehiclesNeeded} xe`,
           `Độ tin cậy dự báo: ${demandForecast.totalForecast.confidence}%`
         ],
+        opportunities: trendAnalysis.opportunities || [],
+        challenges: trendAnalysis.challenges || [],
+        recommendations: trendAnalysis.recommendations || [],
+        factors: demandForecast.factors || [],
         generatedAt: new Date(),
         period
       };
@@ -204,6 +230,19 @@ class AIController {
   // Health check cho AI service
   static async healthCheck(req, res) {
     try {
+      if (!AIService.model) {
+        return res.json({
+          success: true,
+          message: 'AI Service is healthy (fallback mode)',
+          data: {
+            status: 'operational',
+            testResponse: 'AI Service is working (fallback without GEMINI_API_KEY)',
+            timestamp: new Date(),
+            geminiModel: 'fallback'
+          }
+        });
+      }
+
       // Test basic AI functionality
       const testPrompt = "Hello, this is a test. Please respond with 'AI Service is working'";
       const result = await AIService.model.generateContent(testPrompt);
@@ -217,7 +256,7 @@ class AIController {
           status: 'operational',
           testResponse: text.trim(),
           timestamp: new Date(),
-          geminiModel: 'gemini-1.5-flash'
+          geminiModel: 'gemini-2.0-flash'
         }
       });
       
