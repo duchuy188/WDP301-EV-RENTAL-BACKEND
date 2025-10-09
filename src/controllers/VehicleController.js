@@ -890,7 +890,7 @@ exports.reportMaintenance = async (req, res) => {
     const { id } = req.params;
     const { reason, priority = 'medium' } = req.body;
     
-    // ✅ Lấy images từ req.files (file upload)
+    // Lấy images từ req.files (file upload)
     let images = [];
     if (req.files && req.files.length > 0) {
       images = req.files.map(file => file.path); // file.path chứa URL từ Cloudinary

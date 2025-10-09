@@ -39,8 +39,16 @@ class ExcelService {
         });
       });
       
-      // Tạo tên file
-      const fileName = `vehicle_template_${color || 'all'}_${uuidv4().substring(0, 8)}.xlsx`;
+      // Tạo tên file - loại bỏ ký tự đặc biệt
+      const sanitizeFileName = (str) => {
+        return str
+          .replace(/[^a-zA-Z0-9]/g, '_') 
+          .replace(/_+/g, '_') 
+          .replace(/^_|_$/g, ''); 
+      };
+
+      const safeColor = color ? sanitizeFileName(color) : 'all';
+      const fileName = `vehicle_template_${safeColor}_${Date.now()}.xlsx`;
       const filePath = path.join(__dirname, '..', '..', 'uploads', fileName);
       
       // Đảm bảo thư mục uploads tồn tại
