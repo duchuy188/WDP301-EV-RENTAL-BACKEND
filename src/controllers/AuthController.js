@@ -73,12 +73,12 @@ exports.login = async (req, res) => {
         const user = await User.findOne({ email });
 
         if (!user) {
-            return res.status(404).json({ message: 'Người dùng không tìm thấy' });
+            return res.status(404).json({ message: 'Tài khoản hoặc mật khẩu không chính xác' });
         }
 
         const isMatch = await bcrypt.compare(password, user.passwordHash);
         if (!isMatch) {
-            return res.status(401).json({ message: 'Thông tin xác thực không hợp lệ' });
+            return res.status(401).json({ message: 'Tài khoản hoặc mật khẩu không chính xác' });
         }
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
