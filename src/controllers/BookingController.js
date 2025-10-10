@@ -514,7 +514,7 @@ const getBookingDetails = async (req, res) => {
 const confirmBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const { vehicle_condition_before, staff_notes } = req.body || {};
+    const { vehicle_condition_before, staff_notes, payment_method = 'cash' } = req.body || {};
     const staff_id = req.user.id;
     
     // Check if user is staff
@@ -584,6 +584,8 @@ const confirmBooking = async (req, res) => {
     let contract = null;
     let vehicleUpdated = false;
     let bookingUpdated = false;
+    let paymentType = 'deposit'; // Thêm giá trị mặc định
+    let paymentAmount = 0;       // Thêm giá trị mặc định
 
     try {
       // 1. Tạo rental
@@ -604,13 +606,19 @@ const confirmBooking = async (req, res) => {
         },
         images_before: uploadedImages, // Sử dụng ảnh đã upload
         staff_notes: staff_notes || '',
-        status: 'active',
+        status: 'pending_deposit',
         created_by: staff_id
       });
       
+      // Cập nhật current_mileage của xe khi bắt đầu rental
+      if (vehicle_condition_before?.mileage) {
+        await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
+          current_mileage: vehicle_condition_before.mileage
+        });
+        console.log(`✅ Vehicle ${booking.vehicle_id._id} mileage updated to ${vehicle_condition_before.mileage} km`);
+      }
+      
       // 2. Chuẩn bị thông tin payment (không tạo payment tự động)
-      let paymentType, paymentAmount;
-
       if (booking.total_days === 1 && booking.deposit_amount === 0) {
         // Thuê 1 ngày, thanh toán ngay toàn bộ
         paymentType = 'rental_fee';
@@ -621,17 +629,25 @@ const confirmBooking = async (req, res) => {
         paymentAmount = booking.deposit_amount;
       }
 
-      // Không tạo payment tự động - để frontend tạo riêng
-      // payment = await Payment.create({...});
+      // 3. Tạo payment tự động với phương thức thanh toán được chọn
+      payment = await Payment.create({
+        code: 'PAY' + Math.random().toString(36).substr(2, 8).toUpperCase(),
+        rental_id: rental._id,
+        booking_id: booking._id,
+        user_id: booking.user_id._id,
+        amount: paymentAmount,
+        payment_type: paymentType,
+        payment_method: payment_method, // Sử dụng phương thức thanh toán từ request
+        status: 'pending',
+        notes: paymentType === 'deposit' ? 'Tiền cọc thuê xe' : 'Phí thuê xe',
+        processed_by: staff_id
+      });
       
       
      
       
-      // 4. Update vehicle status
-      await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
-        status: 'rented'
-      });
-      vehicleUpdated = true;
+      // 4. Giữ nguyên vehicle status là 'reserved' (chưa chuyển sang 'rented' vì chưa thanh toán cọc)
+      // Vehicle sẽ chuyển sang 'rented' khi payment completed
       
       // 5. Update booking status
       booking.status = 'confirmed';

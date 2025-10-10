@@ -51,12 +51,8 @@
  *           example: "TXN123456789"
  *         qr_code_data:
  *           type: string
- *           description: Dữ liệu QR Code
- *           example: "{\"amount\":150000,\"content\":\"EV Rental - DEPOSIT - PAY123456\"}"
- *         qr_code_image:
- *           type: string
- *           description: URL hình ảnh QR Code
- *           example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+ *           description: Dữ liệu QR Code (URL VNPay)
+ *           example: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?..."
  *         vnpay_url:
  *           type: string
  *           description: URL thanh toán VNPay

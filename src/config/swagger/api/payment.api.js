@@ -45,7 +45,7 @@
  *                 example: 500000
  *               payment_method:
  *                 type: string
- *                 enum: [cash, qr_code, bank_transfer, vnpay]
+ *                 enum: [cash, vnpay]
  *                 description: Phương thức thanh toán
  *                 example: vnpay
  *               reason:
@@ -72,14 +72,14 @@
  *                 payment_type: "rental_fee"
  *                 payment_method: "cash"
  *                 notes: "Thanh toán tại quầy"
- *             additional_fee_qr:
- *               summary: "Thanh toán phí phát sinh qua QR"
+ *             additional_fee_vnpay:
+ *               summary: "Thanh toán phí phát sinh qua VNPay"
  *               value:
  *                 booking_id: "60f7b3b3b3b3b3b3b3b3b3b3"
  *                 rental_id: "60f7b3b3b3b3b3b3b3b3b3b4"
  *                 payment_type: "additional_fee"
  *                 amount: 100000
- *                 payment_method: "qr_code"
+ *                 payment_method: "vnpay"
  *                 reason: "Phí trễ giờ trả xe"
  *                 notes: "Phí phát sinh do trễ 2 giờ"
  *     responses:
@@ -154,7 +154,7 @@
  *         name: payment_method
  *         schema:
  *           type: string
- *           enum: [cash, qr_code, bank_transfer, vnpay]
+ *           enum: [cash, vnpay]
  *         description: Lọc theo phương thức thanh toán
  *         example: vnpay
  *       - in: query
@@ -420,6 +420,124 @@
  *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
  *         description: Không tìm thấy payment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *//**
+ * @swagger
+ * /api/payments/{id}/update-method:
+ *   put:
+ *     summary: Cập nhật phương thức thanh toán
+ *     description: Staff cập nhật phương thức thanh toán cho payment đang pending (cash ↔ vnpay)
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Payment ID
+ *         example: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - payment_method
+ *             properties:
+ *               payment_method:
+ *                 type: string
+ *                 enum: [cash, vnpay]
+ *                 description: Phương thức thanh toán mới
+ *                 example: vnpay
+ *           examples:
+ *             cash_to_vnpay:
+ *               summary: "Chuyển từ tiền mặt sang VNPay"
+ *               value:
+ *                 payment_method: "vnpay"
+ *             vnpay_to_cash:
+ *               summary: "Chuyển từ VNPay sang tiền mặt"
+ *               value:
+ *                 payment_method: "cash"
+ *     responses:
+ *       200:
+ *         description: Cập nhật phương thức thanh toán thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Cập nhật phương thức thanh toán thành công"
+ *                 payment:
+ *                   $ref: '#/components/schemas/PaymentResponse'
+ *             examples:
+ *               vnpay_response:
+ *                 summary: "Response khi chuyển sang VNPay"
+ *                 value:
+ *                   success: true
+ *                   message: "Cập nhật phương thức thanh toán thành công"
+ *                   payment:
+ *                     id: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *                     code: "PAY123456"
+ *                     amount: 500000
+ *                     payment_method: "vnpay"
+ *                     status: "pending"
+ *                     vnpay_url: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?..."
+ *                     qr_code_data: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?..."
+ *                     vnpay_transaction_no: "ORDER_1234567890"
+ *               cash_response:
+ *                 summary: "Response khi chuyển sang tiền mặt"
+ *                 value:
+ *                   success: true
+ *                   message: "Cập nhật phương thức thanh toán thành công"
+ *                   payment:
+ *                     id: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *                     code: "PAY123456"
+ *                     amount: 500000
+ *                     payment_method: "cash"
+ *                     status: "pending"
+ *                     vnpay_url: ""
+ *                     qr_code_data: ""
+ *                     vnpay_transaction_no: ""
+ *       400:
+ *         description: Dữ liệu đầu vào không hợp lệ hoặc payment không ở trạng thái pending
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               invalid_method:
+ *                 summary: "Phương thức thanh toán không hợp lệ"
+ *                 value:
+ *                   message: "Phương thức thanh toán không hợp lệ. Chỉ chấp nhận: cash, vnpay"
+ *               not_pending:
+ *                 summary: "Payment không ở trạng thái pending"
+ *                 value:
+ *                   message: "Chỉ có thể cập nhật phương thức thanh toán cho payment đang pending"
+ *       403:
+ *         description: Không có quyền cập nhật phương thức thanh toán
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Không tìm thấy payment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Lỗi server
  *         content:
  *           application/json:
  *             schema:

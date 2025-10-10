@@ -428,7 +428,7 @@ exports.assignVehiclesByQuantity = async (req, res) => {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
     
-    const { color, status = 'draft', quantity, station_id } = req.body;
+    const { color, model, status = 'draft', quantity, station_id } = req.body;
     
     if (!quantity || !station_id) {
       return res.status(400).json({ message: 'Vui lòng cung cấp số lượng và ID trạm' });
@@ -451,14 +451,21 @@ exports.assignVehiclesByQuantity = async (req, res) => {
     // Tìm xe phù hợp để phân bổ
     const query = { status };
     if (color) query.color = color;
+    if (model) query.model = model; // Thêm filter theo model
     if (status === 'draft') query.license_plate = { $ne: null, $ne: '' };
     query.station_id = null; // Chỉ lấy xe chưa được phân bổ
     
     const vehicles = await Vehicle.find(query).limit(parseInt(quantity));
     
     if (vehicles.length < parseInt(quantity)) {
+      const filterInfo = [];
+      if (color) filterInfo.push(`màu ${color}`);
+      if (model) filterInfo.push(`model ${model}`);
+      if (status) filterInfo.push(`trạng thái ${status}`);
+      
+      const filterText = filterInfo.length > 0 ? ` với điều kiện: ${filterInfo.join(', ')}` : '';
       return res.status(400).json({
-        message: `Không đủ xe để phân bổ. Chỉ có ${vehicles.length} xe phù hợp với điều kiện`
+        message: `Không đủ xe để phân bổ. Chỉ có ${vehicles.length} xe phù hợp${filterText}`
       });
     }
     
@@ -483,8 +490,14 @@ exports.assignVehiclesByQuantity = async (req, res) => {
     const updatedVehicles = await Vehicle.find({ _id: { $in: vehicleIds } })
       .populate('station_id', 'code name');
     
+    // Tạo thông báo chi tiết
+    const vehicleInfo = [];
+    if (model) vehicleInfo.push(`model ${model}`);
+    if (color) vehicleInfo.push(`màu ${color}`);
+    const vehicleText = vehicleInfo.length > 0 ? ` (${vehicleInfo.join(', ')})` : '';
+    
     return res.status(200).json({
-      message: `Đã phân bổ ${vehicles.length} xe đến trạm ${station.name}`,
+      message: `Đã phân bổ ${vehicles.length} xe${vehicleText} đến trạm ${station.name}`,
       vehicles: updatedVehicles
     });
   } catch (error) {

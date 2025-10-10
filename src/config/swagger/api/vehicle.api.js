@@ -57,6 +57,10 @@
  *         current_battery:
  *           type: number
  *           description: Phần trăm pin hiện tại (0-100)
+ *         current_mileage:
+ *           type: number
+ *           description: Số km hiện tại của xe
+ *           example: 1250
  *         price_per_day:
  *           type: number
  *           description: Giá thuê mỗi ngày (VND)
@@ -104,8 +108,9 @@
  *         type: "scooter"
  *         battery_capacity: 2.3
  *         max_range: 80
- *         current_battery: 85
- *         price_per_day: 150000
+*         current_battery: 85
+*         current_mileage: 1250
+*         price_per_day: 150000
  *         deposit_percentage: 50
  *         station_id: "60d5ec9af682fbd12a0bbaf2"
  *         status: "available"
@@ -505,6 +510,10 @@
  *               color:
  *                 type: string
  *                 description: Màu xe cần phân bổ
+ *               model:
+ *                 type: string
+ *                 description: Model xe cần phân bổ
+ *                 example: "Klara S"
  *               status:
  *                 type: string
  *                 default: draft

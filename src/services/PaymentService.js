@@ -8,47 +8,10 @@
  * - Validation payment
  */
 
-const QRCode = require('qrcode');
 const crypto = require('crypto');
 
 class PaymentService {
-  /**
-   * Tạo QR Code thanh toán
-   * @param {Object} payment - Payment object
-   * @returns {Object} QR Code data và image
-   */
-  static async generatePaymentQR(payment) {
-    try {
-      // Tạo QR data cho thanh toán
-      const qrData = {
-        amount: payment.amount,
-        content: `EV Rental - ${payment.payment_type.toUpperCase()} - ${payment.code}`,
-        account: process.env.COMPANY_BANK_ACCOUNT || '1234567890',
-        bank: process.env.COMPANY_BANK_NAME || 'TEST BANK',
-        paymentCode: payment.code,
-        timestamp: new Date().toISOString()
-      };
-
-      // Tạo QR Code image
-      const qrImageUrl = await QRCode.toDataURL(JSON.stringify(qrData), {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      });
-
-      return {
-        qrData: JSON.stringify(qrData),
-        qrImageUrl: qrImageUrl,
-        qrText: `Chuyển khoản ${payment.amount.toLocaleString('vi-VN')} VND\nNội dung: ${qrData.content}\nTK: ${qrData.account} - ${qrData.bank}`
-      };
-    } catch (error) {
-      console.error('Lỗi khi tạo QR Code:', error);
-      throw new Error('Không thể tạo QR Code thanh toán');
-    }
-  }
+  // Đã bỏ generatePaymentQR vì chỉ sử dụng VNPay QR
 
 
   /**
@@ -97,9 +60,10 @@ class PaymentService {
       status: payment.status,
       reason: payment.reason,
       transaction_id: payment.transaction_id,
+      // Chỉ trả về qr_code_data cho frontend tạo QR code
       qr_code_data: payment.qr_code_data,
-      qr_code_image: payment.qr_code_image,
       vnpay_url: payment.vnpay_url,
+      vnpay_transaction_no: payment.vnpay_transaction_no,
       notes: payment.notes,
       createdAt: payment.createdAt,
       updatedAt: payment.updatedAt,
