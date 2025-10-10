@@ -61,13 +61,20 @@ const vehicleSchema = new mongoose.Schema({
     min: 1
   }, // km
   
-  // Thông tin pin
+  // Thông tin pin và số km
   current_battery: { 
     type: Number, 
     required: true,
     min: 0,
     max: 100
   }, // % (0-100)
+  
+  // Số km hiện tại
+  current_mileage: { 
+    type: Number, 
+    default: 0,
+    min: 0
+  }, // km
   
   // Thông tin thuê
   price_per_day: { 
@@ -92,8 +99,8 @@ const vehicleSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['draft', 'available', 'rented', 'maintenance'], 
-    default: 'draft' // Sửa default từ 'available' thành 'draft'
+    enum: ['draft', 'available', 'reserved', 'rented', 'maintenance'], 
+    default: 'draft'
   },
   
   // Thông tin kỹ thuật (Staff quản lý)

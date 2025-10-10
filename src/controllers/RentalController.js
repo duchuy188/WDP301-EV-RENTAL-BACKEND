@@ -424,6 +424,20 @@ class RentalController {
         });
       }
 
+      // YÊU CẦU: Phải có contract đã ký trước khi checkout
+      const signedContractWithFees = await Contract.findOne({
+        rental_id: rental._id,
+        status: 'signed',
+        is_active: true
+      });
+
+      if (!signedContractWithFees) {
+        return res.status(400).json({
+          success: false,
+          message: 'Chưa ký hợp đồng. Không thể checkout.'
+        });
+      }
+
       // Validate vehicle condition
       if (!vehicle_condition_after || 
           !vehicle_condition_after.mileage || 
@@ -650,7 +664,6 @@ class RentalController {
             payment_method: payment.payment_method
           })),
           total_paid: totalPaid,
-          vehicle_status: vehicleStatus,
           payment_urls: Object.keys(paymentUrls).length > 0 ? paymentUrls : undefined,
           images: uploadedImages.length > 0 ? {
             uploaded: uploadedImages
@@ -694,12 +707,27 @@ class RentalController {
         .skip(skip)
         .limit(parseInt(limit));
 
+      // Lấy thông tin payments cho từng rental
+      const rentalsWithPayments = await Promise.all(
+        rentals.map(async (rental) => {
+          const payments = await Payment.find({
+            rental_id: rental._id,
+            is_active: true
+          }).select('amount status payment_type payment_method created_at');
+          
+          return {
+            ...rental.toObject(),
+            payments
+          };
+        })
+      );
+
       const total = await Rental.countDocuments(filter);
 
       res.json({
         success: true,
         data: {
-          rentals,
+          rentals: rentalsWithPayments,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),
@@ -745,12 +773,27 @@ class RentalController {
         .skip(skip)
         .limit(parseInt(limit));
 
+      // Lấy thông tin payments cho từng rental
+      const rentalsWithPayments = await Promise.all(
+        rentals.map(async (rental) => {
+          const payments = await Payment.find({
+            rental_id: rental._id,
+            is_active: true
+          }).select('amount status payment_type payment_method created_at');
+          
+          return {
+            ...rental.toObject(),
+            payments
+          };
+        })
+      );
+
       const total = await Rental.countDocuments(filter);
 
       res.json({
         success: true,
         data: {
-          rentals,
+          rentals: rentalsWithPayments,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),
@@ -799,12 +842,27 @@ class RentalController {
         .skip(skip)
         .limit(parseInt(limit));
 
+      // Lấy thông tin payments cho từng rental
+      const rentalsWithPayments = await Promise.all(
+        rentals.map(async (rental) => {
+          const payments = await Payment.find({
+            rental_id: rental._id,
+            is_active: true
+          }).select('amount status payment_type payment_method created_at');
+          
+          return {
+            ...rental.toObject(),
+            payments
+          };
+        })
+      );
+
       const total = await Rental.countDocuments(filter);
 
       res.json({
         success: true,
         data: {
-          rentals,
+          rentals: rentalsWithPayments,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),

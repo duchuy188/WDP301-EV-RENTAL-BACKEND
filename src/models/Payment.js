@@ -36,8 +36,6 @@ const paymentSchema = new mongoose.Schema({
     type: String, 
     enum: [
       'cash',           // Tiền mặt
-      'qr_code',        // QR Code thanh toán
-      'bank_transfer',  // Chuyển khoản ngân hàng
       'vnpay'           // VNPay online
     ],
     required: true 
@@ -84,10 +82,6 @@ const paymentSchema = new mongoose.Schema({
   
   // QR Code thông tin
   qr_code_data: { 
-    type: String, 
-    default: '' 
-  },
-  qr_code_image: { 
     type: String, 
     default: '' 
   },

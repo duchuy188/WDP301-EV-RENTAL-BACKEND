@@ -61,6 +61,10 @@
  *           type: number
  *           description: Phần trăm pin hiện tại (0-100)
  *           example: 85
+ *         current_mileage:
+ *           type: number
+ *           description: Số km hiện tại của xe
+ *           example: 1250
  *         price_per_day:
  *           type: number
  *           description: Giá thuê mỗi ngày (VND)
@@ -193,6 +197,10 @@
  *           type: string
  *           description: Màu xe cần phân bổ
  *           example: Đỏ
+ *         model:
+ *           type: string
+ *           description: Model xe cần phân bổ
+ *           example: Klara S
  *         status:
  *           type: string
  *           default: draft
