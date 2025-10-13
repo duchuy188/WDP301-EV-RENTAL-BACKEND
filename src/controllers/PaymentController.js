@@ -261,6 +261,19 @@ const confirmPayment = async (req, res) => {
           
           console.log(`✅ Rental ${payment.rental_id} activated - deposit paid`);
         }
+       
+        else if (payment.payment_type === 'rental_fee' && rental.status === 'pending_deposit') {
+          // Thuê < 3 ngày: rental_fee → active (vì đã thanh toán full)
+          await Rental.findByIdAndUpdate(payment.rental_id, {
+            status: 'active'
+          });
+          
+          await Vehicle.findByIdAndUpdate(rental.vehicle_id, {
+            status: 'rented'
+          });
+          
+          console.log(`✅ Rental ${payment.rental_id} activated - rental fee paid (short term rental)`);
+        }
         // Nếu payment là rental_fee và rental đang active
         else if (payment.payment_type === 'rental_fee' && rental.status === 'active') {
           // Chuyển rental sang completed
@@ -732,6 +745,12 @@ const handleVNPayCallback = async (req, res) => {
               await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
               console.log(`✅ Rental ${rental._id} activated - deposit paid via VNPay`);
             }
+            // ✅ FIX: Thêm case cho rental_fee khi rental đang pending_deposit
+            else if (payment.payment_type === 'rental_fee' && rental.status === 'pending_deposit') {
+              await Rental.findByIdAndUpdate(rental._id, { status: 'active' });
+              await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
+              console.log(`✅ Rental ${rental._id} activated - rental fee paid via VNPay (short term rental)`);
+            }
             // Nếu payment là rental_fee và rental đang active → completed
             else if (payment.payment_type === 'rental_fee' && rental.status === 'active') {
               await Rental.findByIdAndUpdate(rental._id, { 
@@ -879,6 +898,12 @@ const handleVNPayWebhook = async (req, res) => {
             await Rental.findByIdAndUpdate(rental._id, { status: 'active' });
             await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
             console.log(`✅ Rental ${rental._id} activated - deposit paid via VNPay IPN`);
+          }
+          // ✅ FIX: Thêm case cho rental_fee khi rental đang pending_deposit
+          else if (payment.payment_type === 'rental_fee' && rental.status === 'pending_deposit') {
+            await Rental.findByIdAndUpdate(rental._id, { status: 'active' });
+            await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
+            console.log(`✅ Rental ${rental._id} activated - rental fee paid via VNPay IPN (short term rental)`);
           }
           // Nếu payment là rental_fee và rental đang active → completed
           else if (payment.payment_type === 'rental_fee' && rental.status === 'active') {
