@@ -93,7 +93,6 @@ const createBooking = async (req, res) => {
       start_date, 
       end_date, 
       pickup_time, 
-      return_time,
       special_requests,
       notes 
     } = req.body;
@@ -101,9 +100,20 @@ const createBooking = async (req, res) => {
     const user_id = req.user.id;
     
     // Validate input
-    if (!model || !color || !station_id || !start_date || !end_date || !pickup_time || !return_time) {
+    if (!model || !color || !station_id || !start_date || !end_date || !pickup_time) {
       return res.status(400).json({ 
         message: 'Thiếu thông tin bắt buộc' 
+      });
+    }
+    
+ 
+    const pickupTimeParts = pickup_time.split(':');
+    const pickupHour = parseInt(pickupTimeParts[0]);
+    const pickupMinute = parseInt(pickupTimeParts[1]);
+    
+    if (isNaN(pickupHour) || isNaN(pickupMinute) || pickupHour < 0 || pickupHour > 23 || pickupMinute < 0 || pickupMinute > 59) {
+      return res.status(400).json({ 
+        message: 'Giờ nhận xe không hợp lệ. Vui lòng nhập theo định dạng HH:MM (ví dụ: 08:30)' 
       });
     }
     
@@ -151,11 +161,15 @@ const createBooking = async (req, res) => {
     // Validate dates
     const startDate = new Date(start_date);
     const endDate = new Date(end_date);
-    const now = new Date();
     
-    if (startDate <= now) {
+  
+    const today = nowVietnam().startOf('day').toDate(); // 00:00:00 hôm nay theo giờ VN
+    const startDateOnly = new Date(startDate);
+    startDateOnly.setHours(0, 0, 0, 0); // 00:00:00 của ngày booking
+    
+    if (startDateOnly < today) {
       return res.status(400).json({ 
-        message: 'Ngày bắt đầu phải sau thời điểm hiện tại' 
+        message: 'Ngày bắt đầu không thể là ngày trong quá khứ' 
       });
     }
     
@@ -194,14 +208,15 @@ const createBooking = async (req, res) => {
     }
     
     // Kiểm tra xe thuộc trạm đã chọn (đã được kiểm tra ở bước tìm xe)
+  
+    // Tạo return_time cùng giờ với pickup_time
+    const calculatedReturnTime = `${pickupHour.toString().padStart(2, '0')}:${pickupMinute.toString().padStart(2, '0')}`;
     
     // Kiểm tra giờ pickup/return hợp lệ
-    const pickupTimeParts = pickup_time.split(':');
-    const returnTimeParts = return_time.split(':');
     const pickupTimeObj = new Date();
-    pickupTimeObj.setHours(parseInt(pickupTimeParts[0]), parseInt(pickupTimeParts[1]));
+    pickupTimeObj.setHours(pickupHour, pickupMinute);
     const returnTimeObj = new Date();
-    returnTimeObj.setHours(parseInt(returnTimeParts[0]), parseInt(returnTimeParts[1]));
+    returnTimeObj.setHours(pickupHour, pickupMinute);
     
     // Kiểm tra giờ mở/đóng cửa trạm
     const stationOpeningParts = station.opening_time.split(':');
@@ -219,7 +234,7 @@ const createBooking = async (req, res) => {
     
     if (returnTimeObj < stationOpening || returnTimeObj > stationClosing) {
       return res.status(400).json({ 
-        message: `Giờ trả xe phải trong giờ làm việc của trạm (${station.opening_time} - ${station.closing_time})` 
+        message: `Giờ trả xe (${calculatedReturnTime}) phải trong giờ làm việc của trạm (${station.opening_time} - ${station.closing_time})` 
       });
     }
     
@@ -233,6 +248,32 @@ const createBooking = async (req, res) => {
     if (activeBookings >= MAX_ACTIVE_BOOKINGS) {
       return res.status(400).json({ 
         message: `Bạn chỉ có thể có tối đa ${MAX_ACTIVE_BOOKINGS} đặt xe hoạt động cùng lúc` 
+      });
+    }
+
+    // : Kiểm tra user có booking trùng thời gian không
+    const userConflictingBooking = await Booking.findOne({
+      user_id,
+      status: { $in: ['pending', 'confirmed', 'in_progress'] },
+      $or: [
+        {
+          start_date: { $lte: startDate },
+          end_date: { $gt: startDate }
+        },
+        {
+          start_date: { $lt: endDate },
+          end_date: { $gte: endDate }
+        },
+        {
+          start_date: { $gte: startDate },
+          end_date: { $lte: endDate }
+        }
+      ]
+    });
+
+    if (userConflictingBooking) {
+      return res.status(400).json({ 
+        message: `Bạn đã có booking ${userConflictingBooking.booking_type === 'online' ? 'online' : 'tại quầy'} trong khoảng thời gian này (${userConflictingBooking.start_date.toLocaleDateString('vi-VN')} - ${userConflictingBooking.end_date.toLocaleDateString('vi-VN')})` 
       });
     }
     
@@ -302,7 +343,7 @@ const createBooking = async (req, res) => {
       start_date: startDate,
       end_date: endDate,
       pickup_time,
-      return_time,
+      return_time: calculatedReturnTime,
       booking_type: 'online',
       price_per_day: pricePerDay,
       total_days: totalDays,
@@ -1129,15 +1170,33 @@ const createWalkInBooking = async (req, res) => {
       notes
     } = req.body;
 
-    // Validate thông tin khách hàng
+  
     if (!customer_name || !customer_phone) {
       return res.status(400).json({ 
         message: 'Thiếu thông tin khách hàng bắt buộc (tên, số điện thoại)' 
       });
     }
+    
+    // Validate phone number format (Vietnamese phone number)
+    const phoneRegex = /^(0|\+84)[3|5|7|8|9][0-9]{8}$/;
+    if (!phoneRegex.test(customer_phone)) {
+      return res.status(400).json({ 
+        message: 'Số điện thoại không hợp lệ. Vui lòng nhập số điện thoại Việt Nam (ví dụ: 0123456789 hoặc +84123456789)' 
+      });
+    }
+    
+    // Validate email format if provided
+    if (customer_email && customer_email.trim() !== '') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(customer_email)) {
+        return res.status(400).json({ 
+          message: 'Email không hợp lệ. Vui lòng nhập email đúng định dạng (ví dụ: user@example.com)' 
+        });
+      }
+    }
 
     // Validate thông tin đặt xe
-    if (!model || !color || !start_date || !end_date || !pickup_time || !return_time) {
+    if (!model || !color || !start_date || !end_date || !pickup_time) {
       return res.status(400).json({ 
         message: 'Thiếu thông tin đặt xe bắt buộc' 
       });
@@ -1174,7 +1233,18 @@ const createWalkInBooking = async (req, res) => {
     const endDate = new Date(end_date);
     const vehicleIds = sameModelVehicles.map(v => v._id);
     
-    // Validate ngày tháng
+  
+    // Kiểm tra ngày trong quá khứ
+    const today = nowVietnam().startOf('day').toDate(); // 00:00:00 hôm nay theo giờ VN
+    const startDateOnly = new Date(startDate);
+    startDateOnly.setHours(0, 0, 0, 0); // 00:00:00 của ngày booking
+    
+    if (startDateOnly < today) {
+      return res.status(400).json({ 
+        message: 'Ngày bắt đầu không thể là ngày trong quá khứ' 
+      });
+    }
+    
     if (startDate >= endDate) {
       return res.status(400).json({ 
         message: 'Ngày bắt đầu phải nhỏ hơn ngày kết thúc',
@@ -1182,6 +1252,34 @@ const createWalkInBooking = async (req, res) => {
           start_date: startDate.toISOString(),
           end_date: endDate.toISOString()
         }
+      });
+    }
+    
+    // Calculate total days
+    const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+    
+    if (totalDays < 1) {
+      return res.status(400).json({ 
+        message: 'Thời gian thuê tối thiểu 1 ngày' 
+      });
+    }
+    
+    // Kiểm tra thời gian thuê tối đa
+    const MAX_RENTAL_DAYS = 30;
+    if (totalDays > MAX_RENTAL_DAYS) {
+      return res.status(400).json({ 
+        message: `Thời gian thuê tối đa là ${MAX_RENTAL_DAYS} ngày` 
+      });
+    }
+    
+    // Kiểm tra giới hạn thời gian đặt trước
+    const MAX_ADVANCE_DAYS = 30;
+    const maxAdvanceDate = new Date();
+    maxAdvanceDate.setDate(maxAdvanceDate.getDate() + MAX_ADVANCE_DAYS);
+    
+    if (startDate > maxAdvanceDate) {
+      return res.status(400).json({ 
+        message: `Chỉ có thể đặt xe tối đa ${MAX_ADVANCE_DAYS} ngày trước` 
       });
     }
     
@@ -1232,6 +1330,60 @@ const createWalkInBooking = async (req, res) => {
     
     console.log(`✅ Không có booking trùng lịch, tiếp tục tạo booking...`);
 
+
+    const pickupTimeParts = pickup_time.split(':');
+    const pickupHour = parseInt(pickupTimeParts[0]);
+    const pickupMinute = parseInt(pickupTimeParts[1]);
+    
+    // Validate time format
+    if (isNaN(pickupHour) || isNaN(pickupMinute) || pickupHour < 0 || pickupHour > 23 || pickupMinute < 0 || pickupMinute > 59) {
+      return res.status(400).json({ 
+        message: 'Giờ nhận xe không hợp lệ. Vui lòng nhập theo định dạng HH:MM (ví dụ: 08:30)' 
+      });
+    }
+    
+    const calculatedReturnTime = `${pickupHour.toString().padStart(2, '0')}:${pickupMinute.toString().padStart(2, '0')}`;
+    
+    // Kiểm tra giờ mở/đóng cửa trạm
+    const station = await Station.findById(station_id);
+    if (!station) {
+      return res.status(404).json({ 
+        message: 'Trạm không tồn tại' 
+      });
+    }
+    
+    if (station.status !== 'active') {
+      return res.status(400).json({ 
+        message: 'Trạm không hoạt động' 
+      });
+    }
+    
+    // Kiểm tra giờ pickup/return hợp lệ
+    const pickupTimeObj = new Date();
+    pickupTimeObj.setHours(pickupHour, pickupMinute);
+    const returnTimeObj = new Date();
+    returnTimeObj.setHours(pickupHour, pickupMinute);
+    
+    // Kiểm tra giờ mở/đóng cửa trạm
+    const stationOpeningParts = station.opening_time.split(':');
+    const stationClosingParts = station.closing_time.split(':');
+    const stationOpening = new Date();
+    stationOpening.setHours(parseInt(stationOpeningParts[0]), parseInt(stationOpeningParts[1]));
+    const stationClosing = new Date();
+    stationClosing.setHours(parseInt(stationClosingParts[0]), parseInt(stationClosingParts[1]));
+    
+    if (pickupTimeObj < stationOpening || pickupTimeObj > stationClosing) {
+      return res.status(400).json({ 
+        message: `Giờ nhận xe phải trong giờ làm việc của trạm (${station.opening_time} - ${station.closing_time})` 
+      });
+    }
+    
+    if (returnTimeObj < stationOpening || returnTimeObj > stationClosing) {
+      return res.status(400).json({ 
+        message: `Giờ trả xe (${calculatedReturnTime}) phải trong giờ làm việc của trạm (${station.opening_time} - ${station.closing_time})` 
+      });
+    }
+
     // Tìm hoặc tạo user cho walk-in customer SAU KHI đã validate
     let customer = await User.findOne({ 
       $or: [
@@ -1240,7 +1392,46 @@ const createWalkInBooking = async (req, res) => {
       ]
     });
 
-    if (!customer) {
+    if (customer) {
+      //  Kiểm tra số lượng booking active của user
+      const activeBookings = await Booking.countDocuments({
+        user_id: customer._id,
+        status: { $in: ['pending', 'confirmed'] }
+      });
+      
+      const MAX_ACTIVE_BOOKINGS = 3;
+      if (activeBookings >= MAX_ACTIVE_BOOKINGS) {
+        return res.status(400).json({ 
+          message: `Khách hàng chỉ có thể có tối đa ${MAX_ACTIVE_BOOKINGS} đặt xe hoạt động cùng lúc` 
+        });
+      }
+
+     
+      const userConflictingBooking = await Booking.findOne({
+        user_id: customer._id,
+        status: { $in: ['pending', 'confirmed', 'in_progress'] },
+        $or: [
+          {
+            start_date: { $lte: startDate },
+            end_date: { $gt: startDate }
+          },
+          {
+            start_date: { $lt: endDate },
+            end_date: { $gte: endDate }
+          },
+          {
+            start_date: { $gte: startDate },
+            end_date: { $lte: endDate }
+          }
+        ]
+      });
+
+      if (userConflictingBooking) {
+        return res.status(400).json({ 
+          message: `Khách hàng đã có booking ${userConflictingBooking.booking_type === 'online' ? 'online' : 'tại quầy'} trong khoảng thời gian này (${userConflictingBooking.start_date.toLocaleDateString('vi-VN')} - ${userConflictingBooking.end_date.toLocaleDateString('vi-VN')})` 
+        });
+      }
+    } else {
       // Tạo password random
       const crypto = require('crypto');
       const randomPassword = crypto.randomBytes(8).toString('hex');
@@ -1278,9 +1469,9 @@ const createWalkInBooking = async (req, res) => {
     
     // Calculate pricing
     const pricePerDay = vehicle.price_per_day;
-    const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-    const totalPrice = calculateTotalPrice(pricePerDay, totalDays);
-    const depositAmount = DepositService.calculateDeposit(pricePerDay, totalDays);
+    const rentalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    const totalPrice = calculateTotalPrice(pricePerDay, rentalDays);
+    const depositAmount = DepositService.calculateDeposit(pricePerDay, rentalDays);
     
     // Generate booking code and QR code
     const code = await generateBookingCode();
@@ -1309,10 +1500,10 @@ const createWalkInBooking = async (req, res) => {
       start_date: startDate,
       end_date: endDate,
       pickup_time,
-      return_time,
+      return_time: calculatedReturnTime,
       booking_type: 'walk_in',
       price_per_day: pricePerDay,
-      total_days: totalDays,
+      total_days: rentalDays,
       total_price: totalPrice,
       deposit_amount: depositAmount,
       special_requests: special_requests || '',

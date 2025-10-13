@@ -132,14 +132,33 @@ exports.bulkCreateVehicles = async (req, res) => {
       export_excel = true
     } = req.body;
     
-    // ✅ QUAN TRỌNG: Validate required fields
+    // Validate required fields
     if (!model || !year || !color || !type || !battery_capacity || !max_range || !price_per_day) {
       return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc' });
     }
     
-    // ✅ QUAN TRỌNG: Validate quantity
+    //   Validate quantity
     if (quantity <= 0 || quantity > 100) {
       return res.status(400).json({ message: 'Số lượng xe phải từ 1 đến 100' });
+    }
+    
+    //Validate data type để tránh crash
+    if (typeof year !== 'number' || year < 2020 || year > new Date().getFullYear() + 1) {
+      return res.status(400).json({ 
+        message: `Năm sản xuất phải là số từ 2020 đến ${new Date().getFullYear() + 1}` 
+      });
+    }
+
+    if (typeof current_battery !== 'number' || current_battery < 0 || current_battery > 100) {
+      return res.status(400).json({ 
+        message: 'Pin hiện tại phải là số từ 0% đến 100%' 
+      });
+    }
+
+    if (typeof price_per_day !== 'number' || price_per_day < 50000 || price_per_day > 500000) {
+      return res.status(400).json({ 
+        message: 'Giá thuê phải là số từ 50,000 đến 500,000 VND/ngày' 
+      });
     }
     
     // Lấy URLs từ Cloudinary (file đã được upload bởi middleware)
@@ -287,7 +306,7 @@ exports.exportVehicleTemplate = async (req, res) => {
     // Tạo file Excel
     const result = await ExcelService.createVehicleTemplate(vehicles, color);
     
-    // ✅ Tên file cố định không có ký tự đặc biệt
+    //  Tên file cố định không có ký tự đặc biệt
     const fileName = `vehicle_template_${Date.now()}.xlsx`;
     
     // Trả về file
@@ -317,6 +336,14 @@ exports.importLicensePlates = async (req, res) => {
     
     if (!req.file) {
       return res.status(400).json({ message: 'Vui lòng upload file Excel' });
+    }
+    
+    //  Validate file type
+    const fileExt = path.extname(req.file.originalname).toLowerCase();
+    if (!['.xlsx', '.xls'].includes(fileExt)) {
+      return res.status(400).json({ 
+        message: 'Chỉ chấp nhận file Excel (.xlsx, .xls)' 
+      });
     }
     
     // Xử lý file Excel
@@ -646,12 +673,12 @@ exports.updateVehicle = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // ✅ QUAN TRỌNG: Kiểm tra quyền hạn
+    // Kiểm tra quyền hạn
     if (req.user.role !== 'Admin') {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
     
-    // ✅ QUAN TRỌNG: Tìm xe
+    //  Tìm xe
     const vehicle = await Vehicle.findById(id);
     if (!vehicle) {
       return res.status(404).json({ message: 'Không tìm thấy xe' });
@@ -662,7 +689,7 @@ exports.updateVehicle = async (req, res) => {
       return res.status(400).json({ message: 'Không thể cập nhật xe đã bị xóa' });
     }
     
-    // ✅ Kiểm tra xe có đang được thuê không
+    //  Kiểm tra xe có đang được thuê không
     if (vehicle.status === 'rented') {
       return res.status(400).json({ 
         message: 'Không thể cập nhật xe đang được thuê. Vui lòng đợi khách hàng trả xe.' 
@@ -685,7 +712,7 @@ exports.updateVehicle = async (req, res) => {
       technical_status
     } = req.body;
 
-    // ✅ QUAN TRỌNG: Validation biển số unique (Mongoose không làm được)
+    // Validation biển số unique (Mongoose không làm được)
     if (license_plate) {
       const existingVehicle = await Vehicle.findOne({ 
         license_plate,
@@ -1025,7 +1052,7 @@ exports.getPublicVehicles = async (req, res) => {
           available_quantity: { $sum: 1 },
           // Một ảnh đại diện
           sample_image: { $first: { $arrayElemAt: ['$images', 0] } },
-          // ✅ THÊM: Danh sách ID xe cụ thể
+          // Danh sách ID xe cụ thể
           vehicle_ids: { $push: '$_id' },
           // Danh sách trạm có xe available
           stations: {
@@ -1060,9 +1087,9 @@ exports.getPublicVehicles = async (req, res) => {
           deposit_percentage: 1,
           available_quantity: 1,
           sample_image: 1,
-          // ✅ THÊM: ID xe đầu tiên để xem chi tiết
+          //  ID xe đầu tiên để xem chi tiết
           sample_vehicle_id: { $arrayElemAt: ['$vehicle_ids', 0] },
-          // ✅ THÊM: Tất cả ID xe để booking
+          //  Tất cả ID xe để booking
           all_vehicle_ids: '$vehicle_ids',
           stations: {
             $map: {
@@ -1470,6 +1497,14 @@ exports.importPricingUpdates = async (req, res) => {
 
     if (!req.file) {
       return res.status(400).json({ message: 'Vui lòng upload file Excel' });
+    }
+    
+    //  Validate file type
+    const fileExt = path.extname(req.file.originalname).toLowerCase();
+    if (!['.xlsx', '.xls'].includes(fileExt)) {
+      return res.status(400).json({ 
+        message: 'Chỉ chấp nhận file Excel (.xlsx, .xls)' 
+      });
     }
 
     // Xử lý file Excel

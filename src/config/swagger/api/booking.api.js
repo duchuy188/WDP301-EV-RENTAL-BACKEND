@@ -37,7 +37,6 @@
  *               - start_date
  *               - end_date
  *               - pickup_time
- *               - return_time
  *             properties:
  *               customer_name:
  *                 type: string
@@ -75,12 +74,13 @@
  *                 example: "2024-01-16"
  *               pickup_time:
  *                 type: string
- *                 description: Giờ nhận xe
+ *                 description: Giờ nhận xe (giờ trả xe sẽ tự động cùng giờ)
  *                 example: "08:00"
  *               return_time:
  *                 type: string
- *                 description: Giờ trả xe
- *                 example: "18:00"
+ *                 description: Giờ trả xe (tự động tính theo pickup_time, không cần nhập)
+ *                 example: "08:00"
+ *                 readOnly: true
  *               special_requests:
  *                 type: string
  *                 description: Yêu cầu đặc biệt

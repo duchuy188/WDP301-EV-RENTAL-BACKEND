@@ -40,7 +40,7 @@ const sendContractEmail = async (contract) => {
 
     // Sử dụng template từ nodemailer
     const emailContent = nodemailer.getContractSignedTemplate({
-      ...contract.toObject(), // ✅ Convert Mongoose document to plain object
+      ...contract.toObject(), //  Convert Mongoose document to plain object
       pdfBuffer: pdfBuffer
     });
 
@@ -56,10 +56,10 @@ const sendContractEmail = async (contract) => {
       }]
     });
 
-    console.log(`✅ Đã gửi email hợp đồng cho ${contract.user_id.email}`);
+    console.log(` Đã gửi email hợp đồng cho ${contract.user_id.email}`);
     
   } catch (error) {
-    console.error('❌ Lỗi khi gửi email hợp đồng:', error);
+    console.error(' Lỗi khi gửi email hợp đồng:', error);
     // Không throw error để không ảnh hưởng đến flow chính
   }
 };
@@ -122,15 +122,16 @@ const createContract = async (req, res) => {
       });
     }
 
-    // Kiểm tra contract đã tồn tại
+    // Kiểm tra contract đã tồn tại (trừ cancelled)
     const existingContract = await Contract.findOne({ 
       rental_id: rental_id,
-      is_active: true 
+      is_active: true,
+      status: { $ne: 'cancelled' }  // 
     });
 
     if (existingContract) {
       return res.status(400).json({ 
-        message: 'Contract đã tồn tại cho rental này' 
+        message: `Contract đã tồn tại cho rental này với trạng thái: ${existingContract.status}` 
       });
     }
 
@@ -336,7 +337,7 @@ const signContract = async (req, res) => {
       });
     }
 
-    // ✅ CLEAN BASE64 SIGNATURE
+    //  CLEAN BASE64 SIGNATURE
     try {
       // Loại bỏ data:image/png;base64, prefix
       if (signature.includes(',')) {
@@ -626,6 +627,13 @@ const cancelContract = async (req, res) => {
     if (contract.status === 'cancelled') {
       return res.status(400).json({ 
         message: 'Contract đã được hủy' 
+      });
+    }
+
+    // ✅ THÊM CHECK: Không cho cancel contract đã ký
+    if (contract.status === 'signed') {
+      return res.status(400).json({ 
+        message: 'Không thể hủy contract đã được ký' 
       });
     }
 
