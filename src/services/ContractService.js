@@ -516,7 +516,11 @@ class ContractService {
         _id: contract.customer_signed_by._id,
         fullname: contract.customer_signed_by.fullname,
         email: contract.customer_signed_by.email
-      } : null
+      } : null,
+      
+     
+      staff_signature: contract.staff_signature || null,
+      customer_signature: contract.customer_signature || null
     };
   }
 
