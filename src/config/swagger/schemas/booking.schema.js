@@ -55,8 +55,8 @@
  *           example: "09:00"
  *         return_time:
  *           type: string
- *           description: Thời gian trả xe
- *           example: "18:00"
+ *           description: Thời gian trả xe (tự động tính theo pickup_time)
+ *           example: "08:00"
  *         status:
  *           type: string
  *           enum: [pending, confirmed, cancelled]
@@ -171,7 +171,6 @@
  *         - start_date
  *         - end_date
  *         - pickup_time
- *         - return_time
  *       properties:
  *         model:
  *           type: string
@@ -198,13 +197,14 @@
  *         pickup_time:
  *           type: string
  *           pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
- *           description: Thời gian nhận xe (HH:MM)
+ *           description: Thời gian nhận xe (HH:MM) - giờ trả xe sẽ tự động cùng giờ
  *           example: "09:00"
  *         return_time:
  *           type: string
  *           pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
- *           description: Thời gian trả xe (HH:MM)
- *           example: "18:00"
+ *           description: Thời gian trả xe (HH:MM) - tự động tính theo pickup_time
+ *           example: "09:00"
+ *           readOnly: true
  *         special_requests:
  *           type: string
  *           description: Yêu cầu đặc biệt

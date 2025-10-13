@@ -250,8 +250,29 @@ class ExcelService {
           continue;
         }
 
+        //  FIX: Convert to number if string và validate data type
+        const priceNum = typeof new_price === 'string' ? parseFloat(new_price) : new_price;
+        const depositNum = typeof new_deposit_percentage === 'string' ? parseFloat(new_deposit_percentage) : new_deposit_percentage;
+
+        // Validate data type
+        if (typeof priceNum !== 'number' || isNaN(priceNum)) {
+          result.errors.push({
+            row: i,
+            message: 'Giá phải là số hợp lệ'
+          });
+          continue;
+        }
+
+        if (typeof depositNum !== 'number' || isNaN(depositNum)) {
+          result.errors.push({
+            row: i,
+            message: 'Phần trăm cọc phải là số hợp lệ'
+          });
+          continue;
+        }
+
         // Validate giá
-        if (new_price < 50000 || new_price > 300000) {
+        if (priceNum < 50000 || priceNum > 300000) {
           result.errors.push({
             row: i,
             message: 'Giá không hợp lệ (50,000đ - 300,000đ)'
@@ -260,7 +281,7 @@ class ExcelService {
         }
 
         // Validate phần trăm cọc
-        if (new_deposit_percentage < 0 || new_deposit_percentage > 100) {
+        if (depositNum < 0 || depositNum > 100) {
           result.errors.push({
             row: i,
             message: 'Phần trăm cọc không hợp lệ (0% - 100%)'
@@ -271,8 +292,8 @@ class ExcelService {
         // Thêm vào kết quả
         result.data.push({
           vehicle_code,
-          new_price,
-          new_deposit_percentage
+          new_price: priceNum,
+          new_deposit_percentage: depositNum
         });
       }
 
