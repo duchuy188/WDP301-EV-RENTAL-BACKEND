@@ -901,9 +901,26 @@ class RentalController {
         });
       }
 
+   
+      const contract = await Contract.findOne({
+        rental_id: rental._id,
+        is_active: true
+      }).select('status code staff_signed_at customer_signed_at staff_signed_by customer_signed_by');
+
       res.json({
         success: true,
-        data: rental
+        data: {
+          ...rental.toObject(),
+          contract: contract ? {
+            status: contract.status,
+            code: contract.code,
+            staff_signed_at: contract.staff_signed_at,
+            customer_signed_at: contract.customer_signed_at,
+            staff_signed_by: contract.staff_signed_by,
+            customer_signed_by: contract.customer_signed_by,
+            is_signed: contract.status === 'signed'
+          } : null
+        }
       });
     } catch (error) {
       console.error('Error getting rental details:', error);
