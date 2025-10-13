@@ -131,6 +131,11 @@ exports.bulkCreateVehicles = async (req, res) => {
       quantity = 1,
       export_excel = true
     } = req.body;
+
+    
+    const yearNum = parseInt(year);
+    const priceNum = parseFloat(price_per_day);
+    const batteryNum = parseFloat(current_battery);
     
     // Validate required fields
     if (!model || !year || !color || !type || !battery_capacity || !max_range || !price_per_day) {
@@ -143,19 +148,19 @@ exports.bulkCreateVehicles = async (req, res) => {
     }
     
     //Validate data type để tránh crash
-    if (typeof year !== 'number' || year < 2020 || year > new Date().getFullYear() + 1) {
+    if (isNaN(yearNum) || yearNum < 2020 || yearNum > new Date().getFullYear() + 1) {
       return res.status(400).json({ 
         message: `Năm sản xuất phải là số từ 2020 đến ${new Date().getFullYear() + 1}` 
       });
     }
 
-    if (typeof current_battery !== 'number' || current_battery < 0 || current_battery > 100) {
+    if (isNaN(batteryNum) || batteryNum < 0 || batteryNum > 100) {
       return res.status(400).json({ 
         message: 'Pin hiện tại phải là số từ 0% đến 100%' 
       });
     }
 
-    if (typeof price_per_day !== 'number' || price_per_day < 50000 || price_per_day > 500000) {
+    if (isNaN(priceNum) || priceNum < 50000 || priceNum > 500000) {
       return res.status(400).json({ 
         message: 'Giá thuê phải là số từ 50,000 đến 500,000 VND/ngày' 
       });
@@ -358,49 +363,55 @@ exports.importLicensePlates = async (req, res) => {
       });
     }
     
-    // Cập nhật biển số cho từng xe
-    const updatePromises = result.data.map(async ({ id, license_plate }) => {
+    
+    const updateResults = [];
+
+    for (const { id, license_plate } of result.data) {
       // Kiểm tra xe tồn tại và đang ở trạng thái draft
       const vehicle = await Vehicle.findById(id);
       if (!vehicle) {
-        return {
+        updateResults.push({
           success: false,
           id,
           message: 'Không tìm thấy xe'
-        };
+        });
+        continue;
       }
 
-      // ⭐ THÊM KIỂM TRA: Chỉ cho phép import biển số cho xe ở trạng thái draft
+     
       if (vehicle.status !== 'draft') {
-        return {
+        updateResults.push({
           success: false,
           id,
           message: `Xe ${vehicle.name} không ở trạng thái draft, không thể cập nhật biển số`
-        };
+        });
+        continue;
       }
 
-      // ⭐ SỬA: Bỏ qua kiểm tra biển số tạm thời
+     
       // Chỉ kiểm tra nếu xe đã có biển số thật (không phải biển số tạm thời)
       if (vehicle.license_plate && !vehicle.license_plate.startsWith('TEMP_')) {
-        return {
+        updateResults.push({
           success: false,
           id,
           message: `Xe ${vehicle.name} đã có biển số ${vehicle.license_plate}, không thể cập nhật`
-        };
+        });
+        continue;
       }
 
-      // Kiểm tra biển số đã tồn tại chưa (trừ xe hiện tại)
+      //  Kiểm tra biển số đã tồn tại trong database (không chỉ xe hiện tại)
       const existingVehicle = await Vehicle.findOne({ 
         license_plate,
         _id: { $ne: id }
       });
       
-      if (existingVehicle && !existingVehicle.license_plate.startsWith('TEMP_')) {
-        return {
+      if (existingVehicle) {
+        updateResults.push({
           success: false,
           id,
           message: `Biển số ${license_plate} đã được sử dụng bởi xe ${existingVehicle.name}`
-        };
+        });
+        continue;
       }
       
       // Cập nhật biển số
@@ -410,15 +421,13 @@ exports.importLicensePlates = async (req, res) => {
         { new: true }
       );
       
-      return {
+      updateResults.push({
         success: !!updated,
         id,
         license_plate,
         name: updated.name
-      };
-    });
-    
-    const updateResults = await Promise.all(updatePromises);
+      });
+    }
     
     // Phân loại kết quả
     const successes = updateResults.filter(r => r.success);
@@ -478,8 +487,14 @@ exports.assignVehiclesByQuantity = async (req, res) => {
     // Tìm xe phù hợp để phân bổ
     const query = { status };
     if (color) query.color = color;
-    if (model) query.model = model; // Thêm filter theo model
-    if (status === 'draft') query.license_plate = { $ne: null, $ne: '' };
+    if (model) query.model = model;
+    if (status === 'draft') {
+      query.license_plate = { 
+        $ne: null, 
+        $ne: '',
+        $not: /^TEMP_/  
+      };
+    }
     query.station_id = null; // Chỉ lấy xe chưa được phân bổ
     
     const vehicles = await Vehicle.find(query).limit(parseInt(quantity));
@@ -1026,7 +1041,7 @@ exports.getPublicVehicles = async (req, res) => {
     };
     
     if (type) baseQuery.type = type;
-    if (station_id) baseQuery.station_id = station_id;
+    if (station_id) baseQuery.station_id = new mongoose.Types.ObjectId(station_id);
     if (color) baseQuery.color = color;
 
     // Aggregate để nhóm xe theo model và màu
@@ -1050,8 +1065,8 @@ exports.getPublicVehicles = async (req, res) => {
           deposit_percentage: { $first: '$deposit_percentage' },
           // Chỉ đếm số xe available
           available_quantity: { $sum: 1 },
-          // Một ảnh đại diện
-          sample_image: { $first: { $arrayElemAt: ['$images', 0] } },
+          // Lấy ảnh đầu tiên của mỗi màu
+          color_image: { $first: { $arrayElemAt: ['$images', 0] } },
           // Danh sách ID xe cụ thể
           vehicle_ids: { $push: '$_id' },
           // Danh sách trạm có xe available
@@ -1061,6 +1076,41 @@ exports.getPublicVehicles = async (req, res) => {
               quantity: 1
             }
           }
+        }
+      },
+      //  THÊM: Nhóm lại theo model để có tất cả màu
+      {
+        $group: {
+          _id: '$_id.model',
+          // Thông tin chung của model
+          brand: { $first: '$brand' },
+          model: { $first: '$model' },
+          year: { $first: '$year' },
+          type: { $first: '$type' },
+          battery_capacity: { $first: '$battery_capacity' },
+          max_range: { $first: '$max_range' },
+          price_per_day: { $first: '$price_per_day' },
+          deposit_percentage: { $first: '$deposit_percentage' },
+          
+          //  Tất cả ảnh màu khác nhau
+          color_images: { 
+            $push: {
+              color: '$_id.color',
+              image: '$color_image',
+              available_quantity: '$available_quantity',
+              //  THÊM: ID xe đầu tiên của màu này
+              sample_vehicle_id: { $arrayElemAt: ['$vehicle_ids', 0] }
+            }
+          },
+          
+          // Tổng số xe available
+          total_available_quantity: { $sum: '$available_quantity' },
+          
+          // Danh sách ID xe cụ thể (flatten array)
+          all_vehicle_ids: { $push: '$vehicle_ids' },
+          
+          // Danh sách trạm (giữ tất cả trạm có xe)
+          stations: { $addToSet: { $arrayElemAt: ['$stations', 0] } }
         }
       },
       // Populate thông tin trạm
@@ -1080,17 +1130,17 @@ exports.getPublicVehicles = async (req, res) => {
           brand: 1,
           year: 1,
           type: 1,
-          color: 1,
           battery_capacity: 1,
           max_range: 1,
           price_per_day: 1,
           deposit_percentage: 1,
-          available_quantity: 1,
-          sample_image: 1,
-          //  ID xe đầu tiên để xem chi tiết
-          sample_vehicle_id: { $arrayElemAt: ['$vehicle_ids', 0] },
-          //  Tất cả ID xe để booking
-          all_vehicle_ids: '$vehicle_ids',
+          total_available_quantity: 1,
+          //  Tất cả ảnh màu khác nhau
+          color_images: 1,
+          //  ID xe đầu tiên để xem chi tiết (flatten array)
+          sample_vehicle_id: { $arrayElemAt: [{ $reduce: { input: '$all_vehicle_ids', initialValue: [], in: { $concatArrays: ['$$value', '$$this'] } } }, 0] },
+          //  Tất cả ID xe để booking (flatten array)
+          all_vehicle_ids: { $reduce: { input: '$all_vehicle_ids', initialValue: [], in: { $concatArrays: ['$$value', '$$this'] } } },
           stations: {
             $map: {
               input: '$station_details',
@@ -1113,8 +1163,9 @@ exports.getPublicVehicles = async (req, res) => {
           }
         }
       },
+      //  THÊM: Filter theo trạm sau khi group (nếu có)
       // Chỉ hiện model có xe available
-      { $match: { available_quantity: { $gt: 0 } } },
+      { $match: { total_available_quantity: { $gt: 0 } } },
       // Sắp xếp
       { $sort: { [sort]: order === 'desc' ? -1 : 1 } },
       // Phân trang
@@ -1129,10 +1180,7 @@ exports.getPublicVehicles = async (req, res) => {
       { $match: baseQuery },
       {
         $group: {
-          _id: {
-            model: '$model',
-            color: '$color'
-          }
+          _id: '$model'
         }
       },
       { $count: 'total' }

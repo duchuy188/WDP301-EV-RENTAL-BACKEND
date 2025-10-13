@@ -358,6 +358,12 @@ const createBooking = async (req, res) => {
     
     // Send confirmation email
     try {
+   
+      if (!user.fullname) {
+        console.error('❌ user.fullname is undefined');
+        throw new Error('user.fullname is required for email');
+      }
+      
       await sendEmail({
         to: user.email,
         subject: 'Xác nhận đặt xe điện - EV Rental',
@@ -367,7 +373,7 @@ const createBooking = async (req, res) => {
           carModel: vehicle.name,
           pickupTime: `${pickup_time} - ${startDate.toLocaleDateString('vi-VN')}`,
           pickupLocation: station.name,
-          returnTime: `${return_time} - ${endDate.toLocaleDateString('vi-VN')}`,
+          returnTime: `${calculatedReturnTime} - ${endDate.toLocaleDateString('vi-VN')}`,
           totalCost: totalPrice.toLocaleString('vi-VN') + ' VND',
           qrCode: booking.qr_code,           // QR Code: "BK4D3MU8"
           qrCodeImage: qrCodeData.imageUrl,
@@ -380,31 +386,6 @@ const createBooking = async (req, res) => {
       // Không throw error, chỉ log
     }
     
-    // Gửi email xác nhận booking cho walk-in customer
-    try {
-      const emailHtml = getBookingConfirmationTemplate(customer_name, {
-        bookingId: booking._id.toString(),
-        bookingCode: booking.code,
-        carModel: vehicle.name,
-        pickupTime: `${pickup_time} - ${startDate.toLocaleDateString('vi-VN')}`,
-        pickupLocation: station.name,
-        returnTime: `${return_time} - ${endDate.toLocaleDateString('vi-VN')}`,
-        totalCost: totalPrice.toLocaleString('vi-VN') + ' VND',
-        qrCode: booking.qr_code,
-        qrCodeImage: qrCodeData.imageUrl,
-        qrExpiresAt: booking.qr_expires_at.toLocaleString('vi-VN')
-      });
-      
-      await sendEmail({
-        to: customer_email || customer_phone + '@walkin.evrental.com',
-        subject: 'Xác nhận đặt xe điện - EV Rental (Walk-in)',
-        html: emailHtml
-      });
-      console.log(`✅ Email xác nhận booking đã được gửi cho walk-in customer: ${customer_email || customer_phone}`);
-    } catch (emailError) {
-      console.error('❌ Lỗi khi gửi email xác nhận booking:', emailError.message);
-      // Không throw error, chỉ log
-    }
 
     // Populate booking data for response
     const populatedBooking = await Booking.findById(booking._id)
@@ -660,12 +641,12 @@ const confirmBooking = async (req, res) => {
       }
       
       // 2. Chuẩn bị thông tin payment (không tạo payment tự động)
-      if (booking.total_days === 1 && booking.deposit_amount === 0) {
-        // Thuê 1 ngày, thanh toán ngay toàn bộ
+      if (booking.total_days < 3) {
+        // Thuê < 3 ngày, thanh toán ngay toàn bộ
         paymentType = 'rental_fee';
         paymentAmount = booking.total_price;
       } else {
-        // Thuê nhiều ngày, cọc trước
+        // Thuê >= 3 ngày, cọc trước
         paymentType = 'deposit';
         paymentAmount = booking.deposit_amount;
       }
@@ -1516,6 +1497,12 @@ const createWalkInBooking = async (req, res) => {
 
     // Gửi email xác nhận booking cho walk-in customer
     try {
+  
+      if (!customer_name) {
+        console.error('❌ customer_name is undefined or null');
+        throw new Error('customer_name is required for email');
+      }
+      
       const station = await Station.findById(station_id);
       const emailHtml = getBookingConfirmationTemplate(customer_name, {
         bookingId: booking._id.toString(),
@@ -1523,7 +1510,7 @@ const createWalkInBooking = async (req, res) => {
         carModel: vehicle.name,
         pickupTime: `${pickup_time} - ${startDate.toLocaleDateString('vi-VN')}`,
         pickupLocation: station.name,
-        returnTime: `${return_time} - ${endDate.toLocaleDateString('vi-VN')}`,
+        returnTime: `${calculatedReturnTime} - ${endDate.toLocaleDateString('vi-VN')}`,
         totalCost: totalPrice.toLocaleString('vi-VN') + ' VND',
         qrCode: booking.qr_code,
         qrCodeImage: qrCodeData.imageUrl,

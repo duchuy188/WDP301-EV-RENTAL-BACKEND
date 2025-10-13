@@ -272,10 +272,10 @@ class ExcelService {
         }
 
         // Validate giá
-        if (priceNum < 50000 || priceNum > 300000) {
+        if (priceNum < 50000 || priceNum > 500000) {
           result.errors.push({
             row: i,
-            message: 'Giá không hợp lệ (50,000đ - 300,000đ)'
+            message: 'Giá không hợp lệ (50,000đ - 500,000đ)'
           });
           continue;
         }
