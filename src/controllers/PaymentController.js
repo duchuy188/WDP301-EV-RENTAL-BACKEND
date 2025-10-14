@@ -15,7 +15,7 @@ const sendPaymentSuccessEmail = async (payment, user) => {
                    payment.payment_type === 'additional_fee' ? 'Phí phụ trội' : 'Hoàn tiền',
       paymentMethod: payment.payment_method === 'cash' ? 'Tiền mặt' :
                     payment.payment_method === 'qr_code' ? 'QR Code' :
-                    payment.payment_method === 'vnpay' ? 'VNPay' :
+                    payment.payment_method === 'vnpay' ? 'VNPay' : 
                     payment.payment_method === 'bank_transfer' ? 'Chuyển khoản' : 'Khác',
       transactionId: payment.transaction_id || 'N/A',
       completedAt: formatVietnamTime(payment.completed_at),
@@ -745,7 +745,7 @@ const handleVNPayCallback = async (req, res) => {
               await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
               console.log(`✅ Rental ${rental._id} activated - deposit paid via VNPay`);
             }
-            // ✅ FIX: Thêm case cho rental_fee khi rental đang pending_deposit
+          
             else if (payment.payment_type === 'rental_fee' && rental.status === 'pending_deposit') {
               await Rental.findByIdAndUpdate(rental._id, { status: 'active' });
               await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
@@ -899,7 +899,7 @@ const handleVNPayWebhook = async (req, res) => {
             await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
             console.log(`✅ Rental ${rental._id} activated - deposit paid via VNPay IPN`);
           }
-          // ✅ FIX: Thêm case cho rental_fee khi rental đang pending_deposit
+         
           else if (payment.payment_type === 'rental_fee' && rental.status === 'pending_deposit') {
             await Rental.findByIdAndUpdate(rental._id, { status: 'active' });
             await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });

@@ -1230,7 +1230,7 @@ exports.getPublicVehicleDetail = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy xe hoặc xe không khả dụng' });
     }
     
-    
+  
     const allColors = await Vehicle.aggregate([
       {
         $match: {
@@ -1245,6 +1245,7 @@ exports.getPublicVehicleDetail = async (req, res) => {
           _id: '$color',
           count: { $sum: 1 },
           sample_vehicle_id: { $first: '$_id' },
+          sample_image: { $first: { $arrayElemAt: ['$images', 0] } },
           price_per_day: { $first: '$price_per_day' },
           deposit_percentage: { $first: '$deposit_percentage' }
         }
@@ -1255,10 +1256,12 @@ exports.getPublicVehicleDetail = async (req, res) => {
           color: '$_id',
           available_quantity: '$count',
           sample_vehicle_id: 1,
+          sample_image: 1,
           price_per_day: 1,
           deposit_percentage: 1
         }
-      }
+      },
+      { $sort: { color: 1 } }
     ]);
     
     // Không trả về thông tin nội bộ
@@ -1267,6 +1270,7 @@ exports.getPublicVehicleDetail = async (req, res) => {
       brand: vehicle.brand,
       model: vehicle.model,
       year: vehicle.year,
+      color: vehicle.color, // Màu của xe hiện tại
       type: vehicle.type,
       battery_capacity: vehicle.battery_capacity,
       max_range: vehicle.max_range,
@@ -1274,7 +1278,7 @@ exports.getPublicVehicleDetail = async (req, res) => {
       deposit_percentage: vehicle.deposit_percentage,
       images: vehicle.images,
       station: vehicle.station_id,
-    
+      // Thêm thông tin tất cả màu có sẵn
       available_colors: allColors,
       createdAt: formatVietnamTime(vehicle.createdAt),
       updatedAt: formatVietnamTime(vehicle.updatedAt)
