@@ -15,7 +15,7 @@ const sendPaymentSuccessEmail = async (payment, user) => {
                    payment.payment_type === 'additional_fee' ? 'Phí phụ trội' : 'Hoàn tiền',
       paymentMethod: payment.payment_method === 'cash' ? 'Tiền mặt' :
                     payment.payment_method === 'qr_code' ? 'QR Code' :
-                    payment.payment_method === 'vnpay' ? 'VNPay' :
+                    payment.payment_method === 'vnpay' ? 'VNPay' : 
                     payment.payment_method === 'bank_transfer' ? 'Chuyển khoản' : 'Khác',
       transactionId: payment.transaction_id || 'N/A',
       completedAt: formatVietnamTime(payment.completed_at),
@@ -680,39 +680,42 @@ const handleVNPayCallback = async (req, res) => {
     const callbackResult = vnpayService.processCallback(req.query);
 
     if (!callbackResult.success) {
-      // Hiển thị kết quả trực tiếp trên backend
-      return res.status(400).json({
-        success: false,
-        message: callbackResult.message,
-        code: callbackResult.code,
-        callbackData: req.query
-      });
+      // Redirect về frontend với lỗi
+      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=${encodeURIComponent(callbackResult.message)}`);
     }
-
 
     // Tìm payment theo txnRef (numeric version từ VNPay)
     let payment = await Payment.findOne({ 
-      vnpay_transaction_no: callbackResult.orderId,
-      status: 'pending' 
+      vnpay_transaction_no: callbackResult.orderId
     }).populate('user_id', 'fullname email')
       .populate('booking_id', 'code start_date end_date');
 
     // Nếu không tìm thấy, thử tìm theo orderId (full version với PAY prefix)
     if (!payment) {
       payment = await Payment.findOne({ 
-        vnpay_transaction_no: `PAY${callbackResult.orderId}`,
-        status: 'pending' 
+        vnpay_transaction_no: `PAY${callbackResult.orderId}`
       }).populate('user_id', 'fullname email')
         .populate('booking_id', 'code start_date end_date');
     }
 
     if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy payment',
-        orderId: callbackResult.orderId,
-        callbackData: req.query
+      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=${encodeURIComponent('Không tìm thấy payment')}`);
+    }
+
+    // Nếu payment đã completed (do webhook xử lý trước), redirect luôn
+    if (payment.status === 'completed') {
+      const vnpayParams = new URLSearchParams({
+        vnp_Amount: (payment.amount * 100).toString(),
+        vnp_BankCode: 'VNPAY',
+        vnp_CardType: 'QRCODE',
+        vnp_OrderInfo: `Thanh toan ${payment.code}`,
+        vnp_PayDate: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
+        vnp_ResponseCode: '00',
+        vnp_TransactionNo: payment.transaction_id || 'AUTO_' + Date.now(),
+        vnp_TransactionStatus: '00',
+        vnp_TxnRef: payment.code
       });
+      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
     }
 
     // Cập nhật payment status
@@ -745,7 +748,7 @@ const handleVNPayCallback = async (req, res) => {
               await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
               console.log(`✅ Rental ${rental._id} activated - deposit paid via VNPay`);
             }
-            // ✅ FIX: Thêm case cho rental_fee khi rental đang pending_deposit
+          
             else if (payment.payment_type === 'rental_fee' && rental.status === 'pending_deposit') {
               await Rental.findByIdAndUpdate(rental._id, { status: 'active' });
               await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
@@ -808,6 +811,19 @@ const handleVNPayCallback = async (req, res) => {
       // Gửi email notification
       await sendPaymentSuccessEmail(payment, payment.user_id);
       
+      // Redirect về frontend với thành công
+      const vnpayParams = new URLSearchParams({
+        vnp_Amount: (payment.amount * 100).toString(),
+        vnp_BankCode: 'VNPAY',
+        vnp_CardType: 'QRCODE',
+        vnp_OrderInfo: `Thanh toan ${payment.code}`,
+        vnp_PayDate: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
+        vnp_ResponseCode: '00',
+        vnp_TransactionNo: payment.transaction_id || 'AUTO_' + Date.now(),
+        vnp_TransactionStatus: '00',
+        vnp_TxnRef: payment.code
+      });
+      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
       
     } else {
       payment.status = 'cancelled';  
@@ -816,30 +832,25 @@ const handleVNPayCallback = async (req, res) => {
       
       await payment.save();
       
+      // Redirect về frontend với thất bại
+      const vnpayParams = new URLSearchParams({
+        vnp_Amount: (payment.amount * 100).toString(),
+        vnp_BankCode: 'VNPAY',
+        vnp_CardType: 'QRCODE',
+        vnp_OrderInfo: `Thanh toan ${payment.code}`,
+        vnp_PayDate: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
+        vnp_ResponseCode: '99',
+        vnp_TransactionNo: payment.transaction_id || 'FAILED_' + Date.now(),
+        vnp_TransactionStatus: '99',
+        vnp_TxnRef: payment.code
+      });
+      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
     }
-
-    // Trả về kết quả JSON thay vì redirect
-    return res.status(200).json({
-      success: true,
-      status: callbackResult.status,
-      message: callbackResult.message,
-      payment: {
-        id: payment._id,
-        code: payment.code,
-        amount: payment.amount,
-        status: payment.status,
-        transaction_id: payment.transaction_id,
-        completed_at: payment.completed_at
-      },
-      callbackData: req.query
-    });
 
   } catch (error) {
     console.error('Lỗi khi xử lý VNPay callback:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Lỗi xử lý callback'
-    });
+    // Redirect về frontend với lỗi hệ thống
+    return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=System error`);
   }
 };
 
@@ -899,7 +910,7 @@ const handleVNPayWebhook = async (req, res) => {
             await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });
             console.log(`✅ Rental ${rental._id} activated - deposit paid via VNPay IPN`);
           }
-          // ✅ FIX: Thêm case cho rental_fee khi rental đang pending_deposit
+         
           else if (payment.payment_type === 'rental_fee' && rental.status === 'pending_deposit') {
             await Rental.findByIdAndUpdate(rental._id, { status: 'active' });
             await Vehicle.findByIdAndUpdate(rental.vehicle_id, { status: 'rented' });

@@ -127,7 +127,7 @@
  * /api/vehicles:
  *   get:
  *     summary: Lấy danh sách xe available cho customer
- *     description: API cho customer xem danh sách xe available, nhóm theo model và màu. Chỉ hiển thị xe available tại các trạm để booking.
+ *     description: API cho customer xem danh sách xe available, nhóm theo model và chỉ hiển thị 1 màu đại diện cho mỗi model. Chỉ hiển thị xe available tại các trạm để booking.
  *     tags: [Vehicles]
  *     parameters:
  *       - in: query
@@ -143,10 +143,10 @@
  *           default: 10
  *         description: Số lượng mỗi trang
  *       - in: query
- *         name: color
+ *         name: model
  *         schema:
  *           type: string
- *         description: Lọc theo màu xe
+ *         description: Lọc theo model xe
  *       - in: query
  *         name: type
  *         schema:
@@ -173,7 +173,7 @@
  *         description: Thứ tự sắp xếp
  *     responses:
  *       200:
- *         description: Danh sách xe available nhóm theo model và màu cho booking
+ *         description: Danh sách xe available - mỗi model hiển thị 1 màu đại diện
  *         content:
  *           application/json:
  *             schema:
@@ -184,14 +184,18 @@
  *                   items:
  *                     type: object
  *                     properties:
+ *                       id:
+ *                         type: string
+ *                         example: "Klara S"
+ *                         description: ID duy nhất của model (tên model)
  *                       model:
  *                         type: string
- *                         example: "VinFast Evo 200"
+ *                         example: "Klara S"
  *                         description: Model xe để booking
  *                       color:
  *                         type: string
- *                         example: "Đỏ"
- *                         description: Màu xe để booking
+ *                         example: "Trắng"
+ *                         description: Màu đại diện của model
  *                       brand:
  *                         type: string
  *                         example: "VinFast"
@@ -215,11 +219,22 @@
  *                         example: 50
  *                       available_quantity:
  *                         type: number
- *                         example: 3
- *                         description: Số lượng xe available để booking
- *                       sample_image:
+ *                         example: 15
+ *                         description: Tổng số xe available của tất cả màu trong model này
+ *                       available_colors_count:
+ *                         type: number
+ *                         example: 5
+ *                         description: Số màu có sẵn của model này
+ *                       images:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         example: ["https://res.cloudinary.com/..."]
+ *                         description: Ảnh của màu đại diện
+ *                       sample_vehicle_id:
  *                         type: string
- *                         example: "https://res.cloudinary.com/..."
+ *                         example: "60d5ec9af682fbd12a0bbaf1"
+ *                         description: ID xe mẫu để xem chi tiết
  *                       stations:
  *                         type: array
  *                         items:
@@ -227,17 +242,19 @@
  *                           properties:
  *                             _id:
  *                               type: string
- *                               description: ID trạm để booking
+ *                               description: ID trạm có xe model này
  *                             name:
  *                               type: string
  *                               example: "Trạm VinFast Quận 1"
  *                             address:
  *                               type: string
  *                               example: "123 Nguyễn Huệ, Q1, TP.HCM"
- *                             available_quantity:
- *                               type: number
- *                               example: 2
- *                               description: Số xe available tại trạm này
+ *                       createdAt:
+ *                         type: string
+ *                         example: "15/01/2024 14:30:25"
+ *                       updatedAt:
+ *                         type: string
+ *                         example: "15/01/2024 14:30:25"
  *                 pagination:
  *                   type: object
  *                   properties:
@@ -262,7 +279,7 @@
  * /api/vehicles/{id}:
  *   get:
  *     summary: Lấy chi tiết xe cho customer
- *     description: API cho customer xem chi tiết xe available. Chỉ hiển thị xe available tại trạm để booking.
+ *     description: API cho customer xem chi tiết xe và tất cả màu available của cùng model. Chỉ hiển thị xe available tại trạm để booking.
  *     tags: [Vehicles]
  *     parameters:
  *       - in: path
@@ -273,7 +290,7 @@
  *         description: ID của xe
  *     responses:
  *       200:
- *         description: Chi tiết xe cho customer booking
+ *         description: Chi tiết xe và tất cả màu available của model
  *         content:
  *           application/json:
  *             schema:
@@ -281,21 +298,17 @@
  *               properties:
  *                 _id:
  *                   type: string
- *                   description: ID xe để booking
+ *                   description: ID xe hiện tại
+ *                 model:
+ *                   type: string
+ *                   example: "Klara S"
+ *                   description: Model xe
  *                 brand:
  *                   type: string
  *                   example: "VinFast"
- *                 model:
- *                   type: string
- *                   example: "VinFast Evo 200"
- *                   description: Model xe để booking
  *                 year:
  *                   type: number
  *                   example: 2024
- *                 color:
- *                   type: string
- *                   example: "Đỏ"
- *                   description: Màu xe để booking
  *                 type:
  *                   type: string
  *                   example: "scooter"
@@ -305,45 +318,103 @@
  *                 max_range:
  *                   type: number
  *                   example: 80
- *                 price_per_day:
+ *                 current_battery:
  *                   type: number
- *                   example: 150000
+ *                   example: 85
  *                 deposit_percentage:
  *                   type: number
  *                   example: 50
- *                 images:
- *                   type: array
- *                   items:
- *                     type: string
- *                   example: ["https://res.cloudinary.com/..."]
- *                 station:
+ *                 technical_status:
+ *                   type: string
+ *                   example: "good"
+ *                 selected_color:
+ *                   type: string
+ *                   example: "Trắng"
+ *                   description: Màu của xe hiện tại được chọn
+ *                 current_color_info:
  *                   type: object
  *                   properties:
- *                     _id:
+ *                     color:
  *                       type: string
- *                       description: ID trạm để booking
- *                     name:
- *                       type: string
- *                       example: "Trạm VinFast Quận 1"
- *                     address:
- *                       type: string
- *                       example: "123 Nguyễn Huệ, Q1, TP.HCM"
- *                     phone:
- *                       type: string
- *                       example: "028 1234 5678"
- *                     email:
- *                       type: string
- *                       example: "q1@vinfast.com"
- *                     opening_time:
- *                       type: string
- *                       example: "06:00"
- *                     closing_time:
- *                       type: string
- *                       example: "22:00"
- *                 similar_vehicles_count:
+ *                       example: "Trắng"
+ *                     images:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["https://res.cloudinary.com/..."]
+ *                     price_per_day:
+ *                       type: number
+ *                       example: 150000
+ *                     station:
+ *                       type: object
+ *                       properties:
+ *                         _id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                           example: "Trạm VinFast Quận 1"
+ *                         address:
+ *                           type: string
+ *                           example: "123 Nguyễn Huệ, Q1, TP.HCM"
+ *                         phone:
+ *                           type: string
+ *                           example: "028 1234 5678"
+ *                         email:
+ *                           type: string
+ *                           example: "q1@vinfast.com"
+ *                         opening_time:
+ *                           type: string
+ *                           example: "06:00"
+ *                         closing_time:
+ *                           type: string
+ *                           example: "22:00"
+ *                 available_colors:
+ *                   type: array
+ *                   description: Tất cả màu available của model này
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       color:
+ *                         type: string
+ *                         example: "Đỏ"
+ *                       available_quantity:
+ *                         type: number
+ *                         example: 5
+ *                         description: Số xe available của màu này
+ *                       sample_vehicle_id:
+ *                         type: string
+ *                         example: "60d5ec9af682fbd12a0bbaf1"
+ *                         description: ID xe mẫu của màu này
+ *                       images:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         example: ["https://res.cloudinary.com/..."]
+ *                         description: Ảnh của màu này
+ *                       price_per_day:
+ *                         type: number
+ *                         example: 150000
+ *                       stations:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             _id:
+ *                               type: string
+ *                             name:
+ *                               type: string
+ *                               example: "Trạm VinFast Quận 1"
+ *                             address:
+ *                               type: string
+ *                               example: "123 Nguyễn Huệ, Q1, TP.HCM"
+ *                 total_colors:
  *                   type: number
- *                   example: 2
- *                   description: Số xe cùng model/màu available tại trạm
+ *                   example: 5
+ *                   description: Tổng số màu có sẵn của model
+ *                 total_available:
+ *                   type: number
+ *                   example: 20
+ *                   description: Tổng số xe available của tất cả màu
  *                 createdAt:
  *                   type: string
  *                   example: "15/01/2024 14:30:25"
@@ -359,7 +430,7 @@
  *               properties:
  *                 message:
  *                   type: string
- *                   example: "Không tìm thấy xe hoặc xe không khả dụng"
+ *                   example: "Không tìm thấy xe"
  *       500:
  *         description: Lỗi server
  */
