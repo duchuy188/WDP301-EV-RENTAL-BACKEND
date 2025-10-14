@@ -1020,14 +1020,14 @@ exports.reportMaintenance = async (req, res) => {
   }
 };
 
-// Lấy danh sách xe cho public (customer)
+// Lấy danh sách xe cho public (customer) - CHỈ HIỂN THỊ 1 MÀU ĐẠI DIỆN
 exports.getPublicVehicles = async (req, res) => {
   try {
     const {
       page = 1,
       limit = 10,
-      color,
       type,
+      model, 
       station_id,
       sort = 'createdAt',
       order = 'desc'
@@ -1041,106 +1041,70 @@ exports.getPublicVehicles = async (req, res) => {
     };
     
     if (type) baseQuery.type = type;
+    if (model) baseQuery.model = model; 
     if (station_id) baseQuery.station_id = new mongoose.Types.ObjectId(station_id);
-    if (color) baseQuery.color = color;
 
-    // Aggregate để nhóm xe theo model và màu
+    // Aggregate để nhóm xe theo model - CHỈ LẤY 1 MÀU ĐẠI DIỆN
     const aggregateQuery = [
       { $match: baseQuery },
+      // Sắp xếp để lấy màu đầu tiên 
+      { $sort: { color: 1, createdAt: 1 } },
       {
         $group: {
-          _id: {
-            model: '$model',
-            color: '$color'
-          },
-          // Thông tin chung của model
+          _id: '$model',
+          // Thông tin của màu đại diện (màu đầu tiên)
           brand: { $first: '$brand' },
           model: { $first: '$model' },
           year: { $first: '$year' },
           type: { $first: '$type' },
-          color: { $first: '$color' },
+          representative_color: { $first: '$color' }, // Màu đại diện
           battery_capacity: { $first: '$battery_capacity' },
           max_range: { $first: '$max_range' },
           price_per_day: { $first: '$price_per_day' },
           deposit_percentage: { $first: '$deposit_percentage' },
-          // Chỉ đếm số xe available
-          available_quantity: { $sum: 1 },
-          // Lấy ảnh đầu tiên của mỗi màu
-          color_image: { $first: { $arrayElemAt: ['$images', 0] } },
-          // Danh sách ID xe cụ thể
-          vehicle_ids: { $push: '$_id' },
-          // Danh sách trạm có xe available
-          stations: {
-            $addToSet: {
-              _id: '$station_id',
-              quantity: 1
-            }
-          }
-        }
-      },
-      //  THÊM: Nhóm lại theo model để có tất cả màu
-      {
-        $group: {
-          _id: '$_id.model',
-          // Thông tin chung của model
-          brand: { $first: '$brand' },
-          model: { $first: '$model' },
-          year: { $first: '$year' },
-          type: { $first: '$type' },
-          battery_capacity: { $first: '$battery_capacity' },
-          max_range: { $first: '$max_range' },
-          price_per_day: { $first: '$price_per_day' },
-          deposit_percentage: { $first: '$deposit_percentage' },
-          
-          //  Tất cả ảnh màu khác nhau
-          color_images: { 
-            $push: {
-              color: '$_id.color',
-              image: '$color_image',
-              available_quantity: '$available_quantity',
-              //  THÊM: ID xe đầu tiên của màu này
-              sample_vehicle_id: { $arrayElemAt: ['$vehicle_ids', 0] }
-            }
-          },
-          
-          // Tổng số xe available
-          total_available_quantity: { $sum: '$available_quantity' },
-          
-          // Danh sách ID xe cụ thể (flatten array)
-          all_vehicle_ids: { $push: '$vehicle_ids' },
-          
-          // Danh sách trạm (giữ tất cả trạm có xe)
-          stations: { $addToSet: { $arrayElemAt: ['$stations', 0] } }
+          // Tổng số xe available của tất cả màu
+          total_available: { $sum: 1 },
+          // Ảnh của màu đại diện
+          images: { $first: '$images' },
+          // ID xe mẫu để link đến detail
+          sample_vehicle_id: { $first: '$_id' },
+          // Danh sách tất cả màu available (để hiện ở detail)
+          available_colors: { $addToSet: '$color' },
+          // Thông tin trạm
+          stations: { $addToSet: '$station_id' },
+          createdAt: { $first: '$createdAt' },
+          updatedAt: { $first: '$updatedAt' }
         }
       },
       // Populate thông tin trạm
       {
         $lookup: {
           from: 'stations',
-          localField: 'stations._id',
+          localField: 'stations',
           foreignField: '_id',
           as: 'station_details'
         }
       },
-      // Format lại thông tin trạm
+      // Format lại kết quả
       {
         $project: {
           _id: 0,
+          id: '$_id', 
           model: 1,
           brand: 1,
           year: 1,
           type: 1,
+          color: '$representative_color', 
           battery_capacity: 1,
           max_range: 1,
           price_per_day: 1,
           deposit_percentage: 1,
-          total_available_quantity: 1,
-          //  Tất cả ảnh màu khác nhau
-          color_images: 1,
-          //  ID xe đầu tiên để xem chi tiết (flatten array)
-          sample_vehicle_id: { $arrayElemAt: [{ $reduce: { input: '$all_vehicle_ids', initialValue: [], in: { $concatArrays: ['$$value', '$$this'] } } }, 0] },
-          //  Tất cả ID xe để booking (flatten array)
-          all_vehicle_ids: { $reduce: { input: '$all_vehicle_ids', initialValue: [], in: { $concatArrays: ['$$value', '$$this'] } } },
+          available_quantity: '$total_available',
+          images: 1,
+          sample_vehicle_id: 1,
+          available_colors_count: { $size: '$available_colors' }, // Số màu có sẵn
+          createdAt: 1,
+          updatedAt: 1,
           stations: {
             $map: {
               input: '$station_details',
@@ -1148,24 +1112,14 @@ exports.getPublicVehicles = async (req, res) => {
               in: {
                 _id: '$$station._id',
                 name: '$$station.name',
-                address: '$$station.address',
-                available_quantity: {
-                  $size: {
-                    $filter: {
-                      input: '$stations',
-                      as: 'st',
-                      cond: { $eq: ['$$st._id', '$$station._id'] }
-                    }
-                  }
-                }
+                address: '$$station.address'
               }
             }
           }
         }
       },
-      //  THÊM: Filter theo trạm sau khi group (nếu có)
       // Chỉ hiện model có xe available
-      { $match: { total_available_quantity: { $gt: 0 } } },
+      { $match: { available_quantity: { $gt: 0 } } },
       // Sắp xếp
       { $sort: { [sort]: order === 'desc' ? -1 : 1 } },
       // Phân trang
@@ -1175,18 +1129,14 @@ exports.getPublicVehicles = async (req, res) => {
 
     const vehicles = await Vehicle.aggregate(aggregateQuery);
 
-    // Đếm tổng số model xe available
+    // Đếm tổng số model
     const total = await Vehicle.aggregate([
       { $match: baseQuery },
-      {
-        $group: {
-          _id: '$model'
-        }
-      },
+      { $group: { _id: '$model' } },
       { $count: 'total' }
     ]);
 
-    // Format thời gian theo giờ Việt Nam
+    // Format thời gian
     const formattedVehicles = vehicles.map(vehicle => {
       if (vehicle.createdAt) {
         vehicle.createdAt = formatVietnamTime(vehicle.createdAt);
@@ -1213,78 +1163,103 @@ exports.getPublicVehicles = async (req, res) => {
   }
 };
 
-// Chi tiết xe cho public (customer)
+// Chi tiết xe cho public (customer) - HIỂN THỊ TẤT CẢ MÀU CỦA MODEL
 exports.getPublicVehicleDetail = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Tìm xe
-    const vehicle = await Vehicle.findOne({
-      _id: id,
-      status: 'available',
-      is_active: true,
-      station_id: { $ne: null }
-    }).populate('station_id', 'name address phone email opening_time closing_time');
+    // Tìm xe theo ID
+    const vehicle = await Vehicle.findById(id)
+      .populate('station_id', 'code name address phone email opening_time closing_time');
     
-    if (!vehicle) {
-      return res.status(404).json({ message: 'Không tìm thấy xe hoặc xe không khả dụng' });
+    if (!vehicle || !vehicle.is_active || vehicle.status !== 'available') {
+      return res.status(404).json({ message: 'Không tìm thấy xe' });
     }
-    
-  
-    const allColors = await Vehicle.aggregate([
+
+    // Lấy TẤT CẢ MÀU của cùng model
+    const allColorsOfModel = await Vehicle.aggregate([
       {
         $match: {
           model: vehicle.model,
-          status: 'available',
           is_active: true,
+          status: 'available',
           station_id: { $ne: null }
         }
       },
       {
         $group: {
           _id: '$color',
-          count: { $sum: 1 },
+          color: { $first: '$color' },
+          available_quantity: { $sum: 1 },
           sample_vehicle_id: { $first: '$_id' },
-          sample_image: { $first: { $arrayElemAt: ['$images', 0] } },
+          images: { $first: '$images' },
           price_per_day: { $first: '$price_per_day' },
-          deposit_percentage: { $first: '$deposit_percentage' }
+          stations: { $addToSet: '$station_id' }
+        }
+      },
+      {
+        $lookup: {
+          from: 'stations',
+          localField: 'stations',
+          foreignField: '_id',
+          as: 'station_details'
         }
       },
       {
         $project: {
           _id: 0,
-          color: '$_id',
-          available_quantity: '$count',
+          color: 1,
+          available_quantity: 1,
           sample_vehicle_id: 1,
-          sample_image: 1,
+          images: 1,
           price_per_day: 1,
-          deposit_percentage: 1
+          stations: {
+            $map: {
+              input: '$station_details',
+              as: 'station',
+              in: {
+                _id: '$$station._id',
+                name: '$$station.name',
+                address: '$$station.address'
+              }
+            }
+          }
         }
       },
       { $sort: { color: 1 } }
     ]);
-    
-    // Không trả về thông tin nội bộ
-    const publicVehicle = {
+
+    // Thông tin chung của model
+    const modelInfo = {
       _id: vehicle._id,
-      brand: vehicle.brand,
       model: vehicle.model,
+      brand: vehicle.brand,
       year: vehicle.year,
-      color: vehicle.color, // Màu của xe hiện tại
       type: vehicle.type,
       battery_capacity: vehicle.battery_capacity,
       max_range: vehicle.max_range,
-      price_per_day: vehicle.price_per_day,
+      current_battery: vehicle.current_battery,
       deposit_percentage: vehicle.deposit_percentage,
-      images: vehicle.images,
-      station: vehicle.station_id,
-      // Thêm thông tin tất cả màu có sẵn
-      available_colors: allColors,
+      technical_status: vehicle.technical_status,
+      // Màu hiện tại được chọn
+      selected_color: vehicle.color,
+      // Thông tin của màu hiện tại
+      current_color_info: {
+        color: vehicle.color,
+        images: vehicle.images,
+        price_per_day: vehicle.price_per_day,
+        station: vehicle.station_id
+      },
+      // Tất cả màu available
+      available_colors: allColorsOfModel,
+      // Thống kê
+      total_colors: allColorsOfModel.length,
+      total_available: allColorsOfModel.reduce((sum, item) => sum + item.available_quantity, 0),
       createdAt: formatVietnamTime(vehicle.createdAt),
       updatedAt: formatVietnamTime(vehicle.updatedAt)
     };
-    
-    return res.status(200).json(publicVehicle);
+
+    return res.status(200).json(modelInfo);
   } catch (error) {
     console.error('Lỗi khi lấy chi tiết xe:', error);
     return res.status(500).json({ message: 'Lỗi server' });
