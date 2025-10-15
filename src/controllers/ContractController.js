@@ -274,12 +274,12 @@ const getContractDetails = async (req, res) => {
     const { id } = req.params;
 
     const contract = await Contract.findById(id)
-      .populate('rental_id', 'code status')
       .populate({
         path: 'rental_id',
+        select: 'code status booking_id',
         populate: {
           path: 'booking_id',
-          select: 'total_price deposit_amount price_per_day total_days'
+          select: 'code start_date end_date pickup_time return_time total_price deposit_amount price_per_day total_days user_id vehicle_id station_id'
         }
       })
       .populate('user_id', 'fullname email phone')
@@ -305,11 +305,47 @@ const getContractDetails = async (req, res) => {
       });
     }
 
+
+    const payments = await Payment.find({ 
+      $or: [
+        { rental_id: contract.rental_id._id },
+        { booking_id: contract.rental_id.booking_id?._id }
+      ],
+      is_active: true 
+    }).sort({ createdAt: -1 });
+
+    
+    const contractResponse = ContractService.formatContractResponse(contract);
+    
+    // Bổ sung thông tin booking từ rental
+    if (contract.rental_id && contract.rental_id.booking_id) {
+      contractResponse.rental_details = {
+        rental_code: contract.rental_id.code,
+        rental_status: contract.rental_id.status,
+        booking_code: contract.rental_id.booking_id.code,
+        start_date: contract.rental_id.booking_id.start_date,
+        end_date: contract.rental_id.booking_id.end_date,
+        pickup_time: contract.rental_id.booking_id.pickup_time,
+        return_time: contract.rental_id.booking_id.return_time,
+        total_days: contract.rental_id.booking_id.total_days,
+        price_per_day: contract.rental_id.booking_id.price_per_day,
+        total_price: contract.rental_id.booking_id.total_price,
+        deposit_amount: contract.rental_id.booking_id.deposit_amount
+      };
+    }
+
+    // Bổ sung thông tin payment
+    contractResponse.payment_summary = {
+      deposit_payment: payments.find(p => p.payment_type === 'deposit') || null,
+      rental_fee_payment: payments.find(p => p.payment_type === 'rental_fee') || null,
+      additional_fee_payments: payments.filter(p => p.payment_type === 'additional_fee') || []
+    };
+
     return res.status(200).json({
       success: true,
       message: 'Lấy chi tiết contract thành công',
       data: {
-        contract: ContractService.formatContractResponse(contract)
+        contract: contractResponse
       }
     });
 
