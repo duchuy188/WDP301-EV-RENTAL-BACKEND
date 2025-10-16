@@ -1,4 +1,4 @@
-const { Vehicle, Station, User, Maintenance } = require('../models');
+const { Vehicle, Station, User, Maintenance, Rental } = require('../models');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const ExcelService = require('../services/ExcelService');
 const DepositService = require('../services/DepositService');
@@ -581,8 +581,8 @@ exports.updateVehicleStatus = async (req, res) => {
     const validTransitions = {
       'draft': ['available'], // Draft chỉ có thể chuyển sang Available
       'available': ['rented', 'maintenance'], // Available có thể chuyển sang Rented hoặc Maintenance
-      'rented': ['available', 'maintenance'], // Rented có thể chuyển sang Available hoặc Maintenance
-      'maintenance': ['available', 'draft'] // Maintenance có thể chuyển sang Available hoặc Draft (nếu cần sửa nhiều)
+      'rented': [], 
+      'maintenance': ['available', 'draft'] 
     };
     
     // Kiểm tra chuyển đổi có hợp lệ không
@@ -626,6 +626,7 @@ exports.updateVehicleStatus = async (req, res) => {
       
       // Có thể thêm kiểm tra xe đã được đặt trước (booking) chưa
     }
+    
     
     if (status === 'maintenance') {
       // Kiểm tra lý do bảo trì (có thể thêm vào request body)
@@ -1372,6 +1373,159 @@ exports.getStaffVehicles = async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi khi lấy danh sách xe:', error);
+    return res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+// Rút xe từ trạm về trạng thái chưa phân bổ
+exports.withdrawVehiclesFromStation = async (req, res) => {
+  try {
+    // Kiểm tra quyền Admin
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+    }
+    
+    const { 
+      station_id, 
+      model,
+      color,
+      quantity 
+    } = req.body;
+    
+    // Validation
+    if (!station_id || !quantity) {
+      return res.status(400).json({ 
+        message: 'Vui lòng cung cấp station_id và quantity' 
+      });
+    }
+    
+    // Tìm trạm
+    const station = await Station.findById(station_id);
+    if (!station) {
+      return res.status(404).json({ message: 'Không tìm thấy trạm' });
+    }
+    
+    // Tìm xe phù hợp để rút
+    const query = { 
+      station_id: station_id,
+      status: 'available' // CHỈ rút xe available
+    };
+    
+    if (model) query.model = model;
+    if (color) query.color = color;
+    
+    const vehicles = await Vehicle.find(query).limit(parseInt(quantity));
+    
+    if (vehicles.length === 0) {
+      const filterInfo = [];
+      if (model) filterInfo.push(`model ${model}`);
+      if (color) filterInfo.push(`màu ${color}`);
+      
+      const filterText = filterInfo.length > 0 ? ` với điều kiện: ${filterInfo.join(', ')}` : '';
+      return res.status(400).json({
+        message: `Không tìm thấy xe available để rút${filterText}`
+      });
+    }
+    
+    // Cập nhật xe: rút về trạng thái draft
+    const vehicleIds = vehicles.map(v => v._id);
+    await Vehicle.updateMany(
+      { _id: { $in: vehicleIds } },
+      {
+        $set: {
+          station_id: null,
+          status: 'draft'
+        }
+      }
+    );
+    
+    // Cập nhật số lượng xe tại trạm
+    station.current_vehicles -= vehicles.length;
+    station.available_vehicles -= vehicles.length;
+    await station.save();
+    
+    // Lấy thông tin xe đã rút
+    const withdrawnVehicles = await Vehicle.find({ _id: { $in: vehicleIds } })
+      .select('name model color status');
+    
+    
+    const vehicleInfo = [];
+    if (model) vehicleInfo.push(`model ${model}`);
+    if (color) vehicleInfo.push(`màu ${color}`);
+    const vehicleText = vehicleInfo.length > 0 ? ` (${vehicleInfo.join(', ')})` : '';
+    
+    return res.status(200).json({
+      message: `Đã rút ${vehicles.length} xe${vehicleText} từ trạm ${station.name}`,
+      withdrawn_count: vehicles.length,
+      station: {
+        id: station._id,
+        name: station.name,
+        remaining_vehicles: station.current_vehicles,
+        remaining_available: station.available_vehicles
+      },
+      vehicles: withdrawnVehicles
+    });
+    
+  } catch (error) {
+    console.error('Lỗi khi rút xe từ trạm:', error);
+    return res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+
+exports.getStaffVehicleDetail = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+   
+    const vehicle = await Vehicle.findById(id)
+      .populate('station_id', 'name address code phone email')
+      .populate('created_by', 'fullname email');
+    
+    if (!vehicle) {
+      return res.status(404).json({ message: 'Không tìm thấy xe' });
+    }
+    
+  
+    if (req.user.role === 'Station Staff' && vehicle.station_id?._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền xem xe này. Xe không thuộc trạm của bạn.' 
+      });
+    }
+    
+    
+    if (!vehicle.is_active) {
+      return res.status(404).json({ message: 'Xe đã bị xóa' });
+    }
+    
+   
+    const vehicleObj = vehicle.toObject();
+    
+   
+    if (vehicleObj.license_plate && vehicleObj.license_plate.startsWith('TEMP_')) {
+      vehicleObj.license_plate = "Chưa gắn biển";
+      vehicleObj.has_license_plate = false;
+    } else {
+      vehicleObj.has_license_plate = true;
+    }
+    
+    
+    vehicleObj.createdAt = formatVietnamTime(vehicle.createdAt);
+    vehicleObj.updatedAt = formatVietnamTime(vehicle.updatedAt);
+    
+    
+    vehicleObj.staff_info = {
+      can_update: vehicle.status !== 'rented', 
+      can_change_status: vehicle.status !== 'rented', 
+      can_report_maintenance: vehicle.status === 'available', 
+      can_delete: vehicle.status !== 'rented' && vehicle.status !== 'available' // Chỉ có thể xóa xe draft hoặc maintenance
+    };
+    
+    return res.status(200).json({
+      vehicle: vehicleObj
+    });
+  } catch (error) {
+    console.error('Lỗi khi lấy chi tiết xe cho staff:', error);
     return res.status(500).json({ message: 'Lỗi server' });
   }
 };

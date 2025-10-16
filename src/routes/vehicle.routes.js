@@ -42,6 +42,12 @@ router.get('/staff',
   VehicleController.getStaffVehicles
 );
 
+router.get('/staff/:id', 
+  authMiddleware,
+  roleMiddleware([ 'Station Staff']),
+  VehicleController.getStaffVehicleDetail
+);
+
 // Admin routes - Quản lý toàn bộ xe
 router.get('/admin', 
   authMiddleware,
@@ -71,6 +77,12 @@ router.post('/assign-by-quantity',
   authMiddleware,
   roleMiddleware(['Admin']),
   VehicleController.assignVehiclesByQuantity
+);
+
+router.post('/withdraw-from-station',
+  authMiddleware,
+  roleMiddleware(['Admin']),
+  VehicleController.withdrawVehiclesFromStation
 );
 
 router.put('/:id',

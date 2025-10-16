@@ -35,14 +35,14 @@ router.get('/:id',
 // Cập nhật trạng thái báo cáo bảo trì
 router.put('/:id',
     authenticateToken,
-    requireRole(['Admin', 'Station Staff']),
+    requireRole(['Admin']),
     vehicleImageUpload.array('images', 5), 
     MaintenanceController.updateMaintenanceStatus
 );
 
 // Xóa báo cáo bảo trì (Admin only)
 router.delete('/:id',
-    authenticateToken,
+    authenticateToken, 
     requireRole(['Admin']),
     MaintenanceController.deleteMaintenanceReport
 );
