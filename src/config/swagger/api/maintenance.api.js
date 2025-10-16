@@ -299,7 +299,7 @@
  * /api/maintenance/{id}:
  *   put:
  *     summary: Cập nhật trạng thái báo cáo bảo trì
- *     description: Cập nhật trạng thái và ghi chú của báo cáo bảo trì
+ *     description: Cập nhật trạng thái và ghi chú của báo cáo bảo trì (Admin only)
  *     tags: [Maintenance]
  *     security:
  *       - bearerAuth: []

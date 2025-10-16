@@ -611,6 +611,7 @@
  * /api/vehicles/{id}/status:
  *   patch:
  *     summary: Cập nhật trạng thái xe
+ *     description: Cập nhật trạng thái xe với validation nghiêm ngặt. Xe ở trạng thái rented KHÔNG THỂ chuyển sang trạng thái nào khác bằng tay (chỉ hệ thống tự động cập nhật).
  *     tags: [Vehicles]
  *     security:
  *       - bearerAuth: []
@@ -633,14 +634,45 @@
  *               status:
  *                 type: string
  *                 enum: [draft, available, rented, maintenance]
+ *                 description: Trạng thái mới của xe
  *               maintenance_reason:
  *                 type: string
  *                 description: Lý do bảo trì (bắt buộc khi chuyển sang maintenance)
  *     responses:
  *       200:
  *         description: Cập nhật thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã cập nhật trạng thái xe từ rented sang available"
+ *                 vehicle:
+ *                   $ref: '#/components/schemas/Vehicle'
  *       400:
- *         description: Dữ liệu không hợp lệ
+ *         description: Dữ liệu không hợp lệ hoặc vi phạm business rules
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   examples:
+ *                     invalid_status:
+ *                       value: "Trạng thái không hợp lệ"
+ *                     invalid_transition:
+ *                       value: "Không thể chuyển trạng thái từ rented sang trạng thái khác. Xe rented chỉ có thể thay đổi trạng thái bởi hệ thống tự động."
+ *                     no_station:
+ *                       value: "Xe phải được gán vào trạm trước khi đổi trạng thái thành available"
+ *                     no_license_plate:
+ *                       value: "Xe phải có biển số thật trước khi đổi trạng thái thành available"
+ *                     technical_issue:
+ *                       value: "Xe phải ở tình trạng kỹ thuật tốt trước khi đổi trạng thái thành available"
+ *                     maintenance_reason_required:
+ *                       value: "Vui lòng cung cấp lý do bảo trì"
  *       404:
  *         description: Không tìm thấy xe
  */
@@ -894,6 +926,181 @@
  *                       type: number
  *                     pages:
  *                       type: number
+ */
+
+/**
+ * @swagger
+ * /api/vehicles/withdraw-from-station:
+ *   post:
+ *     summary: Rút xe từ trạm về trạng thái chưa phân bổ
+ *     description: Admin rút xe available từ trạm để phân bổ lại sang trạm khác. Chỉ rút được xe available, không rút được xe maintenance hoặc rented.
+ *     tags: [Vehicles]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - station_id
+ *               - quantity
+ *             properties:
+ *               station_id:
+ *                 type: string
+ *                 description: ID của trạm cần rút xe
+ *                 example: "64f1a2b3c4d5e6f7g8h9i0j1"
+ *               model:
+ *                 type: string
+ *                 description: Model xe (optional)
+ *                 example: "VF8"
+ *               color:
+ *                 type: string
+ *                 description: Màu xe (optional)
+ *                 example: "Đỏ"
+ *               quantity:
+ *                 type: integer
+ *                 description: Số lượng xe cần rút
+ *                 example: 5
+ *     responses:
+ *       200:
+ *         description: Rút xe thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã rút 5 xe (model VF8, màu Đỏ) từ trạm Trạm A"
+ *                 withdrawn_count:
+ *                   type: integer
+ *                   example: 5
+ *                 station:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     remaining_vehicles:
+ *                       type: integer
+ *                     remaining_available:
+ *                       type: integer
+ *                 vehicles:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       model:
+ *                         type: string
+ *                       color:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                         example: "draft"
+ *       400:
+ *         description: Lỗi validation hoặc không tìm thấy xe phù hợp
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   examples:
+ *                     missing_params:
+ *                       value: "Vui lòng cung cấp station_id và quantity"
+ *                     no_vehicles:
+ *                       value: "Không tìm thấy xe available để rút với điều kiện: model VF8, màu Đỏ"
+ *       403:
+ *         description: Không có quyền admin
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Bạn không có quyền thực hiện hành động này"
+ *       404:
+ *         description: Không tìm thấy trạm
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy trạm"
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
+ * /api/vehicles/staff/{id}:
+ *   get:
+ *     summary: Lấy chi tiết xe cho staff
+ *     description: API cho staff xem chi tiết xe của trạm mình với thông tin quyền hạn
+ *     tags: [Vehicles]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: ID của xe
+ *     responses:
+ *       200:
+ *         description: Chi tiết xe cho staff
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 vehicle:
+ *                   allOf:
+ *                     - $ref: '#/components/schemas/Vehicle'
+ *                     - type: object
+ *                       properties:
+ *                         staff_info:
+ *                           type: object
+ *                           properties:
+ *                             can_update:
+ *                               type: boolean
+ *                               description: Có thể cập nhật thông tin xe không
+ *                             can_change_status:
+ *                               type: boolean
+ *                               description: Có thể thay đổi trạng thái xe không
+ *                             can_report_maintenance:
+ *                               type: boolean
+ *                               description: Có thể báo cáo bảo trì xe không
+ *                             can_delete:
+ *                               type: boolean
+ *                               description: Có thể xóa xe không
+ *                         has_license_plate:
+ *                           type: boolean
+ *                           description: Xe có biển số thật hay không
+ *       403:
+ *         description: Không có quyền xem xe này (xe không thuộc trạm của staff)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Bạn không có quyền xem xe này. Xe không thuộc trạm của bạn."
+ *       404:
+ *         description: Không tìm thấy xe hoặc xe đã bị xóa
+ *       500:
+ *         description: Lỗi server
  */
 
 /**
