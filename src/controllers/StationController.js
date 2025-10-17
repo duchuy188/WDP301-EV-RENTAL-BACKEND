@@ -198,6 +198,9 @@ exports.getStationDetail = async (req, res) => {
           },
           maintenance_vehicles: { 
             $sum: { $cond: [{ $eq: ['$status', 'maintenance'] }, 1, 0] }
+          },
+          reserved_vehicles: { 
+            $sum: { $cond: [{ $eq: ['$status', 'reserved'] }, 1, 0] }
           }
         }
       }
@@ -218,7 +221,8 @@ exports.getStationDetail = async (req, res) => {
           total_vehicles: 0,
           available_vehicles: 0,
           rented_vehicles: 0,
-          maintenance_vehicles: 0
+          maintenance_vehicles: 0,
+          reserved_vehicles: 0
         },
         staff_count: staffCount,
         createdAt: formatVietnamTime(station.createdAt, 'DD/MM/YYYY HH:mm:ss'),

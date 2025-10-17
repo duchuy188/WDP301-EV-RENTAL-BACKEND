@@ -97,7 +97,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [available, rented, maintenance]
+ *           enum: [available, reserved, rented, maintenance]
  *         description: Lọc xe theo trạng thái
  *       - in: query
  *         name: sort

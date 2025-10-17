@@ -71,6 +71,10 @@
  *           type: integer
  *           minimum: 0
  *           example: 2
+ *         reserved_vehicles:
+ *           type: integer
+ *           minimum: 0
+ *           example: 1
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -212,7 +216,7 @@
  *           example: 150000
  *         status:
  *           type: string
- *           enum: [available, rented, maintenance]
+ *           enum: [available, reserved, rented, maintenance]
  *           example: "available"
  *         current_battery:
  *           type: integer

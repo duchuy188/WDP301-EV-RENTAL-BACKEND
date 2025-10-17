@@ -182,12 +182,13 @@ class AIService {
           current_vehicles: 1,
           available_vehicles: 1,
           rented_vehicles: 1,
+          reserved_vehicles: 1,
           total_vehicles: { $size: '$vehicles' },
           utilization_rate: {
             $cond: [
               { $eq: ['$current_vehicles', 0] },
               0,
-              { $multiply: [{ $divide: ['$rented_vehicles', '$current_vehicles'] }, 100] }
+              { $multiply: [{ $divide: [{ $add: ['$rented_vehicles', '$reserved_vehicles'] }, '$current_vehicles'] }, 100] }
             ]
           },
           recentRentals: { $arrayElemAt: ['$recentRentalCount.recentRentals', 0] },
@@ -773,27 +774,31 @@ Trả về JSON bằng tiếng Việt:
         const vehicles = await Vehicle.find({ station_id: station._id });
         const currentVehicles = vehicles.length;
         
-        // Lấy số xe đang được thuê
+        // Lấy số xe đang được thuê và đã đặt
         const rentedVehicles = vehicles.filter(v => v.status === 'rented').length;
+        const reservedVehicles = vehicles.filter(v => v.status === 'reserved').length;
+        const inUseVehicles = rentedVehicles + reservedVehicles;
         totalRentedVehicles += rentedVehicles;
         totalAvailableVehicles += currentVehicles;
         
         // Phân tích theo loại xe máy điện
         const vehicleTypes = {};
         vehicles.forEach(v => {
-          if (!vehicleTypes[v.type]) vehicleTypes[v.type] = { total: 0, rented: 0 };
+          if (!vehicleTypes[v.type]) vehicleTypes[v.type] = { total: 0, rented: 0, reserved: 0, inUse: 0 };
           vehicleTypes[v.type].total++;
           if (v.status === 'rented') vehicleTypes[v.type].rented++;
+          if (v.status === 'reserved') vehicleTypes[v.type].reserved++;
+          if (v.status === 'rented' || v.status === 'reserved') vehicleTypes[v.type].inUse++;
         });
         
-        // Tính toán utilization và nhu cầu
-        const currentUtil = currentVehicles > 0 ? rentedVehicles / currentVehicles : 0;
+        // Tính toán utilization và nhu cầu (bao gồm cả rented và reserved)
+        const currentUtil = currentVehicles > 0 ? inUseVehicles / currentVehicles : 0;
         totalUtilization += currentUtil;
         
         if (currentUtil > 0.7) stationsWithHighUtilization++;
         if (currentUtil < 0.3 && currentVehicles > 0) stationsWithLowUtilization++;
         
-        const vehiclesNeeded = currentUtil >= targetUtilization ? 0 : Math.max(0, Math.ceil((rentedVehicles / targetUtilization) - currentVehicles));
+        const vehiclesNeeded = currentUtil >= targetUtilization ? 0 : Math.max(0, Math.ceil((inUseVehicles / targetUtilization) - currentVehicles));
         const estimatedROI = currentVehicles > 0 ? Number(((currentUtil / targetUtilization) * 100).toFixed(1)) : 0;
 
         // Gợi ý cụ thể cho trạm
@@ -809,7 +814,7 @@ Trả về JSON bằng tiếng Việt:
         
         // Gợi ý theo loại xe
         const typeRecommendations = Object.entries(vehicleTypes).map(([type, data]) => {
-          const typeUtil = data.total > 0 ? data.rented / data.total : 0;
+          const typeUtil = data.total > 0 ? data.inUse / data.total : 0;
           if (typeUtil > 0.9) return `Loại xe ${type} có nhu cầu cao`;
           if (typeUtil < 0.1 && data.total > 2) return `Loại xe ${type} ít được thuê`;
           return null;
@@ -824,6 +829,8 @@ Trả về JSON bằng tiếng Việt:
           stationName: station.name,
           currentVehicles,
           rentedVehicles,
+          reservedVehicles,
+          inUseVehicles,
           utilization: Number((currentUtil * 100).toFixed(1)),
           vehiclesNeeded,
           estimatedROI,
@@ -833,7 +840,9 @@ Trả về JSON bằng tiếng Việt:
             type,
             total: data.total,
             rented: data.rented,
-            utilization: data.total > 0 ? Number((data.rented / data.total * 100).toFixed(1)) : 0
+            reserved: data.reserved,
+            inUse: data.inUse,
+            utilization: data.total > 0 ? Number((data.inUse / data.total * 100).toFixed(1)) : 0
           })),
           recommendations: stationRecommendations
         };

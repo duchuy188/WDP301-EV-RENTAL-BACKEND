@@ -72,7 +72,7 @@
  *
  *     VehicleStatus:
  *       type: string
- *       enum: [available, rented, maintenance]
+ *       enum: [available, reserved, rented, maintenance]
  *       description: Trạng thái xe
  *       example: "available"
  *

@@ -79,7 +79,7 @@
  *           example: 60d5ec9af682fbd12a0bbaf2
  *         status:
  *           type: string
- *           enum: [draft, available, rented, maintenance]
+ *           enum: [draft, available, reserved, rented, maintenance]
  *           description: Trạng thái xe
  *           example: available
  *         technical_status:
@@ -222,7 +222,7 @@
  *       properties:
  *         status:
  *           type: string
- *           enum: [draft, available, rented, maintenance]
+ *           enum: [draft, available, reserved, rented, maintenance]
  *           description: Trạng thái mới
  *           example: available
  *     
