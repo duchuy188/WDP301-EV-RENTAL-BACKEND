@@ -96,7 +96,12 @@ const stationSchema = new mongoose.Schema({
     type: Number, 
     default: 0, 
     min: 0 
-  } // Số xe đang bảo trì
+  }, // Số xe đang bảo trì
+  reserved_vehicles: { 
+    type: Number, 
+    default: 0, 
+    min: 0 
+  } // Số xe đã được đặt (reserved)
 }, { timestamps: true });
 
 // Indexes
@@ -117,8 +122,9 @@ stationSchema.pre('save', function(next) {
     return next(new Error('Xe available không thể > tổng xe'));
   }
   
-  // Kiểm tra tổng xe = available + rented + maintenance
-  const totalStatus = this.available_vehicles + this.rented_vehicles + this.maintenance_vehicles;
+  // Kiểm tra tổng xe = available + rented + maintenance + reserved
+  const totalStatus = this.available_vehicles + this.rented_vehicles + 
+                     this.maintenance_vehicles + this.reserved_vehicles;
   if (totalStatus !== this.current_vehicles) {
     return next(new Error('Tổng xe không khớp với trạng thái'));
   }
@@ -143,6 +149,9 @@ stationSchema.methods.syncVehicleCount = async function() {
         },
         maintenance: { 
           $sum: { $cond: [{ $eq: ['$status', 'maintenance'] }, 1, 0] }
+        },
+        reserved: { 
+          $sum: { $cond: [{ $eq: ['$status', 'reserved'] }, 1, 0] }
         }
       }
     }
@@ -153,6 +162,7 @@ stationSchema.methods.syncVehicleCount = async function() {
     this.available_vehicles = counts[0].available;
     this.rented_vehicles = counts[0].rented;
     this.maintenance_vehicles = counts[0].maintenance;
+    this.reserved_vehicles = counts[0].reserved;
     await this.save({ validateBeforeSave: false }); // Bỏ qua validation khi sync
   } else {
     // Nếu không có xe nào, reset về 0
@@ -160,6 +170,7 @@ stationSchema.methods.syncVehicleCount = async function() {
     this.available_vehicles = 0;
     this.rented_vehicles = 0;
     this.maintenance_vehicles = 0;
+    this.reserved_vehicles = 0;
     await this.save({ validateBeforeSave: false });
   }
 };
