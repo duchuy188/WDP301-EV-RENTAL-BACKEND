@@ -386,6 +386,14 @@ const createBooking = async (req, res) => {
       // Không throw error, chỉ log
     }
     
+    // Update station stats
+    try {
+      const station = await Station.findById(station_id);
+      await station.syncVehicleCount();
+    } catch (stationError) {
+      console.log('Station sync failed during booking creation:', stationError.message);
+     
+    }
 
     // Populate booking data for response
     const populatedBooking = await Booking.findById(booking._id)
