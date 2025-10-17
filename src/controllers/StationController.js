@@ -349,7 +349,7 @@ exports.deleteStation = async (req, res) => {
     // Kiểm tra có booking đang active không
     const activeBookings = await Booking.countDocuments({
       station_id: id,
-      status: { $in: ['confirmed', 'in_progress'] }
+      status: { $in: ['confirmed'] }
     });
     
     if (activeBookings > 0) {
@@ -362,7 +362,7 @@ exports.deleteStation = async (req, res) => {
     // Kiểm tra có rental đang active không
     const activeRentals = await Rental.countDocuments({
       station_id: id,
-      status: { $in: ['active', 'in_progress'] }
+      status: { $in: ['active'] }
     });
     
     if (activeRentals > 0) {

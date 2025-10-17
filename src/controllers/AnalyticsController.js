@@ -692,7 +692,7 @@ exports.getPeakAnalysis = async (req, res) => {
         // Thống kê giờ cao điểm
         if (type === 'hours' || type === 'both') {
             const matchQuery = {
-                status: { $in: ['confirmed', 'in_progress', 'completed'] },
+                status: { $in: ['confirmed', 'completed'] },
                 createdAt: { $gte: startDate, $lte: endDate }
             };
             
@@ -753,7 +753,7 @@ exports.getPeakAnalysis = async (req, res) => {
         // Thống kê ngày cao điểm
         if (type === 'days' || type === 'both') {
             const matchQuery = {
-                status: { $in: ['confirmed', 'in_progress', 'completed'] },
+                status: { $in: ['confirmed', 'completed'] },
                 createdAt: { $gte: startDate, $lte: endDate }
             };
             

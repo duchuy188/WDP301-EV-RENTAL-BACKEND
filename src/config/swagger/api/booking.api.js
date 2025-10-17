@@ -248,7 +248,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, confirmed, cancelled]
+ *           enum: [pending, confirmed, completed, cancelled]
  *         description: Lọc theo trạng thái đặt xe
  *       - in: query
  *         name: station_id
@@ -302,7 +302,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, confirmed, cancelled]
+ *           enum: [pending, confirmed, completed, cancelled]
  *         description: Lọc theo trạng thái đặt xe
  *       - in: query
  *         name: page
@@ -346,7 +346,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, confirmed, cancelled]
+ *           enum: [pending, confirmed, completed, cancelled]
  *         description: Lọc theo trạng thái đặt xe
  *       - in: query
  *         name: page

@@ -50,6 +50,7 @@ const bookingSchema = new mongoose.Schema({
     enum: [
       'pending',      // Chờ xác nhận
       'confirmed',    // Đã xác nhận
+      'completed',    // Đã hoàn thành
       'cancelled'     // Đã hủy
     ], 
     default: 'pending' 
