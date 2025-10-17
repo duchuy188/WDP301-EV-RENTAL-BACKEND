@@ -72,7 +72,7 @@
  *           description: ID của trạm
  *         status:
  *           type: string
- *           enum: [draft, available, rented, maintenance]
+ *           enum: [draft, available, reserved, rented, maintenance]
  *           description: Trạng thái xe
  *         technical_status:
  *           type: string
@@ -633,7 +633,7 @@
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [draft, available, rented, maintenance]
+ *                 enum: [draft, available, reserved, rented, maintenance]
  *                 description: Trạng thái mới của xe
  *               maintenance_reason:
  *                 type: string
@@ -881,7 +881,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [available, rented, maintenance]
+ *           enum: [available, reserved, rented, maintenance]
  *         description: Lọc theo trạng thái (không bao gồm draft)
  *       - in: query
  *         name: color
@@ -1108,7 +1108,7 @@
  * /api/vehicles/admin:
  *   get:
  *     summary: Lấy danh sách xe cho admin
- *     description: API cho admin xem tất cả xe trong hệ thống (bao gồm draft, available, rented, maintenance)
+ *     description: API cho admin xem tất cả xe trong hệ thống (bao gồm draft, available, reserved, rented, maintenance)
  *     tags: [Vehicles]
  *     security:
  *       - bearerAuth: []
@@ -1129,7 +1129,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [draft, available, rented, maintenance]
+ *           enum: [draft, available, reserved, rented, maintenance]
  *         description: Lọc theo trạng thái
  *       - in: query
  *         name: color

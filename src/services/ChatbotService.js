@@ -269,6 +269,7 @@ THÔNG TIN TRẠM:
 - Xe available: ${station?.available_vehicles || 0}
 - Xe đang thuê: ${station?.rented_vehicles || 0}
 - Xe bảo trì: ${station?.maintenance_vehicles || 0}
+- Xe đã đặt: ${station?.reserved_vehicles || 0}
 
 XE ĐANG THUÊ:
 ${currentRentals?.map(rental => 

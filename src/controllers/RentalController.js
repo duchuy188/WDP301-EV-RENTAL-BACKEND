@@ -193,6 +193,11 @@ class RentalController {
       if (rental.booking_id.total_days < 3) {
         // Thuê < 3 ngày: Đã thanh toán full → completed ngay
         rental.status = 'completed';
+        
+        
+        await Booking.findByIdAndUpdate(rental.booking_id._id, {
+          status: 'completed'
+        });
       } else {
         // Thuê >= 3 ngày: Cần thanh toán cọc còn lại → pending_payment
         rental.status = 'pending_payment';

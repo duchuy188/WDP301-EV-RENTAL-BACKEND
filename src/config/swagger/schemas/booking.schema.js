@@ -59,7 +59,7 @@
  *           example: "08:00"
  *         status:
  *           type: string
- *           enum: [pending, confirmed, cancelled]
+ *           enum: [pending, confirmed, completed, cancelled]
  *           description: Trạng thái đặt xe
  *           example: "pending"
  *         booking_type:

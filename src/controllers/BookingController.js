@@ -254,7 +254,7 @@ const createBooking = async (req, res) => {
     // : Kiểm tra user có booking trùng thời gian không
     const userConflictingBooking = await Booking.findOne({
       user_id,
-      status: { $in: ['pending', 'confirmed', 'in_progress'] },
+      status: { $in: ['pending', 'confirmed'] },
       $or: [
         {
           start_date: { $lte: startDate },
@@ -280,7 +280,7 @@ const createBooking = async (req, res) => {
     // Kiểm tra trùng lịch đặt xe (cả online và walk_in)
     const existingBooking = await Booking.findOne({
       vehicle_id: { $in: vehicleIds },
-      status: { $in: ['confirmed', 'in_progress', 'completed'] }, // Chỉ kiểm tra booking đã confirmed
+      status: { $in: ['confirmed', 'completed'] }, 
       $or: [
         // Trường hợp 1: Booking mới nằm trong khoảng thời gian booking cũ
         {
@@ -1277,7 +1277,7 @@ const createWalkInBooking = async (req, res) => {
     
     const existingBooking = await Booking.findOne({
       vehicle_id: { $in: vehicleIds },
-      status: { $in: ['confirmed', 'in_progress', 'completed'] }, // Chỉ kiểm tra booking đã confirmed
+      status: { $in: ['confirmed', 'completed'] }, // Chỉ kiểm tra booking đã confirmed hoặc completed
       $or: [
         {
           start_date: { $lte: startDate },
@@ -1398,7 +1398,7 @@ const createWalkInBooking = async (req, res) => {
      
       const userConflictingBooking = await Booking.findOne({
         user_id: customer._id,
-        status: { $in: ['pending', 'confirmed', 'in_progress'] },
+        status: { $in: ['pending', 'confirmed'] },
         $or: [
           {
             start_date: { $lte: startDate },

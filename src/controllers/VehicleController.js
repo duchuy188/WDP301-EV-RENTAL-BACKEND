@@ -555,7 +555,7 @@ exports.updateVehicleStatus = async (req, res) => {
     const { status } = req.body;
     
     // Validate status
-    const validStatuses = ['draft', 'available', 'rented', 'maintenance'];
+    const validStatuses = ['draft', 'available', 'reserved', 'rented', 'maintenance'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
     }
@@ -580,7 +580,7 @@ exports.updateVehicleStatus = async (req, res) => {
     // Kiểm tra logic chuyển đổi trạng thái
     const validTransitions = {
       'draft': ['available'], // Draft chỉ có thể chuyển sang Available
-      'available': ['rented', 'maintenance'], // Available có thể chuyển sang Rented hoặc Maintenance
+      'available': ['reserved', 'rented', 'maintenance'], // Available có thể chuyển sang Reserved, Rented hoặc Maintenance
       'rented': [], 
       'maintenance': ['available', 'draft'] 
     };
@@ -664,11 +664,13 @@ exports.updateVehicleStatus = async (req, res) => {
         if (oldStatus === 'available') station.available_vehicles -= 1;
         else if (oldStatus === 'rented') station.rented_vehicles -= 1;
         else if (oldStatus === 'maintenance') station.maintenance_vehicles -= 1;
+        else if (oldStatus === 'reserved') station.reserved_vehicles -= 1;
         
         // Tăng số lượng xe theo trạng thái mới
         if (status === 'available') station.available_vehicles += 1;
         else if (status === 'rented') station.rented_vehicles += 1;
         else if (status === 'maintenance') station.maintenance_vehicles += 1;
+        else if (status === 'reserved') station.reserved_vehicles += 1;
         
         await station.save();
       }
@@ -835,6 +837,7 @@ exports.deleteVehicle = async (req, res) => {
         if (vehicle.status === 'available') station.available_vehicles -= 1;
         else if (vehicle.status === 'rented') station.rented_vehicles -= 1;
         else if (vehicle.status === 'maintenance') station.maintenance_vehicles -= 1;
+        else if (vehicle.status === 'reserved') station.reserved_vehicles -= 1;
         
         await station.save();
       }
@@ -1287,7 +1290,7 @@ exports.getStaffVehicles = async (req, res) => {
       status: { $ne: 'draft' } // Không thấy xe draft
     };
 
-    // Filter theo status (available, rented, maintenance)
+    // Filter theo status (available, reserved, rented, maintenance)
     if (status && status !== 'draft') {
       query.status = status;
     }

@@ -299,11 +299,22 @@ const confirmPayment = async (req, res) => {
                 status: 'completed',
                 actual_end_time: new Date()
               });
+              
+              // Cập nhật booking status thành completed
+              await Booking.findByIdAndUpdate(rental.booking_id, {
+                status: 'completed'
+              });
+              
               console.log(`✅ Rental ${payment.rental_id} completed - all payments done`);
             }
             // Nếu rental đang pending_payment → completed (đã checkout, thanh toán xong)
             else if (rental.status === 'pending_payment') {
               await Rental.findByIdAndUpdate(payment.rental_id, {
+                status: 'completed'
+              });
+              
+              
+              await Booking.findByIdAndUpdate(rental.booking_id, {
                 status: 'completed'
               });
               
@@ -780,6 +791,11 @@ const handleVNPayCallback = async (req, res) => {
                   status: 'completed'
                 });
                 
+                // Cập nhật booking status thành completed
+                await Booking.findByIdAndUpdate(rental.booking_id, {
+                  status: 'completed'
+                });
+                
                 // Update vehicle status khi rental completed
                 let vehicleStatus = 'available';
                 
@@ -922,6 +938,12 @@ const handleVNPayWebhook = async (req, res) => {
               status: 'completed', 
               actual_end_time: new Date() 
             });
+            
+            
+            await Booking.findByIdAndUpdate(rental.booking_id, {
+              status: 'completed'
+            });
+            
             console.log(`✅ Rental ${rental._id} completed - rental fee paid via VNPay IPN`);
           }
           // Các trường hợp khác tương tự như callback handler
