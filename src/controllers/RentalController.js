@@ -4,6 +4,7 @@ const Station = require('../models/Station');
 const User = require('../models/User');
 const Payment = require('../models/Payment');
 const Contract = require('../models/Contract');
+const Booking = require('../models/Booking');
 const PaymentService = require('../services/PaymentService');
 const VNPayService = require('../services/VNPayService');
 const { uploadToCloudinary } = require('../config/cloudinary');
