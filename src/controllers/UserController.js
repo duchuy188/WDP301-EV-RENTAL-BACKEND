@@ -139,6 +139,60 @@ exports.assignStaffToStation = async (req, res) => {
   }
 };
 
+// Hủy gán Staff khỏi Station (chỉ Admin)
+exports.unassignStaffFromStation = async (req, res) => {
+  try {
+  
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Chỉ Admin mới có quyền hủy gán staff' });
+    }
+
+    const { userId } = req.body;
+
+   
+    if (!userId) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp userId' });
+    }
+
+  
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy user' });
+    }
+
+    if (user.role !== 'Station Staff') {
+      return res.status(400).json({ message: 'User này không phải là Staff' });
+    }
+
+   
+    if (!user.stationId) {
+      return res.status(400).json({ message: 'Staff này chưa được gán cho station nào' });
+    }
+
+   
+    const oldStationId = user.stationId;
+
+    
+    user.stationId = null;
+    await user.save();
+
+    res.status(200).json({
+      message: 'Đã hủy gán staff khỏi station thành công',
+      user: {
+        _id: user._id,
+        fullname: user.fullname,
+        email: user.email,
+        stationId: user.stationId, // null
+        previousStationId: oldStationId
+      }
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi hủy gán staff khỏi station:', error);
+    res.status(500).json({ message: 'Lỗi server khi hủy gán staff' });
+  }
+};
+
 // Lấy danh sách users theo role
 exports.getUsers = async (req, res) => {
   try {

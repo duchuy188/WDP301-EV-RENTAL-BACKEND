@@ -18,6 +18,13 @@ router.post('/staff/assign',
   UserController.assignStaffToStation
 );
 
+// Hủy gán Staff khỏi Station (chỉ Admin)
+router.post('/staff/unassign', 
+  authMiddleware, 
+  roleMiddleware(['Admin']), 
+  UserController.unassignStaffFromStation
+);
+
 // Lấy danh sách users (chỉ Admin)
 router.get('/', 
   authMiddleware, 
