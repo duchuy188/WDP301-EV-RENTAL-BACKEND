@@ -148,6 +148,81 @@
 
 /**
  * @swagger
+ * /api/users/staff/unassign:
+ *   post:
+ *     summary: Hủy gán Staff khỏi Station
+ *     description: Admin hủy gán nhân viên khỏi trạm hiện tại để có thể gán cho trạm khác
+ *     tags: [User Management]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: ID của Staff cần hủy gán
+ *                 example: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *     responses:
+ *       200:
+ *         description: Hủy gán thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã hủy gán staff khỏi station thành công"
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     fullname:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     stationId:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     previousStationId:
+ *                       type: string
+ *                       description: ID của station trước đó
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Không có quyền truy cập
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Không tìm thấy user
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Lỗi server
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+
+/**
+ * @swagger
  * /api/users/staff/unassigned:
  *   get:
  *     summary: Lấy danh sách Staff chưa có station
