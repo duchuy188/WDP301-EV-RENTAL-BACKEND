@@ -115,6 +115,14 @@ const createContract = async (req, res) => {
       });
     }
 
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        rental.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền tạo contract cho rental này' 
+      });
+    }
+
     // Kiểm tra rental status
     if (rental.status !== 'active') {
       return res.status(400).json({ 
@@ -305,6 +313,13 @@ const getContractDetails = async (req, res) => {
       });
     }
 
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền xem contract này' 
+      });
+    }
 
     const payments = await Payment.find({ 
       $or: [
@@ -406,11 +421,20 @@ const signContract = async (req, res) => {
     }
 
     const contract = await Contract.findById(id)
-      .populate('user_id', 'fullname email');
+      .populate('user_id', 'fullname email')
+      .populate('station_id', 'name address');
 
     if (!contract) {
       return res.status(404).json({ 
         message: 'Không tìm thấy contract' 
+      });
+    }
+
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền ký contract này' 
       });
     }
 
@@ -427,8 +451,15 @@ const signContract = async (req, res) => {
       contract.staff_signed_by = req.user._id;
       
     } else if (signature_type === 'customer') {
-    
-      if (req.user.role === 'Customer' && 
+      // Cho phép Station Staff và EV Renter ký customer signature
+      if (req.user.role !== 'Station Staff' && req.user.role !== 'EV Renter') {
+        return res.status(403).json({ 
+          message: 'Chỉ nhân viên station hoặc khách hàng mới có thể ký customer signature' 
+        });
+      }
+      
+      
+      if (req.user.role === 'EV Renter' && 
           contract.user_id._id.toString() !== req.user._id.toString()) {
         return res.status(403).json({ 
           message: 'Bạn không có quyền ký contract này' 
@@ -517,6 +548,14 @@ const generateContractPDF = async (req, res) => {
       });
     }
 
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền xem contract này' 
+      });
+    }
+
     try {
       // Generate PDF
       const pdfBuffer = await ContractService.generateContractPDF(contract);
@@ -588,8 +627,8 @@ const getContracts = async (req, res) => {
       query.station_id = req.user.stationId;
     }
 
-    // Customer chỉ xem contracts của mình
-    if (req.user.role === 'Customer') {
+    
+    if (req.user.role === 'EV Renter') {
       query.user_id = req.user._id;
     }
 
@@ -652,11 +691,20 @@ const cancelContract = async (req, res) => {
       });
     }
 
-    const contract = await Contract.findById(id);
+    const contract = await Contract.findById(id)
+      .populate('station_id', 'name address');
 
     if (!contract) {
       return res.status(404).json({ 
         message: 'Không tìm thấy contract' 
+      });
+    }
+
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền hủy contract này' 
       });
     }
 
@@ -716,6 +764,14 @@ const getContractView = async (req, res) => {
     if (req.user.role !== 'Admin' && 
         req.user.role !== 'Station Staff' && 
         contract.user_id._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền xem contract này' 
+      });
+    }
+
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
       return res.status(403).json({ 
         message: 'Bạn không có quyền xem contract này' 
       });

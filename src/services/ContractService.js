@@ -533,8 +533,7 @@ class ContractService {
     const statusMap = {
       'pending': 'Chờ ký',
       'signed': 'Đã ký',
-      'cancelled': 'Đã hủy',
-      'expired': 'Hết hạn'
+      'cancelled': 'Đã hủy'
     };
     return statusMap[status] || status;
   }

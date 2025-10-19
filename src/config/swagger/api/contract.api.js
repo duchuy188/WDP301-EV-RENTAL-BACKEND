@@ -115,7 +115,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, signed, cancelled, expired]
+ *           enum: [pending, signed, cancelled]
  *         description: Lọc theo trạng thái contract
  *         example: pending
  *       - in: query
