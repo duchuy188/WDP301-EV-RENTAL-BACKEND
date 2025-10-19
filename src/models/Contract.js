@@ -42,8 +42,7 @@ const contractSchema = new mongoose.Schema({
     enum: [
       'pending',      // Chờ ký
       'signed',       // Đã ký
-      'cancelled',    // Đã hủy
-      'expired'       // Hết hạn
+      'cancelled'     // Đã hủy
     ], 
     default: 'pending' 
   },

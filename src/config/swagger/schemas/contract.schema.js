@@ -33,7 +33,7 @@
  *           example: "Hợp đồng thuê xe điện"
  *         status:
  *           type: string
- *           enum: [pending, signed, cancelled, expired]
+ *           enum: [pending, signed, cancelled]
  *           description: Trạng thái contract
  *           example: "pending"
  *         content:
