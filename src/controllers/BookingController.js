@@ -670,6 +670,7 @@ const confirmBooking = async (req, res) => {
         payment_method: payment_method, // Sử dụng phương thức thanh toán từ request
         status: 'pending',
         notes: paymentType === 'deposit' ? 'Tiền cọc thuê xe' : 'Phí thuê xe',
+        is_penalty_fee: false, //  Confirm booking, không phải phí phạt
         processed_by: staff_id
       });
       

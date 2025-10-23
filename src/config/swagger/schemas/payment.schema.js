@@ -33,7 +33,7 @@
  *           example: "qr_code"
  *         payment_type:
  *           type: string
- *           enum: [deposit, rental_fee, additional_fee, refund]
+ *           enum: [deposit, rental_fee, additional_fee]
  *           description: Loại thanh toán
  *           example: "deposit"
  *         status:
@@ -69,23 +69,10 @@
  *           type: string
  *           description: Ghi chú
  *           example: "Thanh toán thành công"
- *         refund_amount:
- *           type: number
- *           description: Số tiền hoàn lại
- *           example: 0
- *         refund_reason:
- *           type: string
- *           description: Lý do hoàn tiền
- *           example: "Không có phí phát sinh"
- *         refunded_at:
- *           type: string
- *           format: date-time
- *           description: Thời gian hoàn tiền
- *           example: "2024-01-16T18:00:00.000Z"
- *         refunded_by:
- *           type: string
- *           description: ID nhân viên hoàn tiền
- *           example: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *         is_penalty_fee:
+ *           type: boolean
+ *           description: Có phải phí phạt không
+ *           example: false
  *         user_id:
  *           type: string
  *           description: ID người dùng
@@ -176,25 +163,6 @@
  *           description: Lý do hủy thanh toán
  *           example: "Khách hàng không thanh toán"
  *     
- *     RefundPaymentRequest:
- *       type: object
- *       required:
- *         - refund_amount
- *       properties:
- *         refund_amount:
- *           type: number
- *           minimum: 0
- *           description: Số tiền hoàn lại (VND)
- *           example: 150000
- *         refund_reason:
- *           type: string
- *           description: Lý do hoàn tiền
- *           example: "Không có phí phát sinh"
- *         refund_method:
- *           type: string
- *           enum: [cash, bank_transfer]
- *           description: Phương thức hoàn tiền
- *           example: "bank_transfer"
  *     
  *     PaymentResponse:
  *       type: object
@@ -243,9 +211,6 @@
  *             pendingAmount:
  *               type: number
  *               description: Số tiền chờ thanh toán
- *             refundAmount:
- *               type: number
- *               description: Số tiền đã hoàn
  *             paymentTypes:
  *               type: object
  *               description: Thống kê theo loại thanh toán
@@ -286,17 +251,6 @@
  *         payment:
  *           $ref: '#/components/schemas/Payment'
  *     
- *     RefundPaymentResponse:
- *       type: object
- *       properties:
- *         message:
- *           type: string
- *           description: Response message
- *           example: "Hoàn tiền thành công"
- *         originalPayment:
- *           $ref: '#/components/schemas/Payment'
- *         refundPayment:
- *           $ref: '#/components/schemas/Payment'
  *     
  *     ErrorResponse:
  *       type: object

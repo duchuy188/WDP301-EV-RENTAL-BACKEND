@@ -158,6 +158,7 @@ const createPayment = async (req, res) => {
       status: paymentStatus,
       reason: reason || '',
       notes: notes || '',
+      is_penalty_fee: false, //  Staff tạo payment thủ công, không phải phí phạt
       processed_by: req.user._id,
       completed_at: paymentStatus === 'completed' ? new Date() : null
     });
@@ -419,6 +420,7 @@ const getUserPayments = async (req, res) => {
       limit = 10, 
       status, 
       payment_type,
+      is_penalty_fee,
       sort = 'createdAt',
       order = 'desc'
     } = req.query;
@@ -429,6 +431,7 @@ const getUserPayments = async (req, res) => {
     const query = { user_id: userId, is_active: true };
     if (status) query.status = status;
     if (payment_type) query.payment_type = payment_type;
+    if (is_penalty_fee !== undefined) query.is_penalty_fee = is_penalty_fee === 'true';
 
     // Tính pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -528,6 +531,7 @@ const getAllPayments = async (req, res) => {
       payment_method,
       station_id,
       search,
+      is_penalty_fee,
       sort = 'createdAt',
       order = 'desc'
     } = req.query;
@@ -544,6 +548,7 @@ const getAllPayments = async (req, res) => {
     if (status) query.status = status;
     if (payment_type) query.payment_type = payment_type;
     if (payment_method) query.payment_method = payment_method;
+    if (is_penalty_fee !== undefined) query.is_penalty_fee = is_penalty_fee === 'true';
 
     // Search
     if (search) {
@@ -604,85 +609,6 @@ const getAllPayments = async (req, res) => {
   }
 };
 
-// Hoàn tiền (Staff only)
-const refundPayment = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { refund_amount, refund_reason, refund_method } = req.body;
-
-    // Kiểm tra quyền hạn
-    if (req.user.role !== 'Station Staff' && req.user.role !== 'Admin') {
-      return res.status(403).json({ 
-        message: 'Chỉ nhân viên mới có thể hoàn tiền' 
-      });
-    }
-
-    // Validate
-    if (!refund_amount || refund_amount <= 0) {
-      return res.status(400).json({ 
-        message: 'Số tiền hoàn phải lớn hơn 0' 
-      });
-    }
-
-    // Tìm payment
-    const payment = await Payment.findById(id)
-      .populate('user_id', 'fullname email')
-      .populate('booking_id', 'code');
-
-    if (!payment) {
-      return res.status(404).json({ 
-        message: 'Không tìm thấy payment' 
-      });
-    }
-
-    // Kiểm tra có thể hoàn tiền không
-    if (!PaymentService.canRefund(payment)) {
-      return res.status(400).json({ 
-        message: 'Payment này không thể hoàn tiền' 
-      });
-    }
-
-    // Kiểm tra số tiền hoàn
-    if (refund_amount > payment.amount) {
-      return res.status(400).json({ 
-        message: 'Số tiền hoàn không được vượt quá số tiền đã thanh toán' 
-      });
-    }
-
-    // Cập nhật payment
-    payment.refund_amount = refund_amount;
-    payment.refund_reason = refund_reason || '';
-    payment.refunded_at = new Date();
-    payment.refunded_by = req.user._id;
-    payment.notes = `${payment.notes}\nHoàn tiền: ${refund_amount.toLocaleString('vi-VN')} VND - ${refund_reason || 'Không có lý do'}`;
-    await payment.save();
-
-    // Tạo payment record cho refund
-    const refundPayment = await Payment.create({
-      code: PaymentService.generatePaymentCode(),
-      rental_id: payment.rental_id,
-      user_id: payment.user_id,
-      booking_id: payment.booking_id,
-      amount: refund_amount,
-      payment_method: refund_method || 'bank_transfer',
-      payment_type: 'refund',
-      status: 'completed',
-      reason: refund_reason || 'Hoàn tiền',
-      transaction_id: `REF_${Date.now()}`,
-      processed_by: req.user._id
-    });
-
-    return res.status(200).json({
-      message: 'Hoàn tiền thành công',
-      originalPayment: PaymentService.formatPaymentResponse(payment),
-      refundPayment: PaymentService.formatPaymentResponse(refundPayment)
-    });
-
-  } catch (error) {
-    console.error('Lỗi khi hoàn tiền:', error);
-    return res.status(500).json({ message: 'Lỗi server' });
-  }
-};
 
 // VNPay Callback Handler
 const handleVNPayCallback = async (req, res) => {
@@ -1062,7 +988,6 @@ module.exports = {
   getUserPayments,
   getPaymentDetails,
   getAllPayments,
-  refundPayment,
   updatePaymentMethod,
   handleVNPayCallback,
   handleVNPayWebhook

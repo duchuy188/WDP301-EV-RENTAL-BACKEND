@@ -58,8 +58,7 @@ const paymentSchema = new mongoose.Schema({
     enum: [
       'deposit',      // Đặt cọc
       'rental_fee',   // Phí thuê xe
-      'additional_fee', // Phí phát sinh
-      'refund'        // Hoàn tiền
+      'additional_fee' // Phí phát sinh
     ],
     required: true 
   },
@@ -100,24 +99,11 @@ const paymentSchema = new mongoose.Schema({
     default: '' 
   },
   
-  // Thông tin hoàn tiền
-  refund_amount: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  refund_reason: { 
-    type: String, 
-    default: '' 
-  },
-  refunded_at: { 
-    type: Date, 
-    default: null 
-  },
-  refunded_by: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User',
-    default: null 
+  
+  // Phân biệt phí phạt
+  is_penalty_fee: { 
+    type: Boolean, 
+    default: false 
   },
   
   // Ghi chú

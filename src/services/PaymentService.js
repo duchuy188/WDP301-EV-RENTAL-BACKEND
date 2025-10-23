@@ -14,16 +14,6 @@ class PaymentService {
   // Đã bỏ generatePaymentQR vì chỉ sử dụng VNPay QR
 
 
-  /**
-   * Tính toán refund amount
-   * @param {Number} depositAmount - Số tiền cọc
-   * @param {Number} additionalFees - Tổng phí phát sinh
-   * @returns {Number} Số tiền hoàn lại
-   */
-  static calculateRefund(depositAmount, additionalFees = 0) {
-    const refundAmount = depositAmount - additionalFees;
-    return Math.max(0, refundAmount); // Không được âm
-  }
 
   /**
    * Validate payment amount
@@ -75,16 +65,6 @@ class PaymentService {
     };
   }
 
-  /**
-   * Kiểm tra payment có thể hoàn tiền không
-   * @param {Object} payment - Payment object
-   * @returns {Boolean} Có thể hoàn tiền không
-   */
-  static canRefund(payment) {
-    return payment.status === 'completed' && 
-           payment.payment_type === 'deposit' && 
-           payment.refund_amount === 0;
-  }
 
   /**
    * Tạo payment summary cho customer
@@ -96,7 +76,6 @@ class PaymentService {
       totalAmount: 0,
       paidAmount: 0,
       pendingAmount: 0,
-      refundAmount: 0,
       paymentTypes: {},
       paymentMethods: {}
     };
@@ -110,9 +89,6 @@ class PaymentService {
         summary.pendingAmount += payment.amount;
       }
 
-      if (payment.refund_amount > 0) {
-        summary.refundAmount += payment.refund_amount;
-      }
 
       // Count payment types
       summary.paymentTypes[payment.payment_type] = 
