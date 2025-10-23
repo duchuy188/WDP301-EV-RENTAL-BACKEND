@@ -43,14 +43,25 @@ const feedbackSchema = new mongoose.Schema({
     enum: ['vehicle', 'staff', 'payment', 'service', 'other'] 
   },
   
-  // Trạng thái xử lý (chỉ 2 trạng thái)
+  // Trạng thái xử lý (chỉ cho complaint)
   status: { 
     type: String, 
     enum: ['pending', 'resolved'],
-    default: 'pending' 
+    required: function() {
+      return this.type === 'complaint';
+    }
   },
-  response: { type: String, default: '' },
-  resolved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  response: { 
+    type: String, 
+    default: ''
+  },
+  resolved_by: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User',
+    required: function() {
+      return this.type === 'complaint' && this.status === 'resolved';
+    }
+  },
   
   // Chung
   comment: { type: String },
