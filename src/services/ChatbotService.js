@@ -466,8 +466,8 @@ class ChatbotService {
             
             // CHỈ lấy xe TRONG TRẠM CỦA NHÂN VIÊN NÀY
             context.stationVehicles = await Vehicle.find({ station_id: user.stationId })
-              .select('name model brand type license_plate color status current_mileage battery_level price_per_day')
-              .sort({ status: 1, battery_level: -1 }) // Ưu tiên xe available và pin cao
+              .select('name model brand type license_plate color status current_mileage current_battery price_per_day')
+              .sort({ status: 1, current_battery: -1 }) 
               .limit(50);
               
             console.log(`🚗 Tìm thấy ${context.stationVehicles?.length || 0} xe trong trạm ${user.stationId}`);
@@ -562,7 +562,7 @@ class ChatbotService {
           if (['vehicle_info', 'vehicle_stats', 'analytics'].includes(messageIntent) || !messageIntent) {
             context.allVehicles = await Vehicle.find()
               .populate('station_id', 'name address')
-              .select('name model brand type license_plate color status current_mileage battery_level price_per_day')
+              .select('name model brand type license_plate color status current_mileage current_battery price_per_day')
               .sort({ brand: 1, model: 1, name: 1 })
               .limit(100);
           }
