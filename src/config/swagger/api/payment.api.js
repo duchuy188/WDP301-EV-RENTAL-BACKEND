@@ -147,7 +147,7 @@
  *         name: payment_type
  *         schema:
  *           type: string
- *           enum: [deposit, rental_fee, additional_fee, refund]
+ *           enum: [deposit, rental_fee, additional_fee]
  *         description: Lọc theo loại thanh toán
  *         example: deposit
  *       - in: query
@@ -157,6 +157,12 @@
  *           enum: [cash, vnpay]
  *         description: Lọc theo phương thức thanh toán
  *         example: vnpay
+ *       - in: query
+ *         name: is_penalty_fee
+ *         schema:
+ *           type: boolean
+ *         description: Lọc theo phí phạt (true/false)
+ *         example: true
  *       - in: query
  *         name: search
  *         schema:
@@ -218,8 +224,14 @@
  *         name: payment_type
  *         schema:
  *           type: string
- *           enum: [deposit, rental_fee, additional_fee, refund]
+ *           enum: [deposit, rental_fee, additional_fee]
  *         description: Lọc theo loại thanh toán
+ *       - in: query
+ *         name: is_penalty_fee
+ *         schema:
+ *           type: boolean
+ *         description: Lọc theo phí phạt (true/false)
+ *         example: true
  *       - in: query
  *         name: page
  *         schema:
@@ -378,53 +390,6 @@
  */
 
 /**
- * @swagger
- * /api/payments/{id}/refund:
- *   post:
- *     summary: Hoàn tiền
- *     description: Staff hoàn tiền cho customer (chỉ áp dụng cho deposit payment)
- *     tags: [Payments]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Payment ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/RefundPaymentRequest'
- *     responses:
- *       200:
- *         description: Hoàn tiền thành công
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/RefundPaymentResponse'
- *       400:
- *         description: Payment không thể hoàn tiền hoặc số tiền không hợp lệ
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       403:
- *         description: Không có quyền hoàn tiền
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       404:
- *         description: Không tìm thấy payment
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *//**
  * @swagger
  * /api/payments/{id}/update-method:
  *   put:

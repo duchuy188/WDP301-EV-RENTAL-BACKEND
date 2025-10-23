@@ -7,7 +7,6 @@ const {
   getUserPayments,
   getPaymentDetails,
   getAllPayments,
-  refundPayment,
   updatePaymentMethod,
   handleVNPayCallback,
   handleVNPayWebhook
@@ -31,8 +30,6 @@ router.put('/:id/confirm', authenticateToken, requireRole(['Station Staff', 'Adm
 // Hủy payment (Staff/Admin only)
 router.put('/:id/cancel', authenticateToken, requireRole(['Station Staff', 'Admin']), cancelPayment);
 
-// Hoàn tiền (Staff/Admin only)
-router.post('/:id/refund', authenticateToken, requireRole(['Station Staff', 'Admin']), refundPayment);
 
 // Cập nhật phương thức thanh toán (Staff/Admin only)
 router.put('/:id/update-method', authenticateToken, requireRole(['Station Staff', 'Admin']), updatePaymentMethod);

@@ -180,15 +180,12 @@ class ChatbotService {
     }
     
     try {
-      // Lấy thống kê phí phạt từ Rental collection
-      const penaltyStats = await Rental.aggregate([
+      // Lấy thống kê phí phạt từ Payment collection với is_penalty_fee = true
+      const penaltyStats = await Payment.aggregate([
         {
           $match: {
-            $or: [
-              { late_fee: { $gt: 0 } },
-              { damage_fee: { $gt: 0 } },
-              { other_fees: { $gt: 0 } }
-            ]
+            is_penalty_fee: true,
+            status: 'completed'
           }
         },
         // Lookup để lấy thông tin user
@@ -203,11 +200,23 @@ class ChatbotService {
         {
           $unwind: '$user_info'
         },
+        // Lookup để lấy thông tin rental
+        {
+          $lookup: {
+            from: 'rentals',
+            localField: 'rental_id',
+            foreignField: '_id',
+            as: 'rental_info'
+          }
+        },
+        {
+          $unwind: '$rental_info'
+        },
         // Lookup để lấy thông tin vehicle
         {
           $lookup: {
             from: 'vehicles',
-            localField: 'vehicle_id',
+            localField: 'rental_info.vehicle_id',
             foreignField: '_id',
             as: 'vehicle_info'
           }
@@ -230,77 +239,83 @@ class ChatbotService {
               brand: 1,
               model: 1
             },
-            late_fee: 1,
-            damage_fee: 1,
-            other_fees: 1,
-            total_fees: 1,
-            actual_start_time: 1,
-            actual_end_time: 1,
-            status: 1,
-            staff_notes: 1,
+            amount: 1,
+            payment_type: 1,
+            completed_at: 1,
+            rental_info: {
+              late_fee: 1,
+              damage_fee: 1,
+              other_fees: 1,
+              total_fees: 1,
+              actual_start_time: 1,
+              actual_end_time: 1,
+              status: 1,
+              staff_notes: 1
+            },
             createdAt: 1
           }
         },
         {
-          $sort: { total_fees: -1, createdAt: -1 }
+          $sort: { amount: -1, createdAt: -1 }
         },
         {
           $limit: 20
         }
       ]);
 
-      // Tính tổng thống kê (chỉ từ những record có penalty > 0)
-      const totalStats = await Rental.aggregate([
+      // Tính tổng thống kê từ Payment collection
+      const totalStats = await Payment.aggregate([
         {
           $match: {
-            $or: [
-              { late_fee: { $gt: 0 } },
-              { damage_fee: { $gt: 0 } },
-              { other_fees: { $gt: 0 } }
-            ]
+            is_penalty_fee: true,
+            status: 'completed'
           }
         },
         {
           $group: {
             _id: null,
-            total_late_fees: { $sum: '$late_fee' },
-            total_damage_fees: { $sum: '$damage_fee' },
-            total_other_fees: { $sum: '$other_fees' },
-            total_penalties: { $sum: '$total_fees' },
-            users_with_penalties: {
-              $sum: {
-                $cond: {
-                  if: { $gt: ['$total_fees', 0] },
-                  then: 1,
-                  else: 0
-                }
-              }
-            },
-            total_rentals: { $sum: 1 }
+            total_penalty_amount: { $sum: '$amount' },
+            penalty_count: { $sum: 1 },
+            users_with_penalties: { $addToSet: '$user_id' }
+          }
+        },
+        {
+          $addFields: {
+            users_with_penalties: { $size: '$users_with_penalties' }
           }
         }
       ]);
 
-      // Lấy thống kê chi tiết theo user (top người bị phạt nhiều nhất)
-      const userPenaltyStats = await Rental.aggregate([
+      // Lấy thống kê chi tiết theo user từ Payment collection với chi tiết phí phạt
+      const userPenaltyStats = await Payment.aggregate([
         {
           $match: {
-            $or: [
-              { late_fee: { $gt: 0 } },
-              { damage_fee: { $gt: 0 } },
-              { other_fees: { $gt: 0 } }
-            ]
+            is_penalty_fee: true,
+            status: 'completed'
           }
+        },
+        // Lookup để lấy thông tin rental với chi tiết phí phạt
+        {
+          $lookup: {
+            from: 'rentals',
+            localField: 'rental_id',
+            foreignField: '_id',
+            as: 'rental_info'
+          }
+        },
+        {
+          $unwind: '$rental_info'
         },
         {
           $group: {
             _id: '$user_id',
-            total_penalty_amount: { $sum: '$total_fees' },
-            total_late_fees: { $sum: '$late_fee' },
-            total_damage_fees: { $sum: '$damage_fee' },
-            total_other_fees: { $sum: '$other_fees' },
+            total_penalty_amount: { $sum: '$amount' },
             penalty_count: { $sum: 1 },
-            latest_penalty_date: { $max: '$createdAt' }
+            latest_penalty_date: { $max: '$completed_at' },
+           
+            total_late_fees: { $sum: '$rental_info.late_fee' },
+            total_damage_fees: { $sum: '$rental_info.damage_fee' },
+            total_other_fees: { $sum: '$rental_info.other_fees' }
           }
         },
         // Lookup để lấy thông tin user
@@ -324,11 +339,11 @@ class ChatbotService {
               phone: 1
             },
             total_penalty_amount: 1,
+            penalty_count: 1,
+            latest_penalty_date: 1,
             total_late_fees: 1,
             total_damage_fees: 1,
-            total_other_fees: 1,
-            penalty_count: 1,
-            latest_penalty_date: 1
+            total_other_fees: 1
           }
         },
         {
@@ -341,14 +356,11 @@ class ChatbotService {
 
       const result = {
         penalty_cases: penaltyStats,
-        user_penalty_ranking: userPenaltyStats, // Thêm ranking người dùng bị phạt
+        user_penalty_ranking: userPenaltyStats,
         summary: totalStats[0] || {
-          total_late_fees: 0,
-          total_damage_fees: 0,
-          total_other_fees: 0,
-          total_penalties: 0,
-          users_with_penalties: 0,
-          total_rentals: 0
+          total_penalty_amount: 0,
+          penalty_count: 0,
+          users_with_penalties: 0
         }
       };
 
@@ -365,12 +377,9 @@ class ChatbotService {
         penalty_cases: [],
         user_penalty_ranking: [],
         summary: {
-          total_late_fees: 0,
-          total_damage_fees: 0,
-          total_other_fees: 0,
-          total_penalties: 0,
-          users_with_penalties: 0,
-          total_rentals: 0
+          total_penalty_amount: 0,
+          penalty_count: 0,
+          users_with_penalties: 0
         }
       };
     }
@@ -1071,13 +1080,9 @@ ${stationStats?.length > 0 ?
 
 === THỐNG KÊ PHÍ PHẠT ===
 ${context.penaltyStats?.summary?.users_with_penalties ? `
-Tổng số rental bị phạt: ${context.penaltyStats.summary.users_with_penalties}
-Tổng tiền phạt: ${context.penaltyStats.summary.total_penalties.toLocaleString('vi-VN')} VND
-
-Chi tiết phí phạt:
-• Phí trả trễ: ${context.penaltyStats.summary.total_late_fees.toLocaleString('vi-VN')} VND
-• Phí hư hỏng: ${context.penaltyStats.summary.total_damage_fees.toLocaleString('vi-VN')} VND  
-• Phí khác: ${context.penaltyStats.summary.total_other_fees.toLocaleString('vi-VN')} VND
+Tổng số payment phí phạt: ${context.penaltyStats.summary.penalty_count}
+Tổng tiền phạt: ${context.penaltyStats.summary.total_penalty_amount.toLocaleString('vi-VN')} VND
+Số người dùng bị phạt: ${context.penaltyStats.summary.users_with_penalties}
 
 Top người dùng bị phạt nhiều nhất:
 ${context.penaltyStats.user_penalty_ranking?.length > 0 ? 
@@ -1456,22 +1461,9 @@ Trả về JSON format:
       let responseMessage = `📊 **THỐNG KÊ PHÍ PHẠT HỆ THỐNG**\n\n`;
       
       responseMessage += `🔍 **Tổng quan:**\n`;
-      responseMessage += `• Tổng số rental bị phạt: **${penaltyStats.users_with_penalties}** trường hợp\n`;
-      responseMessage += `• Tổng tiền phạt: **${penaltyStats.total_penalties.toLocaleString('vi-VN')} VND**\n\n`;
-      
-      responseMessage += `💰 **Chi tiết các loại phí:**\n`;
-      
-      if (penaltyStats.total_late_fees > 0) {
-        responseMessage += `⏰ **Phí trả trễ:** ${penaltyStats.total_late_fees.toLocaleString('vi-VN')} VND\n`;
-      }
-      
-      if (penaltyStats.total_damage_fees > 0) {
-        responseMessage += `🔧 **Phí hư hỏng:** ${penaltyStats.total_damage_fees.toLocaleString('vi-VN')} VND\n`;
-      }
-      
-      if (penaltyStats.total_other_fees > 0) {
-        responseMessage += `📋 **Phí khác:** ${penaltyStats.total_other_fees.toLocaleString('vi-VN')} VND\n`;
-      }
+      responseMessage += `• Tổng số payment phí phạt: **${penaltyStats.penalty_count}** trường hợp\n`;
+      responseMessage += `• Tổng tiền phạt: **${penaltyStats.total_penalty_amount.toLocaleString('vi-VN')} VND**\n`;
+      responseMessage += `• Số người dùng bị phạt: **${penaltyStats.users_with_penalties}** người\n\n`;
       
       // Hiển thị top người dùng bị phạt nhiều nhất
       if (userRanking.length > 0) {
@@ -1487,7 +1479,7 @@ Trả về JSON format:
           responseMessage += `   - Số lần vi phạm: ${penaltyCount} lần\n`;
           responseMessage += `   - Tổng tiền phạt: ${penaltyAmount.toLocaleString('vi-VN')} VND\n`;
           
-          // Chi tiết loại phí
+          // Chi tiết loại phí từ rental data
           if (user.total_late_fees > 0) {
             responseMessage += `   - Phí trả trễ: ${user.total_late_fees.toLocaleString('vi-VN')} VND\n`;
           }
@@ -1503,24 +1495,21 @@ Trả về JSON format:
       
       // Phân tích insights
       responseMessage += `📈 **Phân tích:**\n`;
-      const totalFees = penaltyStats.total_late_fees + penaltyStats.total_damage_fees + penaltyStats.total_other_fees;
       
-      if (totalFees > 0) {
-        const lateFeePercent = ((penaltyStats.total_late_fees / totalFees) * 100).toFixed(1);
-        const damageFeePercent = ((penaltyStats.total_damage_fees / totalFees) * 100).toFixed(1);
+      if (penaltyStats.total_penalty_amount > 0) {
+        const avgPenaltyPerUser = (penaltyStats.total_penalty_amount / penaltyStats.users_with_penalties).toFixed(0);
+        const avgPenaltyPerCase = (penaltyStats.total_penalty_amount / penaltyStats.penalty_count).toFixed(0);
         
-        responseMessage += `• Phí trả trễ chiếm ${lateFeePercent}% tổng phí phạt\n`;
-        responseMessage += `• Phí hư hỏng chiếm ${damageFeePercent}% tổng phí phạt\n`;
-        
-        if (penaltyStats.total_late_fees > penaltyStats.total_damage_fees) {
-          responseMessage += `• ⚠️ Khách hàng có xu hướng trả xe trễ nhiều hơn làm hư hỏng xe\n`;
-        } else if (penaltyStats.total_damage_fees > penaltyStats.total_late_fees) {
-          responseMessage += `• ⚠️ Tình trạng hư hỏng xe diễn ra nhiều hơn trả trễ\n`;
-        }
+        responseMessage += `• Trung bình mỗi người bị phạt: **${avgPenaltyPerUser} VND**\n`;
+        responseMessage += `• Trung bình mỗi lần phạt: **${avgPenaltyPerCase} VND**\n`;
         
         if (userRanking.length > 0) {
           const topUser = userRanking[0];
-          responseMessage += `• 🏆 Người dùng bị phạt nhiều nhất: **${topUser.user_info?.fullname}** với ${topUser.total_penalty_amount.toLocaleString('vi-VN')} VND`;
+          responseMessage += `• 🏆 Người dùng bị phạt nhiều nhất: **${topUser.user_info?.fullname}** với ${topUser.total_penalty_amount.toLocaleString('vi-VN')} VND (${topUser.penalty_count} lần)\n`;
+        }
+        
+        if (penaltyStats.penalty_count > penaltyStats.users_with_penalties) {
+          responseMessage += `• ⚠️ Có người dùng bị phạt nhiều lần (${penaltyStats.penalty_count} lần phạt / ${penaltyStats.users_with_penalties} người)\n`;
         }
       }
       
@@ -2059,8 +2048,8 @@ Trả về JSON format:
         
         return {
           message: responseMessage,
-          suggestions: ['Xem cách đặt cọc', 'Hướng dẫn thanh toán VNPay', 'Chính sách hoàn tiền'],
-          actions: ['view_deposit_guide', 'vnpay_tutorial', 'refund_policy'],
+          suggestions: ['Xem cách đặt cọc', 'Hướng dẫn thanh toán VNPay'],
+          actions: ['view_deposit_guide', 'vnpay_tutorial'],
           context: 'Thông tin thanh toán cho khách hàng'
         };
       }
@@ -2392,7 +2381,7 @@ Trả về JSON format:
     if (messageText.match(/pin|battery|sạc|charge|dung lượng/i)) return 'battery';
     if (messageText.match(/hợp đồng|contract|ký|sign|điều khoản/i)) return 'contract';
     if (messageText.match(/kyc|xác thực|verify|giấy tờ|cmnd|cccd|gplx/i)) return 'kyc';
-    if (messageText.match(/hủy|cancel|hoàn tiền|refund/i)) return 'cancellation';
+    if (messageText.match(/hủy|cancel/i)) return 'cancellation';
     if (messageText.match(/trả xe|return|checkout|hoàn thành/i)) return 'return';
     if (messageText.match(/lỗi|hỏng|sự cố|problem|issue|error/i)) return 'issue';
     if (messageText.match(/cảm ơn|thank|cám ơn/i)) return 'gratitude';

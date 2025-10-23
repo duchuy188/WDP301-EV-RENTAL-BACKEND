@@ -283,6 +283,7 @@ class RentalController {
             status: 'pending',
             description: `Thanh toán cọc còn lại cho thuê xe ${rental.code}`,
             payment_type: 'deposit',
+            is_penalty_fee: false, //  Checkout bình thường, không có phí phạt
             processed_by: req.user._id
           });
           await depositPayment.save();
@@ -513,6 +514,7 @@ class RentalController {
       // Tính tổng số tiền cần thanh toán
       let totalAmount = total_fees; // Phí phát sinh (luôn có)
       let paymentDescription = `Phí phát sinh thuê xe ${rental.code}`;
+      let paymentType = 'additional_fee'; // Mặc định là additional_fee cho phí phạt
       
       if (rental.booking_id.total_days >= 3) {
         // Thuê >= 3 ngày: Cộng thêm cọc còn lại
@@ -520,6 +522,7 @@ class RentalController {
         if (remainingDeposit > 0) {
           totalAmount += remainingDeposit;
           paymentDescription = `Cọc còn lại + phí phát sinh thuê xe ${rental.code}`;
+          paymentType = 'deposit'; // Có cọc → deposit
         }
       }
       
@@ -533,7 +536,8 @@ class RentalController {
         payment_method: payment_method,
         status: 'pending',
         description: paymentDescription,
-        payment_type: 'deposit', // Dùng 'deposit' vì gộp cọc + phí
+        payment_type: paymentType, //  Phân biệt deposit vs additional_fee
+        is_penalty_fee: true,      //  Luôn có phí phạt
         processed_by: req.user._id
       });
       await singlePayment.save();
