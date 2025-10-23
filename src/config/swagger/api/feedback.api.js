@@ -98,7 +98,7 @@
  *         schema:
  *           type: string
  *           enum: [pending, resolved]
- *         description: Lọc theo trạng thái
+ *         description: Lọc theo trạng thái (chỉ áp dụng cho complaint)
  *       - in: query
  *         name: category
  *         schema:

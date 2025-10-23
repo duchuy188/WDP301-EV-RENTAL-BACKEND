@@ -125,8 +125,8 @@ exports.createFeedback = async (req, res) => {
         vehicle_condition: vehicle_condition || null,
         station_cleanliness: station_cleanliness || null,
         checkout_process: checkout_process || null,
-        comment: comment || '',
-        status: 'resolved' // ✅ Rating luôn là resolved (không cần xử lý)
+        comment: comment || ''
+       
       };
     } else if (type === 'complaint') {
       const { title, description, category, comment } = req.body;
@@ -208,7 +208,7 @@ exports.getMyFeedbacks = async (req, res) => {
       matchQuery.type = type;
     }
     
-    if (status) {
+    if (status && type === 'complaint') {
       matchQuery.status = status;
     }
     
@@ -261,11 +261,11 @@ exports.getAllFeedbacks = async (req, res) => {
       matchQuery.type = type;
     }
     
-    if (status) {
+    if (status && type === 'complaint') {
       matchQuery.status = status;
     }
     
-    if (category) {
+    if (category && type === 'complaint') {
       matchQuery.category = category;
     }
     
@@ -289,8 +289,8 @@ exports.getAllFeedbacks = async (req, res) => {
       
       // Thêm các filter khác
       if (type) pipeline.push({ $match: { type } });
-      if (status) pipeline.push({ $match: { status } });
-      if (category) pipeline.push({ $match: { category } });
+      if (status && type === 'complaint') pipeline.push({ $match: { status } });
+      if (category && type === 'complaint') pipeline.push({ $match: { category } });
       
       // Sort và pagination
       pipeline.push(
@@ -401,8 +401,8 @@ exports.getAllFeedbacks = async (req, res) => {
       ];
       
       if (type) countPipeline.push({ $match: { type } });
-      if (status) countPipeline.push({ $match: { status } });
-      if (category) countPipeline.push({ $match: { category } });
+      if (status && type === 'complaint') countPipeline.push({ $match: { status } });
+      if (category && type === 'complaint') countPipeline.push({ $match: { category } });
       
       const countResult = await Feedback.aggregate([...countPipeline, { $count: 'total' }]);
       total = countResult[0]?.total || 0;
@@ -429,8 +429,8 @@ exports.getAllFeedbacks = async (req, res) => {
     }
     
     if (type) statsPipeline.push({ $match: { type } });
-    if (status) statsPipeline.push({ $match: { status } });
-    if (category) statsPipeline.push({ $match: { category } });
+    if (status && type === 'complaint') statsPipeline.push({ $match: { status } });
+    if (category && type === 'complaint') statsPipeline.push({ $match: { category } });
     
     statsPipeline.push({
       $group: {
@@ -439,7 +439,7 @@ exports.getAllFeedbacks = async (req, res) => {
         ratings: { $sum: { $cond: [{ $eq: ['$type', 'rating'] }, 1, 0] } },
         complaints: { $sum: { $cond: [{ $eq: ['$type', 'complaint'] }, 1, 0] } },
         pending: { $sum: { $cond: [{ $and: [{ $eq: ['$type', 'complaint'] }, { $eq: ['$status', 'pending'] }] }, 1, 0] } },
-        resolved: { $sum: { $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0] } }
+        resolved: { $sum: { $cond: [{ $and: [{ $eq: ['$type', 'complaint'] }, { $eq: ['$status', 'resolved'] }] }, 1, 0] } }
       }
     });
     
@@ -524,6 +524,13 @@ exports.updateFeedback = async (req, res) => {
       return res.status(403).json({ message: 'Chỉ Admin mới có thể cập nhật feedback' });
     }
     
+    // Validate status - chỉ cho complaint
+    if (status && feedback.type !== 'complaint') {
+      return res.status(400).json({ 
+        message: 'Chỉ complaint mới có thể cập nhật status' 
+      });
+    }
+    
     // Validate status
     if (status && !['pending', 'resolved'].includes(status)) {
       return res.status(400).json({ 
@@ -531,14 +538,18 @@ exports.updateFeedback = async (req, res) => {
       });
     }
     
-    // Cập nhật
-    if (status) feedback.status = status;
-    if (response !== undefined) feedback.response = response;
-    if (comment !== undefined) feedback.comment = comment;
-    
-    if (status === 'resolved') {
-      feedback.resolved_by = req.user._id;
+    // Cập nhật - chỉ cho complaint
+    if (feedback.type === 'complaint') {
+      if (status) feedback.status = status;
+      if (response !== undefined) feedback.response = response;
+      
+      if (status === 'resolved') {
+        feedback.resolved_by = req.user._id;
+      }
     }
+    
+    // Comment có thể cập nhật cho cả rating và complaint
+    if (comment !== undefined) feedback.comment = comment;
     
     await feedback.save();
     
@@ -654,7 +665,7 @@ exports.getFeedbackStats = async (req, res) => {
         ratings: { $sum: { $cond: [{ $eq: ['$type', 'rating'] }, 1, 0] } },
         complaints: { $sum: { $cond: [{ $eq: ['$type', 'complaint'] }, 1, 0] } },
         pending: { $sum: { $cond: [{ $and: [{ $eq: ['$type', 'complaint'] }, { $eq: ['$status', 'pending'] }] }, 1, 0] } },
-        resolved: { $sum: { $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0] } },
+        resolved: { $sum: { $cond: [{ $and: [{ $eq: ['$type', 'complaint'] }, { $eq: ['$status', 'resolved'] }] }, 1, 0] } },
         avgRating: { $avg: { $cond: [{ $eq: ['$type', 'rating'] }, '$overall_rating', null] } }
       }
     });
