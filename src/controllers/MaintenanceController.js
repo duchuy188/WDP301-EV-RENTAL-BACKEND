@@ -101,7 +101,7 @@ exports.getMaintenanceReportById = async (req, res) => {
         const { id } = req.params;
 
         const maintenance = await Maintenance.findById(id)
-            .populate('vehicle_id', 'name license_plate model type brand year color current_mileage battery_level')
+            .populate('vehicle_id', 'name license_plate model type brand year color current_mileage current_battery')
             .populate('station_id', 'name address code')
             .populate('reported_by', 'fullname email phone role');
 
