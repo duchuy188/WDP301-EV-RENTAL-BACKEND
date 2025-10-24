@@ -20,7 +20,7 @@ class ChatbotService {
     this.statsCache = new Map();
     this.cacheExpiry = 5 * 60 * 1000; // 5 phút
     
-
+    
   }
 
   // Lấy thống kê xe được thuê nhiều nhất
@@ -243,13 +243,13 @@ class ChatbotService {
             payment_type: 1,
             completed_at: 1,
             rental_info: {
-              late_fee: 1,
-              damage_fee: 1,
-              other_fees: 1,
-              total_fees: 1,
-              actual_start_time: 1,
-              actual_end_time: 1,
-              status: 1,
+            late_fee: 1,
+            damage_fee: 1,
+            other_fees: 1,
+            total_fees: 1,
+            actual_start_time: 1,
+            actual_end_time: 1,
+            status: 1,
               staff_notes: 1
             },
             createdAt: 1
@@ -455,7 +455,7 @@ class ChatbotService {
             .populate('station_id', 'name address')
             .sort({ color: 1, createdAt: -1 }) // Sort theo màu trước, sau đó theo thời gian tạo
             .limit(30) // Tăng limit để có nhiều màu hơn
-            .select('name model brand type license_plate color current_mileage current_battery battery_level price_per_day max_range battery_capacity year');
+            .select('name model brand type license_plate color current_mileage current_battery price_per_day max_range battery_capacity year');
           
 
           
@@ -732,7 +732,7 @@ ${availableVehicles?.length > 0 ? (() => {
         type: vehicle.type,
         count: 1,
         price_range: { min: vehicle.price_per_day, max: vehicle.price_per_day },
-        battery_levels: [vehicle.battery_level || vehicle.current_battery || 0],
+        battery_levels: [vehicle.current_battery || 0],
         colors: vehicle.color ? [vehicle.color] : [],
         stations: vehicle.station_id?.name ? [vehicle.station_id.name] : [],
         max_range: vehicle.max_range || 100
@@ -741,7 +741,7 @@ ${availableVehicles?.length > 0 ? (() => {
       vehicleModels[key].count++;
       vehicleModels[key].price_range.min = Math.min(vehicleModels[key].price_range.min, vehicle.price_per_day);
       vehicleModels[key].price_range.max = Math.max(vehicleModels[key].price_range.max, vehicle.price_per_day);
-      vehicleModels[key].battery_levels.push(vehicle.battery_level || vehicle.current_battery || 0);
+      vehicleModels[key].battery_levels.push(vehicle.current_battery || 0);
       if (vehicle.color && !vehicleModels[key].colors.includes(vehicle.color)) {
         vehicleModels[key].colors.push(vehicle.color);
       }
@@ -789,14 +789,14 @@ ${availableVehicles?.length > 0 ? (() => {
         max_range: vehicle.max_range,
         price_range: { min: vehicle.price_per_day, max: vehicle.price_per_day },
         count: 1,
-        battery_levels: [vehicle.battery_level || vehicle.current_battery || 0],
+        battery_levels: [vehicle.current_battery || 0],
         colors: vehicle.color ? [vehicle.color] : []
       };
     } else {
       vehicleModels[key].count++;
       vehicleModels[key].price_range.min = Math.min(vehicleModels[key].price_range.min, vehicle.price_per_day);
       vehicleModels[key].price_range.max = Math.max(vehicleModels[key].price_range.max, vehicle.price_per_day);
-      vehicleModels[key].battery_levels.push(vehicle.battery_level || vehicle.current_battery || 0);
+      vehicleModels[key].battery_levels.push(vehicle.current_battery || 0);
       // Thêm màu sắc nếu chưa có
       if (vehicle.color && !vehicleModels[key].colors.includes(vehicle.color)) {
         vehicleModels[key].colors.push(vehicle.color);
@@ -949,7 +949,7 @@ ${stationVehicles?.slice(0, 8).map(vehicle => {
                 vehicle.status === 'maintenance' ? '🔧' : '❓';
   const vehicleDisplay = `${vehicle.brand || 'N/A'} ${vehicle.model || 'N/A'} màu ${vehicle.color || 'N/A'}`;
   
-  return `${status} ${vehicleDisplay} (${vehicle.license_plate}) - Pin: ${vehicle.battery_level || vehicle.current_battery || 0}%`;
+  return `${status} ${vehicleDisplay} (${vehicle.license_plate}) - Pin: ${vehicle.current_battery || 0}%`;
 }).join('\n') || 'Không có xe trong trạm'}
 
 === BOOKING SẮP TỚI (${upcomingBookings?.length || 0} booking) ===
@@ -1635,7 +1635,7 @@ Trả về JSON format:
             const vehicleDisplay = `${vehicle.brand || 'N/A'} ${vehicle.model || 'N/A'} màu ${vehicle.color || 'N/A'}`;
             responseMessage += `${index + 1}. **${vehicleDisplay}**\n`;
             responseMessage += `   💰 ${vehicle.price_per_day?.toLocaleString('vi-VN')} VND/ngày\n`;
-            const batteryLevel = vehicle.battery_level || vehicle.current_battery || 0;
+            const batteryLevel = vehicle.current_battery || 0;
             responseMessage += `   🔋 Pin: ${batteryLevel}% (~${Math.floor(batteryLevel * (vehicle.max_range || 100) / 100)}km)\n`;
             responseMessage += `   📍 ${vehicle.station_id?.name || 'Đang cập nhật'}\n`;
             responseMessage += `   🔖 Biển số: ${vehicle.license_plate}\n\n`;
@@ -1857,7 +1857,7 @@ Trả về JSON format:
         if (vehicleToCheck) {
           responseMessage += `🚗 **Trạng thái xe hiện tại:**\n`;
           responseMessage += `• Status: **${vehicleToCheck.status}**\n`;
-          responseMessage += `• Pin: **${vehicleToCheck.battery_level || vehicleToCheck.current_battery || 0}%**\n`;
+          responseMessage += `• Pin: **${vehicleToCheck.current_battery || 0}%**\n`;
           responseMessage += `• Km đã đi: **${vehicleToCheck.current_mileage || 0} km**\n\n`;
           
           responseMessage += `✅ **Checklist cần làm:**\n`;
@@ -1944,7 +1944,7 @@ Trả về JSON format:
       
       if (stationVehicles?.length > 0) {
         const maintenanceVehicles = stationVehicles.filter(v => v.status === 'maintenance');
-        const lowBatteryVehicles = stationVehicles.filter(v => (v.battery_level || v.current_battery || 0) < 50);
+        const lowBatteryVehicles = stationVehicles.filter(v => (v.current_battery || 0) < 50);
         const availableVehicles = stationVehicles.filter(v => v.status === 'available');
         
         let responseMessage = `🔧 **KIỂM TRA BẢO TRÌ XE TẠI ${stationName.toUpperCase()}**\n\n`;
@@ -1953,7 +1953,7 @@ Trả về JSON format:
           responseMessage += `⚠️ **Xe đang bảo trì (${maintenanceVehicles.length} xe):**\n`;
            maintenanceVehicles.forEach(vehicle => {
             const vehicleDisplay = `${vehicle.brand || 'N/A'} ${vehicle.model || 'N/A'} màu ${vehicle.color || 'N/A'}`;
-            responseMessage += `• ${vehicleDisplay} (${vehicle.license_plate}) - Pin: ${vehicle.battery_level || vehicle.current_battery || 0}%\n`;
+            responseMessage += `• ${vehicleDisplay} (${vehicle.license_plate}) - Pin: ${vehicle.current_battery || 0}%\n`;
           });
           responseMessage += '\n';
         }
@@ -1962,7 +1962,7 @@ Trả về JSON format:
           responseMessage += `🔋 **Xe pin yếu cần sạc (${lowBatteryVehicles.length} xe):**\n`;
           lowBatteryVehicles.forEach(vehicle => {
             const vehicleDisplay = `${vehicle.brand || 'N/A'} ${vehicle.model || 'N/A'} màu ${vehicle.color || 'N/A'}`;
-            responseMessage += `• ${vehicleDisplay} (${vehicle.license_plate}) - Pin: ${vehicle.battery_level || vehicle.current_battery || 0}%\n`;
+            responseMessage += `• ${vehicleDisplay} (${vehicle.license_plate}) - Pin: ${vehicle.current_battery || 0}%\n`;
           });
           responseMessage += '\n';
         }
@@ -2320,7 +2320,7 @@ Trả về JSON format:
       };
     }
   }
-  
+
   // Phân tích intent từ message
   detectIntent(message) {
     if (!message) return 'unknown';

@@ -345,8 +345,10 @@ const confirmPayment = async (req, res) => {
       }
     }
 
-    // Gửi email notification
-    await sendPaymentSuccessEmail(payment, payment.user_id);
+    // Gửi email notification chỉ cho deposit payment
+    if (payment.payment_type === 'deposit') {
+      await sendPaymentSuccessEmail(payment, payment.user_id);
+    }
 
     // Populate updated payment
     const updatedPayment = await Payment.findById(payment._id)
@@ -750,8 +752,10 @@ const handleVNPayCallback = async (req, res) => {
         }
       }
       
-      // Gửi email notification
-      await sendPaymentSuccessEmail(payment, payment.user_id);
+      // Gửi email notification chỉ cho deposit payment
+      if (payment.payment_type === 'deposit') {
+        await sendPaymentSuccessEmail(payment, payment.user_id);
+      }
       
       // Redirect về frontend với thành công
       const vnpayParams = new URLSearchParams({

@@ -280,7 +280,7 @@ const createBooking = async (req, res) => {
     // Kiểm tra trùng lịch đặt xe (cả online và walk_in)
     const existingBooking = await Booking.findOne({
       vehicle_id: { $in: vehicleIds },
-      status: { $in: ['confirmed', 'completed'] }, 
+      status: { $in: ['pending', 'confirmed'] }, 
       $or: [
         // Trường hợp 1: Booking mới nằm trong khoảng thời gian booking cũ
         {
@@ -1278,7 +1278,7 @@ const createWalkInBooking = async (req, res) => {
     
     const existingBooking = await Booking.findOne({
       vehicle_id: { $in: vehicleIds },
-      status: { $in: ['confirmed', 'completed'] }, // Chỉ kiểm tra booking đã confirmed hoặc completed
+      status: { $in: ['pending', 'confirmed'] }, // Chỉ kiểm tra booking đang pending hoặc confirmed
       $or: [
         {
           start_date: { $lte: startDate },

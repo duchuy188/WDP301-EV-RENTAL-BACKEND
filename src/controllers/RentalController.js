@@ -102,13 +102,22 @@ class RentalController {
         payment_method = 'cash'
       } = req.body;
       
+      // Debug logs để kiểm tra data từ FE
+      console.log('🔍 DEBUG - Raw data từ FE:');
+      console.log('- mileage (raw):', mileage, typeof mileage);
+      console.log('- battery_level (raw):', battery_level, typeof battery_level);
+      
       const vehicle_condition_after = {
-        mileage: parseInt(mileage),
-        battery_level: parseInt(battery_level),
+        mileage: Math.max(0, parseInt(mileage) || 0),
+        battery_level: Math.max(0, Math.min(100, parseInt(battery_level) || 0)),
         exterior_condition,
         interior_condition,
         notes: inspection_notes
       };
+      
+      console.log('🔍 DEBUG - Sau khi parse:');
+      console.log('- mileage (parsed):', vehicle_condition_after.mileage);
+      console.log('- battery_level (parsed):', vehicle_condition_after.battery_level);
       const staff_notes = inspection_notes;
       const damage_description = damage_desc;
 
@@ -252,16 +261,27 @@ class RentalController {
 
       // CHỈ UPDATE VEHICLE STATUS NẾU RENTAL COMPLETED
       if (rental.status === 'completed') {
+        console.log('🔍 DEBUG - Updating vehicle (completed):');
+        console.log('- Vehicle ID:', rental.vehicle_id._id);
+        console.log('- Status:', vehicleStatus);
+        console.log('- Mileage:', vehicle_condition_after.mileage);
+        console.log('- Battery:', vehicle_condition_after.battery_level);
+        
         await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
           status: vehicleStatus,
           current_mileage: vehicle_condition_after.mileage,
-          battery_level: vehicle_condition_after.battery_level
+          current_battery: vehicle_condition_after.battery_level
         });
       } else {
         // Nếu pending_payment, chỉ update mileage và battery
+        console.log('🔍 DEBUG - Updating vehicle (pending_payment):');
+        console.log('- Vehicle ID:', rental.vehicle_id._id);
+        console.log('- Mileage:', vehicle_condition_after.mileage);
+        console.log('- Battery:', vehicle_condition_after.battery_level);
+        
         await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
           current_mileage: vehicle_condition_after.mileage,
-          battery_level: vehicle_condition_after.battery_level
+          current_battery: vehicle_condition_after.battery_level
         });
       }
 
@@ -311,7 +331,19 @@ class RentalController {
       for (const payment of payments) {
         if (payment.payment_method === 'vnpay' && payment.amount > 0) {
           try {
-            const vnpayData = vnpayService.createPaymentUrl(payment, clientIP);
+            const vnpayData = vnpayService.createPaymentUrl({
+              amount: payment.amount,
+              orderId: payment.code,
+              orderInfo: `Thanh toan ${payment.payment_type} - ${rental.code}`,
+              orderType: 'rental_checkout',
+              returnUrl: process.env.VNPAY_RETURN_URL,
+              ipAddr: clientIP,
+              extraData: {
+                payment_id: payment._id.toString(),
+                rental_id: rental._id.toString(),
+                payment_type: payment.payment_type
+              }
+            }, clientIP);
             payment.vnpay_url = vnpayData.paymentUrl;
             payment.vnpay_transaction_no = vnpayData.orderId;
             await payment.save();
@@ -320,10 +352,11 @@ class RentalController {
               paymentUrl: vnpayData.paymentUrl,
               orderId: vnpayData.orderId,
               amount: payment.amount,
-              paymentType: payment.payment_type
+              paymentType: payment.payment_type,
+              description: payment.description
             };
           } catch (vnpayError) {
-            console.error('VNPay URL generation failed:', vnpayError);
+            console.error('VNPay URL generation failed for payment:', payment._id, vnpayError);
             // Fallback: still return payment info, just without URL
           }
         }
@@ -401,13 +434,22 @@ class RentalController {
         other_fees = 0
       } = req.body;
       
+      // Debug logs để kiểm tra data từ FE
+      console.log('🔍 DEBUG - Raw data từ FE (checkout with fees):');
+      console.log('- mileage (raw):', mileage, typeof mileage);
+      console.log('- battery_level (raw):', battery_level, typeof battery_level);
+      
       const vehicle_condition_after = {
-        mileage: parseInt(mileage),
-        battery_level: parseInt(battery_level),
+        mileage: Math.max(0, parseInt(mileage) || 0),
+        battery_level: Math.max(0, Math.min(100, parseInt(battery_level) || 0)),
         exterior_condition,
         interior_condition,
         notes: inspection_notes
       };
+      
+      console.log('🔍 DEBUG - Sau khi parse (checkout with fees):');
+      console.log('- mileage (parsed):', vehicle_condition_after.mileage);
+      console.log('- battery_level (parsed):', vehicle_condition_after.battery_level);
       const staff_notes = inspection_notes;
       const damage_description = damage_desc;
 
@@ -511,37 +553,51 @@ class RentalController {
         }
       );
       
-      // Tính tổng số tiền cần thanh toán
-      let totalAmount = total_fees; // Phí phát sinh (luôn có)
-      let paymentDescription = `Phí phát sinh thuê xe ${rental.code}`;
-      let paymentType = 'additional_fee'; // Mặc định là additional_fee cho phí phạt
-      
+      // Tính cọc còn lại (nếu có)
+      let remainingDeposit = 0;
       if (rental.booking_id.total_days >= 3) {
-        // Thuê >= 3 ngày: Cộng thêm cọc còn lại
-        const remainingDeposit = rental.booking_id.total_price - rental.booking_id.deposit_amount;
-        if (remainingDeposit > 0) {
-          totalAmount += remainingDeposit;
-          paymentDescription = `Cọc còn lại + phí phát sinh thuê xe ${rental.code}`;
-          paymentType = 'deposit'; // Có cọc → deposit
-        }
+        remainingDeposit = rental.booking_id.total_price - rental.booking_id.deposit_amount;
       }
       
-      // Tạo 1 payment duy nhất
-      const singlePayment = new Payment({
-        code: PaymentService.generatePaymentCode(),
-        rental_id: rental._id,
-        user_id: rental.user_id._id,
-        booking_id: rental.booking_id._id,
-        amount: totalAmount,
-        payment_method: payment_method,
-        status: 'pending',
-        description: paymentDescription,
-        payment_type: paymentType, //  Phân biệt deposit vs additional_fee
-        is_penalty_fee: true,      //  Luôn có phí phạt
-        processed_by: req.user._id
-      });
-      await singlePayment.save();
-      payments.push(singlePayment);
+      // TẠO 2 PAYMENTS RIÊNG BIỆT
+      
+      // Payment 1: Phí phạt (nếu có)
+      if (total_fees > 0) {
+        const penaltyPayment = new Payment({
+          code: PaymentService.generatePaymentCode(),
+          rental_id: rental._id,
+          user_id: rental.user_id._id,
+          booking_id: rental.booking_id._id,
+          amount: total_fees,
+          payment_method: payment_method,
+          status: 'pending',
+          description: `Phí phát sinh thuê xe ${rental.code}`,
+          payment_type: 'additional_fee',
+          is_penalty_fee: true,
+          processed_by: req.user._id
+        });
+        await penaltyPayment.save();
+        payments.push(penaltyPayment);
+      }
+      
+      // Payment 2: Cọc còn lại (nếu có)
+      if (remainingDeposit > 0) {
+        const depositPayment = new Payment({
+          code: PaymentService.generatePaymentCode(),
+          rental_id: rental._id,
+          user_id: rental.user_id._id,
+          booking_id: rental.booking_id._id,
+          amount: remainingDeposit,
+          payment_method: payment_method,
+          status: 'pending',
+          description: `Cọc còn lại thuê xe ${rental.code}`,
+          payment_type: 'deposit',
+          is_penalty_fee: false,
+          processed_by: req.user._id
+        });
+        await depositPayment.save();
+        payments.push(depositPayment);
+      }
 
       // Bây giờ mới save rental
       await rental.save();
@@ -606,9 +662,14 @@ class RentalController {
       // Cập nhật trạng thái xe dựa trên tình trạng
       // CHỈ UPDATE MILEAGE VÀ BATTERY, KHÔNG ĐỔI STATUS
       // Status sẽ được update khi payment completed
+      console.log('🔍 DEBUG - Updating vehicle (checkout with fees):');
+      console.log('- Vehicle ID:', rental.vehicle_id._id);
+      console.log('- Mileage:', vehicle_condition_after.mileage);
+      console.log('- Battery:', vehicle_condition_after.battery_level);
+      
       await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
         current_mileage: vehicle_condition_after.mileage,
-        battery_level: vehicle_condition_after.battery_level
+        current_battery: vehicle_condition_after.battery_level
       });
 
       // Gửi email receipt
@@ -630,7 +691,19 @@ class RentalController {
       for (const payment of payments) {
         if (payment.payment_method === 'vnpay' && payment.amount > 0) {
           try {
-            const vnpayData = vnpayService.createPaymentUrl(payment, clientIP);
+            const vnpayData = vnpayService.createPaymentUrl({
+              amount: payment.amount,
+              orderId: payment.code,
+              orderInfo: `Thanh toan ${payment.payment_type} - ${rental.code}`,
+              orderType: 'rental_checkout',
+              returnUrl: process.env.VNPAY_RETURN_URL,
+              ipAddr: clientIP,
+              extraData: {
+                payment_id: payment._id.toString(),
+                rental_id: rental._id.toString(),
+                payment_type: payment.payment_type
+              }
+            }, clientIP);
             payment.vnpay_url = vnpayData.paymentUrl;
             payment.vnpay_transaction_no = vnpayData.orderId;
             await payment.save();
@@ -639,10 +712,11 @@ class RentalController {
               paymentUrl: vnpayData.paymentUrl,
               orderId: vnpayData.orderId,
               amount: payment.amount,
-              paymentType: payment.payment_type
+              paymentType: payment.payment_type,
+              description: payment.description
             };
           } catch (vnpayError) {
-            console.error('VNPay URL generation failed:', vnpayError);
+            console.error('VNPay URL generation failed for payment:', payment._id, vnpayError);
             // Fallback: still return payment info, just without URL
           }
         }
@@ -663,7 +737,9 @@ class RentalController {
             late_fee: validatedLateFee,
             damage_fee: validatedDamageFee,
             other_fees: validatedOtherFees,
-            total_fees
+            total_fees,
+            remaining_deposit: remainingDeposit,
+            total_amount: totalPaid
           },
           payments: payments.map(payment => ({
             id: payment._id,
