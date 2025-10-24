@@ -612,7 +612,7 @@ exports.getPendingKycRequests = async (req, res) => {
       match: { role: 'EV Renter' }, // CHỈ LẤY EV RENTER
       select: '_id email fullname'
     }).select(
-      'userId identityCard identityName identityDob identityAddress identitySex identityNationality identityIssueDate identityIssueLoc identityFeatures identityReligion identityEthnicity identityCardFrontImage identityCardBackImage licenseNumber licenseName licenseDob licenseNation licenseAddress licensePlaceIssue licenseIssueDate licenseClass licenseClassList licenseExpiry licenseExpiryText licenseImage licenseBackImage lastUpdatedAt validationScore nameComparison validationNotes'
+      'userId identityCard identityName identityDob identityHome identityDoe identityAddress identitySex identityNationality identityIssueDate identityIssueLoc identityFeatures identityReligion identityEthnicity identityCardFrontImage identityCardBackImage licenseNumber licenseName licenseDob licenseNation licenseAddress licensePlaceIssue licenseIssueDate licenseClass licenseClassList licenseExpiry licenseExpiryText licenseImage licenseBackImage lastUpdatedAt validationScore nameComparison validationNotes'
     );
     
     return res.status(200).json({
@@ -664,6 +664,8 @@ exports.getMyIdentityCard = async (req, res) => {
           features: kyc.identityFeatures,
           religion: kyc.identityReligion,
           ethnicity: kyc.identityEthnicity,
+          doe: kyc.identityDoe,
+          home: kyc.identityHome,
           frontImage: kyc.identityCardFrontImage,
           backImage: kyc.identityCardBackImage,
           frontUploaded: kyc.identityCardFrontUploaded,
@@ -1534,7 +1536,7 @@ exports.getCompletedKycRequests = async (req, res) => {
         select: '_id email fullname phone'
       })
       .populate('approvedBy', '_id fullname email')
-      .select('userId identityCard identityName identityDob identityAddress identitySex identityNationality identityIssueDate identityIssueLoc identityFeatures identityReligion identityEthnicity identityCardFrontImage identityCardBackImage licenseNumber licenseName licenseDob licenseClass licenseExpiry licenseExpiryText licenseImage licenseBackImage status validationScore nameComparison validationNotes approvedAt approvedBy lastUpdatedAt')
+      .select('userId identityCard identityName identityDob identityHome identityDoe identityAddress identitySex identityNationality identityIssueDate identityIssueLoc identityFeatures identityReligion identityEthnicity identityCardFrontImage identityCardBackImage licenseNumber licenseName licenseDob licenseClass licenseExpiry licenseExpiryText licenseImage licenseBackImage status validationScore nameComparison validationNotes approvedAt approvedBy lastUpdatedAt')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
