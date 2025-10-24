@@ -359,6 +359,12 @@
  *                         backUploaded:
  *                           type: boolean
  *                           example: true
+ *                         doe:
+ *                           type: string
+ *                           example: "01/01/2025"
+ *                         home:
+ *                           type: string
+ *                           example: "123 Đường ABC, Quận 1, TP.HCM"
  *                         type:
  *                           type: string
  *                           example: "new_front"
@@ -1109,6 +1115,12 @@
  *                           identityDob:
  *                             type: string
  *                             example: "01/01/1990"
+ *                           identityHome:
+ *                             type: string
+ *                             example: "123 Đường ABC, Quận 1, TP.HCM"
+ *                           identityDoe:
+ *                             type: string
+ *                             example: "01/01/2025"
  *                           identityAddress:
  *                             type: string
  *                             example: "123 Đường ABC, Quận 1, TP.HCM"
