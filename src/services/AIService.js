@@ -42,7 +42,9 @@ class AIService {
     };
 
     if (stationId) {
-      bookingMatchQuery.station_id = stationId;
+      // Convert string to ObjectId
+      const mongoose = require('mongoose');
+      bookingMatchQuery.station_id = new mongoose.Types.ObjectId(stationId);
     }
 
     // Lấy dữ liệu booking theo giờ - FIXED
@@ -103,7 +105,9 @@ class AIService {
     };
 
     if (stationId) {
-      rentalMatchQuery.station_id = stationId;
+      // Convert string to ObjectId
+      const mongoose = require('mongoose');
+      rentalMatchQuery.station_id = new mongoose.Types.ObjectId(stationId);
     }
 
     // Lấy actual rental data với payments
@@ -136,7 +140,7 @@ class AIService {
             station: '$station_id'
           },
           rentalCount: { $sum: 1 },
-          totalActualRevenue: { $sum: { $add: ['$total_fees', '$total_fees'] } },
+          totalActualRevenue: { $sum: '$total_fees' },
           paymentsCount: { $sum: { $size: '$payments' } },
           averageDuration: { $avg: { $subtract: ['$actual_end_time', '$actual_start_time'] } }
         }
@@ -144,7 +148,8 @@ class AIService {
     ]);
 
     // Lấy thống kê trạm - FIXED
-    const stationMatchQuery = stationId ? { _id: stationId } : { status: 'active' };
+    const mongoose = require('mongoose');
+    const stationMatchQuery = stationId ? { _id: new mongoose.Types.ObjectId(stationId) } : { status: 'active' };
     const stationStats = await Station.aggregate([
       { $match: stationMatchQuery },
       {
@@ -257,30 +262,30 @@ Tổng bookings: ${historicalData.summary.totalBookings} lượt
 Booking hoàn thành: ${historicalData.summary.completedRentals} lượt  
 Tỷ lệ chuyển đổi: ${historicalData.summary.conversionRate.toFixed(1)}%
 
-Revenue dự kiến: ${(historicalData.summary.expectedRevenue/1000000).toFixed(1)}M VND
-Revenue thực tế: ${(historicalData.summary.actualRevenue/1000000).toFixed(1)}M VND
+Doanh thu dự kiến: ${(historicalData.summary.expectedRevenue/1000000).toFixed(1)}M VND
+Doanh thu thực tế: ${(historicalData.summary.actualRevenue/1000000).toFixed(1)}M VND
 
 === DỮ LIỆU CHI TIẾT ===
 Bookings theo giờ (24h):
 ${historicalData.detailedHourlyBookings.map(item => 
-  `Giờ ${item._id.hour}h: ${item.bookingsCount} bookings, ${item.completedRentals} completed`
+  `Giờ ${item._id.hour}h: ${item.bookingsCount} lượt đặt, ${item.completedRentals} hoàn thành`
 ).join('\n')}
 
 Bookings theo ngày (7 ngày gần nhất):
 ${historicalData.detailedDailyBookings.slice(-7).map(item => 
-  `Ngày ${item._id.date}: ${item.bookingsCount} bookings, ${item.completedRentals} completed`
+  `Ngày ${item._id.date}: ${item.bookingsCount} lượt đặt, ${item.completedRentals} hoàn thành`
 ).join('\n')}
 
-=== RENTALS THỰC TẾ ===
-Actual rentals với payments:
+=== THUÊ XE THỰC TẾ ===
+Dữ liệu thuê xe đã hoàn thành:
 ${historicalData.actualRentalData.map(item => 
-  `Giờ ${item._id.hour}h: ${item.rentalCount} rentals hoàn thành, avg duration: ${Math.round(item.averageDuration/3600000)}h`
+  `Giờ ${item._id.hour}h: ${item.rentalCount} lượt thuê, thời gian trung bình: ${Math.round(item.averageDuration/3600000)}h`
 ).join('\n')}
 
 === TRẠM ===
 Thống kê trạm:
 ${historicalData.stationStats.map(station => 
-  `Trạm ${station.name}: ${station.total_vehicles} xe, ${station.utilization_rate.toFixed(1)}% utilization, recent: ${station.recentRentals || 0} rentals`
+  `Trạm ${station.name}: ${station.total_vehicles} xe, tỷ lệ sử dụng ${station.utilization_rate.toFixed(1)}%, thuê gần đây: ${station.recentRentals || 0} lượt`
 ).join('\n')}
 
 === THỜI TIẾT TP.HCM ===
@@ -288,28 +293,31 @@ Hiện tại: ${JSON.stringify(historicalData.weatherData)}
 Dự báo 3 ngày: ${JSON.stringify(historicalData.weatherForecast.slice(0, 3))}
 
 Hãy phân tích:
-1. XU HƯỚNG THEO GIỜ: Peak hours nào có demand cao nhất?
+1. XU HƯỚNG THEO GIỜ: Giờ cao điểm nào có nhu cầu cao nhất?
 2. XU HƯỚNG THEO NGÀY: Ngày nào trong tuần có booking nhiều nhất?
-3. DỰ BÁO SỐNG LƯỢNG: Dự báo chính xác bookings và rentals cho ${period} tới
+3. DỰ BÁO SỐ LƯỢNG: Dự báo chính xác bookings và rentals cho ${period} tới
 4. TÁC ĐỘNG THỜI TIẾT: Mưa/nắng ảnh hưởng đến booking như thế nào?
 5. ĐỘ TIN CẬY: Confidence level của dự báo (%)
 
 QUAN TRỌNG:
 - Dùng SỐ LIỆU THỰC TẾ từ bảng trên
-- Revenue = actual payments chứ KHÔNG phải booking price  
-- Booking có thể bị cancel, chỉ rentals là chắc chắn
+- Doanh thu = thanh toán thực tế chứ KHÔNG phải giá booking
+- Booking có thể bị hủy, chỉ rentals là chắc chắn
 - Confidence dựa trên variance của data lịch sử
+- TUYỆT ĐỐI KHÔNG DÙNG TỪ TIẾNG ANH (utilization → tỷ lệ sử dụng, revenue → doanh thu, booking → đặt xe, rental → thuê xe)
 
-Trả về JSON bằng tiếng Việt:
+Trả về JSON HOÀN TOÀN BẰNG TIẾNG VIỆT (không được có bất kỳ từ tiếng Anh nào):
 {
   "hourlyTrend": [{"hour": 0-23, "demand": "thấp/trung bình/cao", "forecast": number, "confidence": number}],
   "weeklyTrend": [{"day": "Thứ 2-Chủ nhật", "demand": "thấp/trung bình/cao", "forecast": number}],
   "totalForecast": {"period": "${period}", "predictedBookings": number, "predictedRentals": number, "confidence": number},
   "revenueForecast": {"expectedRevenue": number, "actualRevenue": number},
-  "weatherImpact": {"current": "text tiếng Việt", "forecast": "text tiếng Việt"},
-  "factors": ["yếu tố quan trọng bằng tiếng Việt"],
-  "recommendations": ["gợi ý cụ thể bằng tiếng Việt"]
+  "weatherImpact": {"current": "mô tả thời tiết hiện tại bằng tiếng Việt", "forecast": "dự báo thời tiết bằng tiếng Việt"},
+  "factors": ["các yếu tố tác động, chỉ dùng tiếng Việt, VD: 'Tỷ lệ sử dụng xe tại trạm X cao', 'Nhu cầu tập trung vào giờ Y'"],
+  "recommendations": ["gợi ý cụ thể bằng tiếng Việt, VD: 'Tăng xe tại trạm có tỷ lệ sử dụng cao', 'Khuyến mãi tại trạm ít khách'"]
 }
+
+LƯU Ý: Tất cả text trong factors và recommendations PHẢI HOÀN TOÀN TIẾNG VIỆT!
 `;
 
       const result = await this.model.generateContent(prompt);
@@ -572,14 +580,58 @@ Trả về JSON bằng tiếng Việt:
     // 7. Tạo opportunities và challenges
     const { opportunities, challenges, recommendations } = this.generateInsights(trends, factors, historicalData);
 
+    // Translate factors sang tiếng Việt cho frontend
+    const factorsTranslated = {
+      weather: this.translateFactor('weather', factors.weather),
+      events: this.translateFactor('events', factors.events),
+      economic: this.translateFactor('economic', factors.economic),
+      customerSatisfaction: this.translateFactor('customerSatisfaction', factors.customerSatisfaction),
+      pricing: this.translateFactor('pricing', factors.pricing)
+    };
+
     return {
       trends,
-      factors,
+      factors: factorsTranslated,
+      factorsRaw: factors, // Giữ lại raw data nếu cần
       forecasts,
       opportunities,
       challenges,
       recommendations
     };
+  }
+
+  // Helper để translate factors
+  translateFactor(type, value) {
+    const translations = {
+      weather: {
+        adverse: 'Thời tiết bất lợi',
+        moderate: 'Thời tiết bình thường',
+        favorable: 'Thời tiết thuận lợi'
+      },
+      events: {
+        normal: 'Không có sự kiện đặc biệt',
+        high: 'Có nhiều sự kiện'
+      },
+      economic: {
+        stable: 'Kinh tế ổn định',
+        growing: 'Kinh tế tăng trưởng',
+        declining: 'Kinh tế suy giảm'
+      },
+      customerSatisfaction: {
+        unknown: 'Chưa đánh giá',
+        poor: 'Kém (< 40%)',
+        fair: 'Trung bình (40-60%)',
+        good: 'Tốt (60-80%)',
+        excellent: 'Xuất sắc (> 80%)'
+      },
+      pricing: {
+        competitive: 'Cạnh tranh tốt',
+        underperforming: 'Chưa tối ưu',
+        needs_revision: 'Cần điều chỉnh'
+      }
+    };
+
+    return translations[type]?.[value] || value;
   }
 
   // Phân tích seasonality
@@ -670,7 +722,9 @@ Trả về JSON bằng tiếng Việt:
     const factors = {
       weather: 'moderate',
       events: 'normal',
-      economic: 'stable'
+      economic: 'stable',
+      customerSatisfaction: 'unknown',
+      pricing: 'competitive'
     };
 
     // Phân tích thời tiết
@@ -688,6 +742,35 @@ Trả về JSON bằng tiếng Việt:
       factors.events = 'high';
     }
 
+    // Phân tích customer satisfaction (dựa trên conversion rate)
+    if (historicalData?.summary?.conversionRate !== undefined) {
+      const conversionRate = historicalData.summary.conversionRate;
+      if (conversionRate >= 80) {
+        factors.customerSatisfaction = 'excellent';
+      } else if (conversionRate >= 60) {
+        factors.customerSatisfaction = 'good';
+      } else if (conversionRate >= 40) {
+        factors.customerSatisfaction = 'fair';
+      } else {
+        factors.customerSatisfaction = 'poor';
+      }
+    }
+
+    // Phân tích pricing (dựa trên revenue gap)
+    if (historicalData?.summary?.expectedRevenue && historicalData?.summary?.actualRevenue) {
+      const expectedRev = historicalData.summary.expectedRevenue;
+      const actualRev = historicalData.summary.actualRevenue;
+      const gap = expectedRev > 0 ? (actualRev / expectedRev) : 0;
+      
+      if (gap >= 0.9) {
+        factors.pricing = 'competitive';
+      } else if (gap >= 0.7) {
+        factors.pricing = 'underperforming';
+      } else {
+        factors.pricing = 'needs_revision';
+      }
+    }
+
     return factors;
   }
 
@@ -697,44 +780,116 @@ Trả về JSON bằng tiếng Việt:
     const challenges = [];
     const recommendations = [];
 
-    // Opportunities
+    // Opportunities với recommendations cụ thể
     if (trends.overall.includes('increasing')) {
-      opportunities.push('Xu hướng tăng trưởng tích cực');
-      recommendations.push('Xem xét mở rộng dịch vụ');
+      opportunities.push(`Xu hướng tăng trưởng tích cực: +${trends.growthRate}%`);
+      
+      // Cụ thể hóa theo mức tăng trưởng
+      if (trends.growthRate > 20) {
+        recommendations.push(`🚀 Tăng trưởng mạnh (${trends.growthRate}%): Ưu tiên mở rộng số lượng xe và trạm mới`);
+      } else if (trends.growthRate > 10) {
+        recommendations.push(`📈 Tăng trưởng tốt (${trends.growthRate}%): Xem xét thêm xe tại các trạm hiện tại`);
+      } else {
+        recommendations.push(`✅ Tăng trưởng ổn định (${trends.growthRate}%): Duy trì và cải thiện chất lượng dịch vụ`);
+      }
     }
 
-    if (trends.seasonality.length > 0) {
-      opportunities.push('Có patterns theo thời gian có thể tận dụng');
-      recommendations.push('Tối ưu hóa pricing theo thời điểm');
+    if (trends.seasonality && trends.seasonality.length > 0) {
+      opportunities.push('Có patterns theo thời gian rõ ràng');
+      
+      trends.seasonality.forEach(pattern => {
+        if (pattern.includes('Giờ cao điểm')) {
+          recommendations.push(`⏰ ${pattern} - Áp dụng surge pricing để tối đa revenue`);
+        }
+        if (pattern.includes('có booking cao nhất')) {
+          recommendations.push(`📅 ${pattern} - Tăng cường marketing vào các ngày khác`);
+        }
+      });
     }
 
     if (factors.weather === 'favorable') {
-      opportunities.push('Thời tiết thuận lợi cho thuê xe');
+      opportunities.push('Thời tiết thuận lợi cho thuê xe điện');
     }
 
-    // Challenges
+    // Customer satisfaction insights
+    if (factors.customerSatisfaction === 'excellent') {
+      opportunities.push('Độ hài lòng khách hàng xuất sắc (>80% conversion)');
+      recommendations.push('💎 Tận dụng khách hàng hài lòng để chạy referral program');
+    } else if (factors.customerSatisfaction === 'good') {
+      opportunities.push('Độ hài lòng khách hàng tốt (60-80% conversion)');
+    }
+
+    // Pricing insights
+    if (factors.pricing === 'competitive') {
+      opportunities.push('Giá cả cạnh tranh tốt (revenue gap <10%)');
+    }
+
+    // Challenges với giải pháp cụ thể
     if (trends.overall.includes('decreasing')) {
-      challenges.push('Xu hướng giảm cần theo dõi');
-      recommendations.push('Cải thiện dịch vụ và marketing');
+      challenges.push(`⚠️ Xu hướng giảm ${Math.abs(trends.growthRate)}% cần xử lý ngay`);
+      
+      if (historicalData?.summary?.conversionRate < 50) {
+        challenges.push('🚨 Conversion rate < 50% - Nghiêm trọng');
+        recommendations.push('KHẨN CẤP: Kiểm tra UX app, quy trình đặt xe và chất lượng xe');
+      } else if (historicalData?.summary?.conversionRate < 70) {
+        recommendations.push('⚡ Cải thiện conversion rate: Review UI/UX và thời gian phản hồi booking');
+      }
+      
+      const expectedRev = historicalData?.summary?.expectedRevenue || 0;
+      const actualRev = historicalData?.summary?.actualRevenue || 0;
+      const revenueGap = expectedRev - actualRev;
+      
+      if (revenueGap > actualRev * 0.3) {
+        challenges.push(`💰 Revenue gap lớn: ${(revenueGap/1000000).toFixed(1)}M VND`);
+        recommendations.push('💡 Review pricing và chính sách hủy - nhiều booking bị cancel/không hoàn thành');
+      }
+      
+      recommendations.push('🎁 Chạy khuyến mãi hoặc loyalty program để kích cầu');
+    }
+    
+    // Challenges khi growth = 0 (stable nhưng không tăng trưởng)
+    if (trends.growthRate === 0 && trends.previousGrowthRate === 0) {
+      challenges.push('📊 Tăng trưởng dừng lại - Hệ thống đang trì trệ');
+      if (!recommendations.some(r => r.includes('chiến lược đột phá'))) {
+        // Đã có recommendation rồi, không cần thêm
+      }
     }
 
     if (factors.weather === 'adverse') {
-      challenges.push('Thời tiết bất lợi ảnh hưởng đến nhu cầu');
-      recommendations.push('Chuẩn bị kế hoạch dự phòng');
+      challenges.push('🌧️ Thời tiết bất lợi ảnh hưởng đến nhu cầu');
+      recommendations.push('☔ Chuẩn bị kế hoạch dự phòng: Khuyến mãi ngày mưa, tăng cường bảo dưỡng xe');
     }
 
-    if (trends.cyclical.includes('Biến động cao')) {
-      challenges.push('Biến động cao khó dự đoán');
-      recommendations.push('Tăng cường monitoring và phân tích');
+    if (trends.cyclical && trends.cyclical.includes('Biến động cao')) {
+      challenges.push('📊 Biến động cao khó dự đoán');
+      recommendations.push('🔍 Tăng cường monitoring real-time và phân tích nguyên nhân biến động');
+    }
+
+    // Customer satisfaction challenges
+    if (factors.customerSatisfaction === 'poor') {
+      challenges.push('😞 Độ hài lòng khách hàng thấp (<40% conversion)');
+      recommendations.push('🆘 KHẨN: Khảo sát khách hàng để tìm nguyên nhân và cải thiện dịch vụ');
+    } else if (factors.customerSatisfaction === 'fair') {
+      challenges.push('😐 Độ hài lòng khách hàng trung bình (40-60%)');
+      recommendations.push('📞 Liên hệ khách hàng để thu thập feedback và cải thiện');
+    }
+
+    // Pricing challenges
+    if (factors.pricing === 'needs_revision') {
+      challenges.push('💸 Pricing cần điều chỉnh (revenue gap >30%)');
+      recommendations.push('💰 Review toàn bộ bảng giá - có thể giá quá cao hoặc chính sách không hợp lý');
+    } else if (factors.pricing === 'underperforming') {
+      challenges.push('📉 Pricing chưa tối ưu (revenue gap 10-30%)');
+      recommendations.push('🔧 Điều chỉnh nhỏ về giá hoặc giảm tỷ lệ hủy booking');
     }
 
     // Recommendations chung
     if (trends.growthRate === 0) {
-      recommendations.push('Cần chiến lược tăng trưởng mới');
+      recommendations.push('🎯 Tăng trưởng dừng lại - Cần chiến lược đột phá: thử nghiệm model mới hoặc mở rộng thị trường');
     }
 
-    if (historicalData.summary.conversionRate < 70) {
-      recommendations.push('Cải thiện tỷ lệ chuyển đổi booking thành rental');
+    if (!historicalData?.summary?.conversionRate || historicalData.summary.conversionRate < 70) {
+      recommendations.push('📊 Tỷ lệ chuyển đổi cần cải thiện - Target: >70%');
     }
 
     return { opportunities, challenges, recommendations };
@@ -804,24 +959,53 @@ Trả về JSON bằng tiếng Việt:
         // Gợi ý cụ thể cho trạm
         const stationRecommendations = [];
         
+        // Phân tích theo utilization
         if (vehiclesNeeded > 0) {
-          stationRecommendations.push(`Cần bổ sung ${vehiclesNeeded} xe máy điện`);
+          stationRecommendations.push(`⚡ Cần bổ sung ${vehiclesNeeded} xe máy điện ngay`);
         } else if (currentUtil > 0.9) {
-          stationRecommendations.push('Tỷ lệ sử dụng rất cao, cần chuẩn bị thêm xe dự phòng');
-        } else if (currentUtil < 0.2 && currentVehicles > 3) {
-          stationRecommendations.push('Cân nhắc giảm số lượng xe tại trạm này');
+          stationRecommendations.push('🚨 Tỷ lệ sử dụng rất cao (>90%), cần chuẩn bị thêm xe dự phòng');
+        } else if (currentUtil >= 0.7 && currentUtil <= 0.9) {
+          stationRecommendations.push(`✅ Tỷ lệ sử dụng tốt (${(currentUtil*100).toFixed(0)}%), tiếp tục duy trì`);
+        } else if (currentUtil >= 0.4 && currentUtil < 0.7) {
+          stationRecommendations.push(`📊 Tỷ lệ sử dụng trung bình (${(currentUtil*100).toFixed(0)}%), cần tăng cường marketing`);
+        } else if (currentUtil > 0 && currentUtil < 0.4 && currentVehicles > 5) {
+          stationRecommendations.push(`⚠️ Tỷ lệ sử dụng thấp (${(currentUtil*100).toFixed(0)}%), cân nhắc giảm số lượng xe`);
+        } else if (currentUtil === 0 && currentVehicles > 3) {
+          stationRecommendations.push(`❌ Không có xe nào được thuê, cần review vị trí hoặc điều chuyển xe`);
+        } else if (currentUtil === 0 && currentVehicles > 0 && currentVehicles <= 3) {
+          stationRecommendations.push(`💡 Trạm nhỏ chưa có lượt thuê, cần chạy khuyến mãi khai trương`);
         }
         
-        // Gợi ý theo loại xe
+        // Trường hợp đặc biệt: Trạm không có xe
+        if (currentVehicles === 0) {
+          stationRecommendations.push('🏗️ Trạm mới chưa có xe, cần bổ sung ít nhất 5-10 xe để vận hành');
+        }
+        
+        // Gợi ý theo loại xe (chi tiết hơn)
         const typeRecommendations = Object.entries(vehicleTypes).map(([type, data]) => {
           const typeUtil = data.total > 0 ? data.inUse / data.total : 0;
-          if (typeUtil > 0.9) return `Loại xe ${type} có nhu cầu cao`;
-          if (typeUtil < 0.1 && data.total > 2) return `Loại xe ${type} ít được thuê`;
+          const typeName = type === 'scooter' ? 'xe ga' : type === 'motorcycle' ? 'xe số' : type;
+          
+          if (typeUtil > 0.9) {
+            return `🔥 Loại ${typeName} có nhu cầu rất cao (${data.inUse}/${data.total}), xem xét thêm xe`;
+          } else if (typeUtil >= 0.6 && typeUtil <= 0.9) {
+            return `✅ Loại ${typeName} hoạt động tốt (${data.inUse}/${data.total})`;
+          } else if (typeUtil < 0.1 && data.total > 2) {
+            return `📉 Loại ${typeName} ít được thuê (${data.inUse}/${data.total}), cân nhắc điều chuyển`;
+          }
           return null;
         }).filter(Boolean);
         
         if (typeRecommendations.length > 0) {
           stationRecommendations.push(...typeRecommendations);
+        }
+        
+        // Gợi ý về số lượng xe cụ thể
+        if (inUseVehicles > 0 && currentVehicles > 0) {
+          const availableVehicles = currentVehicles - inUseVehicles;
+          if (availableVehicles < 2 && currentUtil > 0.8) {
+            stationRecommendations.push(`⚠️ Chỉ còn ${availableVehicles} xe khả dụng, nguy cơ hết xe trong giờ cao điểm`);
+          }
         }
 
         return {
@@ -852,28 +1036,69 @@ Trả về JSON bằng tiếng Việt:
       const totalVehiclesNeeded = recommendations.reduce((sum, r) => sum + r.vehiclesNeeded, 0);
       const avgUtilization = stations.length > 0 ? totalUtilization / stations.length : 0;
       
-      // Gợi ý chung cho toàn hệ thống
+      // Phân loại trạm theo utilization
+      const stationsEmpty = recommendations.filter(r => r.currentVehicles === 0);
+      const stationsNoRentals = recommendations.filter(r => r.currentVehicles > 0 && r.utilization === 0);
+      const stationsOptimal = recommendations.filter(r => r.utilization >= 60 && r.utilization <= 80);
+      
+      // Gợi ý chung cho toàn hệ thống (chi tiết và actionable)
       const generalRecommendations = [];
       
+      // 1. Tổng quan hệ thống
+      generalRecommendations.push(`📊 Tổng quan: ${stations.length} trạm với ${totalAvailableVehicles} xe, tỷ lệ sử dụng trung bình ${(avgUtilization*100).toFixed(1)}%`);
+      
+      // 2. Phân tích theo urgency
       if (totalVehiclesNeeded > 0) {
-        generalRecommendations.push(`Cần bổ sung tổng cộng ${totalVehiclesNeeded} xe máy điện cho ${stationsWithHighUtilization} trạm có nhu cầu cao`);
-      } else if (totalRentedVehicles === 0 && totalAvailableVehicles > 0) {
-        generalRecommendations.push('Tăng cường marketing để thu hút khách thuê xe máy điện');
-      } else if (avgUtilization < 0.3 && totalAvailableVehicles > 10) {
-        generalRecommendations.push('Cân nhắc giảm số lượng xe tại các trạm có tỷ lệ sử dụng thấp');
-      } else if (stationsWithLowUtilization > 1) {
-        generalRecommendations.push(`Có ${stationsWithLowUtilization} trạm có tỷ lệ sử dụng thấp, cân nhắc điều chuyển xe`);
+        generalRecommendations.push(`🚨 KHẨN CẤP: Cần bổ sung ${totalVehiclesNeeded} xe cho ${stationsWithHighUtilization} trạm có nhu cầu cao`);
       }
       
-      if (stationsWithHighUtilization > 0) {
-        generalRecommendations.push(`Có ${stationsWithHighUtilization} trạm có tỷ lệ sử dụng cao, cần theo dõi chặt chẽ`);
+      if (stationsEmpty.length > 0) {
+        generalRecommendations.push(`🏗️ Có ${stationsEmpty.length} trạm mới chưa có xe (${stationsEmpty.map(s => s.stationName).join(', ')})`);
       }
       
-      // Thêm gợi ý về bảo dưỡng xe máy điện
-      generalRecommendations.push('Đảm bảo pin xe máy điện được sạc đầy trước khi cho thuê');
+      if (stationsNoRentals.length > 0) {
+        generalRecommendations.push(`❌ CẢNH BÁO: ${stationsNoRentals.length} trạm có xe nhưng không có lượt thuê nào, cần kiểm tra ngay`);
+      }
       
+      // 3. Cơ hội tối ưu
+      if (stationsOptimal.length > 0) {
+        generalRecommendations.push(`✅ ${stationsOptimal.length} trạm đang hoạt động tốt (60-80% utilization), tiếp tục duy trì`);
+      }
+      
+      if (stationsWithHighUtilization > 0 && totalVehiclesNeeded === 0) {
+        generalRecommendations.push(`⚡ ${stationsWithHighUtilization} trạm có tỷ lệ sử dụng cao, theo dõi sát để bổ sung xe kịp thời`);
+      }
+      
+      // 4. Vấn đề về hiệu suất
+      if (avgUtilization < 0.2 && totalAvailableVehicles > 10) {
+        generalRecommendations.push(`📉 Tỷ lệ sử dụng hệ thống thấp (${(avgUtilization*100).toFixed(1)}%), cần chiến lược marketing mạnh mẽ`);
+      } else if (avgUtilization < 0.4 && totalAvailableVehicles > 10) {
+        generalRecommendations.push(`⚠️ Tỷ lệ sử dụng dưới mức tối ưu (${(avgUtilization*100).toFixed(1)}%), cần tăng cường quảng bá`);
+      }
+      
+      if (stationsWithLowUtilization > 2) {
+        generalRecommendations.push(`🔄 ${stationsWithLowUtilization} trạm có tỷ lệ sử dụng thấp, đề xuất điều chuyển xe sang trạm có nhu cầu cao hơn`);
+      }
+      
+      // 5. Gợi ý vận hành
       if (totalAvailableVehicles > 0) {
-        generalRecommendations.push('Kiểm tra định kỳ phanh và hệ thống điện của xe máy điện');
+        const totalInUse = totalRentedVehicles + recommendations.reduce((sum, r) => sum + r.reservedVehicles, 0);
+        const idleVehicles = totalAvailableVehicles - totalInUse;
+        
+        if (idleVehicles > totalAvailableVehicles * 0.7) {
+          generalRecommendations.push(`💡 ${idleVehicles}/${totalAvailableVehicles} xe đang không sử dụng (${((idleVehicles/totalAvailableVehicles)*100).toFixed(0)}%), cơ hội để chạy khuyến mãi`);
+        }
+      }
+      
+      // 6. Bảo dưỡng và chất lượng
+      generalRecommendations.push('🔋 Đảm bảo tất cả xe có pin ≥80% trước khi cho thuê');
+      generalRecommendations.push('🔧 Kiểm tra định kỳ phanh, đèn, và hệ thống điện mỗi tuần');
+      
+      // 7. Chiến lược dài hạn
+      if (avgUtilization > 0.6) {
+        generalRecommendations.push('📈 Hệ thống hoạt động hiệu quả, xem xét mở rộng thêm trạm mới');
+      } else if (avgUtilization < 0.3) {
+        generalRecommendations.push('🎯 Tập trung cải thiện chất lượng dịch vụ và trải nghiệm khách hàng');
       }
 
       return {

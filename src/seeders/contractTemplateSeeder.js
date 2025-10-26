@@ -168,7 +168,7 @@ const createDefaultContractTemplate = async () => {
               </tr>
               <tr>
                 <td class="label">Phương thức thanh toán:</td>
-                <td>Cash</td>
+                <td>{{rental_fee_payment_method}}</td>
               </tr>
               <tr>
                 <td class="label">Ngày thanh toán:</td>
@@ -702,6 +702,11 @@ const runContractTemplateSeeder = async () => {
     await mongoose.connection.close();
   }
 };
+
+// Tự động chạy nếu file được gọi trực tiếp
+if (require.main === module) {
+  runContractTemplateSeeder();
+}
 
 module.exports = {
   createDefaultContractTemplate,

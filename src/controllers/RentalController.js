@@ -627,21 +627,33 @@ class RentalController {
             type: 'late_return',
             description: `Trả xe muộn - Phí: ${validatedLateFee.toLocaleString('vi-VN')} VND`,
             severity: 'medium',
-            points: 5
+            points: 5,
+           
+            resolved: true,
+            resolved_date: new Date(),
+            resolved_by: req.user._id
           };
         } else if (validatedDamageFee > 0) {
           violation_data = {
             type: 'damage',
             description: `Làm hỏng xe - Phí: ${validatedDamageFee.toLocaleString('vi-VN')} VND`,
             severity: 'high',
-            points: 10
+            points: 10,
+            // Auto-resolve vì đã tính phí
+            resolved: true,
+            resolved_date: new Date(),
+            resolved_by: req.user._id
           };
         } else if (validatedOtherFees > 0) {
           violation_data = {
             type: 'rule_violation',
             description: `Vi phạm quy định - Phí: ${validatedOtherFees.toLocaleString('vi-VN')} VND`,
             severity: 'low',
-            points: 5
+            points: 5,
+            // Auto-resolve vì đã tính phí
+            resolved: true,
+            resolved_date: new Date(),
+            resolved_by: req.user._id
           };
         }
         

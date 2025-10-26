@@ -32,7 +32,9 @@ const conversationSchema = new mongoose.Schema({
     metadata: {
       suggestions: [String],
       actions: [String],
-      context: String
+      context: mongoose.Schema.Types.Mixed, 
+      intent: String,
+      sentiment: String
     }
   }],
   

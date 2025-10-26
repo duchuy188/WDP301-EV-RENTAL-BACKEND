@@ -278,7 +278,7 @@ const createBooking = async (req, res) => {
     }
     
     // Kiểm tra trùng lịch đặt xe (cả online và walk_in)
-    const existingBooking = await Booking.findOne({
+    const conflictingBookings = await Booking.find({
       vehicle_id: { $in: vehicleIds },
       status: { $in: ['pending', 'confirmed'] }, 
       $or: [
@@ -300,15 +300,23 @@ const createBooking = async (req, res) => {
       ]
     });
 
-    if (existingBooking) {
-      const bookingTypeText = existingBooking.booking_type === 'online' ? 'đặt online' : 'đặt tại quầy';
+    // Lấy danh sách vehicle IDs bị conflict
+    const conflictingVehicleIds = conflictingBookings.map(b => b.vehicle_id.toString());
+
+    // Filter ra những xe KHÔNG bị conflict
+    const availableVehicles = sameModelVehicles.filter(v => 
+      !conflictingVehicleIds.includes(v._id.toString())
+    );
+
+    if (availableVehicles.length === 0) {
       return res.status(400).json({ 
-        message: `Xe đã được ${bookingTypeText} trong khoảng thời gian này (${existingBooking.start_date.toLocaleDateString('vi-VN')} - ${existingBooking.end_date.toLocaleDateString('vi-VN')})` 
+        message: `Không có xe ${model} màu ${color} available trong khoảng thời gian này. Vui lòng chọn thời gian khác hoặc xe khác.` 
       });
     }
     
-    // Chọn xe đầu tiên available và cập nhật trạng thái
-    const vehicle = sameModelVehicles[0];
+    // Chọn xe có battery cao nhất trong danh sách available
+    const vehicle = availableVehicles.sort((a, b) => b.battery_level - a.battery_level)[0];
+    console.log(`🚗 Auto-selected vehicle: ${vehicle.name} (${vehicle.license_plate}) - Battery: ${vehicle.battery_level}%`);
     
     // Calculate pricing
     const pricePerDay = vehicle.price_per_day;
@@ -442,7 +450,7 @@ const getUserBookings = async (req, res) => {
     const skip = (page - 1) * limit;
     
     const bookings = await Booking.find(query)
-      .populate('vehicle_id', 'name license_plate model brand images')
+      .populate('vehicle_id', 'name license_plate model brand color images')
       .populate('station_id', 'name address phone')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -1276,7 +1284,7 @@ const createWalkInBooking = async (req, res) => {
     console.log(`📅 Kiểm tra trùng lịch từ ${startDate.toISOString()} đến ${endDate.toISOString()}`);
     console.log(`🚗 Vehicle IDs:`, vehicleIds);
     
-    const existingBooking = await Booking.findOne({
+    const conflictingBookings = await Booking.find({
       vehicle_id: { $in: vehicleIds },
       status: { $in: ['pending', 'confirmed'] }, // Chỉ kiểm tra booking đang pending hoặc confirmed
       $or: [
@@ -1295,30 +1303,22 @@ const createWalkInBooking = async (req, res) => {
       ]
     });
 
-    if (existingBooking) {
-      console.log(`❌ Tìm thấy booking trùng lịch:`, {
-        booking_id: existingBooking._id,
-        booking_code: existingBooking.code,
-        vehicle_id: existingBooking.vehicle_id,
-        start_date: existingBooking.start_date,
-        end_date: existingBooking.end_date,
-        status: existingBooking.status
-      });
-      
+    // Lấy danh sách vehicle IDs bị conflict
+    const conflictingVehicleIds = conflictingBookings.map(b => b.vehicle_id.toString());
+
+    // Filter ra những xe KHÔNG bị conflict
+    const availableVehicles = sameModelVehicles.filter(v => 
+      !conflictingVehicleIds.includes(v._id.toString())
+    );
+
+    if (availableVehicles.length === 0) {
+      console.log(`❌ Không có xe ${model} màu ${color} available trong khoảng thời gian này`);
       return res.status(400).json({ 
-        message: `Xe đã được đặt trong khoảng thời gian này`,
-        details: {
-          existing_booking: {
-            code: existingBooking.code,
-            start_date: existingBooking.start_date,
-            end_date: existingBooking.end_date,
-            status: existingBooking.status
-          }
-        }
+        message: `Không có xe ${model} màu ${color} available trong khoảng thời gian này. Vui lòng chọn thời gian khác hoặc xe khác.`
       });
     }
     
-    console.log(`✅ Không có booking trùng lịch, tiếp tục tạo booking...`);
+    console.log(`✅ Tìm thấy ${availableVehicles.length} xe available`);
 
 
     const pickupTimeParts = pickup_time.split(':');
@@ -1454,8 +1454,9 @@ const createWalkInBooking = async (req, res) => {
       }
     }
 
-    // Chọn xe đầu tiên available
-    const vehicle = sameModelVehicles[0];
+    // Chọn xe có battery cao nhất trong danh sách available
+    const vehicle = availableVehicles.sort((a, b) => b.battery_level - a.battery_level)[0];
+    console.log(`🚗 Auto-selected vehicle: ${vehicle.name} (${vehicle.license_plate}) - Battery: ${vehicle.battery_level}%`);
     
     // Calculate pricing
     const pricePerDay = vehicle.price_per_day;

@@ -2,6 +2,8 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { User, Station, Vehicle, Booking, Rental, UserStats, Payment } = require('../models');
 const { formatVietnamTime } = require('../config/timezone');
 const ExternalAPIs = require('../config/externalAPIs');
+const BookingHandler = require('./chatbot/booking/BookingHandler');
+const CancelHandler = require('./chatbot/booking/CancelHandler');
 
 class ChatbotService {
   constructor() {
@@ -399,6 +401,65 @@ class ChatbotService {
       
       // Detect intent trước
       const intent = this.detectIntent(message);
+      console.log('🎯 Detected Intent:', intent);
+      
+      // 🆕 HANDLE BOOKING INTENT
+      if (intent === 'booking_request' && userRole === 'EV Renter') {
+        console.log('📦 Handling booking request via BookingHandler');
+        return await BookingHandler.handle(message, userId, conversationHistory);
+      }
+      
+      // 🆕 HANDLE CONFIRM BOOKING
+      if (intent === 'confirm_booking' && userRole === 'EV Renter') {
+        console.log('✅ Handling booking confirmation');
+        
+        // Tìm assistant message gần nhất có bookingData
+        let bookingData = null;
+        for (let i = conversationHistory.length - 1; i >= 0; i--) {
+          const msg = conversationHistory[i];
+          if (msg.role === 'assistant' && 
+              msg.metadata?.context?.step === 'confirmation' && 
+              msg.metadata?.context?.bookingData) {
+            bookingData = msg.metadata.context.bookingData;
+            console.log('Found bookingData from conversation history');
+            break;
+          }
+        }
+        
+        if (bookingData) {
+          return await BookingHandler.confirmBooking(bookingData);
+        } else {
+          console.log('No bookingData found in conversation history');
+          return {
+            success: false,
+            message: 'Không tìm thấy thông tin booking để xác nhận. Vui lòng đặt xe lại.',
+            suggestions: ['Đặt xe mới', 'Xem xe available']
+          };
+        }
+      }
+      
+      // 🆕 HANDLE CANCEL BOOKING
+      if (intent === 'cancellation' && userRole === 'EV Renter') {
+        console.log('❌ Handling cancel booking request');
+        
+        // Check if user đang trong flow chọn booking để cancel
+        const lastAssistantMsg = conversationHistory
+          .slice()
+          .reverse()
+          .find(msg => msg.role === 'assistant');
+        
+        if (lastAssistantMsg?.metadata?.context?.step === 'select_booking_to_cancel') {
+          // User đang chọn booking từ list
+          return await CancelHandler.handleSelection(
+            message, 
+            userId, 
+            lastAssistantMsg.metadata.context
+          );
+        } else {
+          // User mới bắt đầu cancel flow
+          return await CancelHandler.handle(message, userId, conversationHistory);
+        }
+      }
       
       // Lấy context dựa trên role và intent
       const context = await this.getUserContext(userRole, userId, intent);
@@ -2285,7 +2346,7 @@ Trả về JSON format:
         // Tạo suggestions dựa trên intent nếu không có
         let suggestions = parsed.suggestions || [];
         if (suggestions.length === 0) {
-          suggestions = this.generateSuggestionsByIntent(intent, userRole);
+          suggestions = await this.generateSuggestionsByIntent(intent, userRole, originalMessage);
         }
         
         return {
@@ -2327,12 +2388,42 @@ Trả về JSON format:
     
     const messageText = message.toLowerCase();
     
+    
+    // Pattern cho confirm booking (phải check TRƯỚC các pattern khác)
+    if (messageText.match(/^(?:xác nhận|confirm|đồng ý|ok|yes)(?:\s+(?:đặt\s+xe|booking))?$/i)) {
+      return 'confirm_booking';
+    }
+    
+ 
+    
+    // Pattern 1: Có dates cụ thể → Booking
+    // Ví dụ: "Tôi muốn thuê xe Klara từ 20-22/11", "Đặt xe từ ngày 20/11"
+    if (messageText.match(/(?:thuê|đặt|book).*xe.*(?:từ|ngày|đến|tới|\d{1,2}\/\d{1,2}|\d{1,2}-\d{1,2})/i)) {
+      return 'booking_request';
+    }
+    
+    // Pattern 2: Có location + dates
+    // Ví dụ: "Thuê xe ở quận 1 từ 20/11"
+    if (messageText.match(/(?:thuê|đặt|book).*xe.*(?:ở|tại|quận|district).*(?:từ|ngày|\d{1,2}\/\d{1,2})/i)) {
+      return 'booking_request';
+    }
+    
+    // Pattern 3: Có "nhận xe lúc" (pickup time)
+    // Ví dụ: "Thuê xe Klara nhận xe lúc 10h"
+    if (messageText.match(/(?:thuê|đặt|book).*xe.*(?:nhận xe|pickup|lúc \d+h)/i)) {
+      return 'booking_request';
+    }
+    
+    // ⚠️ KHÔNG match "Tôi muốn thuê xe Klara" (không có dates) → để AI tư vấn
+    
     // Thêm pattern cho staff operations
     if (messageText.match(/giao xe|bàn giao|check in|nhận xe từ khách/i)) return 'vehicle_handover';
-    if (messageText.match(/nhận xe|trả xe|check out|hoàn thành|thu xe/i)) return 'vehicle_return';
+    // ⚠️ "nhận xe" trong context booking phải check sau booking_request
+    // Chỉ match "trả xe" hoặc "nhận xe" từ staff (không có context thuê/đặt)
+    if (messageText.match(/trả xe|check out|hoàn thành|thu xe/i)) return 'vehicle_return';
     if (messageText.match(/tính phí|phí phát sinh|tính tiền|damage|hư hỏng|phạt/i)) return 'penalty_calculation';
     if (messageText.match(/xe nào|trạng thái xe|xe available|xe sẵn sàng|có mấy xe|xe trong trạm|tổng.*xe|vehicle.*status|how many.*vehicle|xe.*count/i)) return 'vehicle_status';
-    if (messageText.match(/booking.*sắp|khách.*sắp|lịch.*hôm nay|booking.*tới|khách.*tới|có.*booking|booking.*nào|lịch hẹn|khách hàng.*đến|có ai.*đặt|ai.*book|khách.*book|lịch.*book|booking.*trạm|đặt.*xe|schedule.*today|upcoming.*booking/i)) return 'upcoming_bookings';
+    if (messageText.match(/booking.*sắp|khách.*sắp|lịch.*hôm nay|booking.*tới|khách.*tới|có.*booking|booking.*nào|lịch hẹn|khách hàng.*đến|có ai.*đặt|ai.*book|khách.*book|lịch.*book|booking.*trạm|schedule.*today|upcoming.*booking/i)) return 'upcoming_bookings';
     if (messageText.match(/báo cáo|thống kê trạm|doanh thu trạm/i)) return 'station_report';
     
     // Thêm pattern cho suggestion actions
@@ -2364,6 +2455,11 @@ Trả về JSON format:
     if (messageText.match(/doanh thu.*xe|xe.*doanh thu|revenue.*vehicle|xe kiếm được/i)) return 'vehicle_revenue';
     if (messageText.match(/thống kê|báo cáo|report|analytics|phân tích/i)) return 'analytics';
     
+    // 🆕 CANCELLATION - CHECK TRƯỚC BOOKING (vì "hủy booking" có cả 2 từ)
+    // Support cả 2 dấu: hủy (dấu hỏi) và huỷ (dấu nặng)
+    if (messageText.match(/hủy|huỷ|cancel/i)) return 'cancellation';
+    
+    // Pattern chung cho booking (fallback)
     if (messageText.match(/thuê|đặt|book|reservation|đăng ký|booking/i)) return 'booking';
     if (messageText.match(/giá|phí|cost|price|cọc|thanh toán|payment/i)) return 'pricing';
     if (messageText.match(/trạm|địa điểm|station|location|ở đâu|gần đây/i)) return 'location';
@@ -2381,7 +2477,6 @@ Trả về JSON format:
     if (messageText.match(/pin|battery|sạc|charge|dung lượng/i)) return 'battery';
     if (messageText.match(/hợp đồng|contract|ký|sign|điều khoản/i)) return 'contract';
     if (messageText.match(/kyc|xác thực|verify|giấy tờ|cmnd|cccd|gplx/i)) return 'kyc';
-    if (messageText.match(/hủy|cancel/i)) return 'cancellation';
     if (messageText.match(/trả xe|return|checkout|hoàn thành/i)) return 'return';
     if (messageText.match(/lỗi|hỏng|sự cố|problem|issue|error/i)) return 'issue';
     if (messageText.match(/cảm ơn|thank|cám ơn/i)) return 'gratitude';
@@ -2424,25 +2519,112 @@ Trả về JSON format:
   }
   
   // Tạo gợi ý dựa trên intent và role
-  generateSuggestionsByIntent(intent, userRole) {
+  async generateSuggestionsByIntent(intent, userRole, message = '') {
     const suggestions = [];
+    const messageText = message.toLowerCase();
     
-    // Gợi ý chung cho tất cả role
+    // 🆕 SMART SUGGESTIONS - Context-aware cho EV Renter
+    if (userRole === 'EV Renter') {
+      // Extract vehicle model từ message (lấy từ DB)
+      let mentionedModel = null;
+      try {
+        // Lấy tất cả models từ DB
+        const vehicles = await Vehicle.find({ is_active: true }).distinct('model');
+        
+        for (const model of vehicles) {
+          if (messageText.includes(model.toLowerCase())) {
+            mentionedModel = model;
+            break;
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching vehicle models:', error);
+      }
+      
+      // Extract location từ message (lấy từ DB)
+      let mentionedLocation = null;
+      try {
+        // Lấy tất cả stations từ DB
+        const stations = await Station.find({ status: 'active' });
+        
+        for (const station of stations) {
+          const stationName = station.name.toLowerCase();
+          const address = station.address?.toLowerCase() || '';
+          
+          // Check nếu message có tên trạm hoặc địa chỉ
+          if (messageText.includes(stationName) || 
+              (address && messageText.includes(address))) {
+            mentionedLocation = station.name;
+            break;
+          }
+          
+          // Check các pattern địa chỉ phổ biến
+          const addressPatterns = ['quận 1', 'quận 2', 'quận 3', 'quận 7', 'thủ đức'];
+          for (const pattern of addressPatterns) {
+            if (address.includes(pattern) && messageText.includes(pattern)) {
+              mentionedLocation = pattern;
+              break;
+            }
+          }
+          if (mentionedLocation) break;
+        }
+      } catch (error) {
+        console.error('Error fetching stations:', error);
+      }
+      
+      // 1. User hỏi về xe cụ thể → Suggest đặt xe đó
+      if (mentionedModel && intent === 'vehicle_info') {
+        return [
+          `Đặt xe ${mentionedModel}`,
+          `Xem trạm có xe ${mentionedModel}`,
+          'Xem xe khác'
+        ];
+      }
+      
+      // 2. User hỏi về trạm/location → Suggest đặt xe tại đó
+      if ((mentionedLocation || intent === 'location') && !mentionedModel) {
+        return [
+          mentionedLocation ? `Xem xe tại ${mentionedLocation}` : 'Xem xe có sẵn',
+          'Tìm trạm gần nhất',
+          'Xem tất cả trạm'
+        ];
+      }
+      
+      // 3. User hỏi về giá → Suggest xem xe và đặt
+      if (intent === 'pricing') {
+        return [
+          'Xem xe có sẵn',
+          'Đặt xe ngay',
+          'Xem chính sách đặt cọc'
+        ];
+      }
+      
+      // 4. User vừa hỏi về xe và location → Suggest đặt booking
+      if (mentionedModel && mentionedLocation) {
+        return [
+          `Đặt xe ${mentionedModel} tại ${mentionedLocation}`,
+          'Xem giá thuê',
+          'Xem xe khác'
+        ];
+      }
+    }
+    
+    // Gợi ý chung cho tất cả role (fallback)
     const commonSuggestions = {
       'booking': ['Đặt xe ngay', 'Xem xe có sẵn', 'Tìm trạm gần nhất'],
       'pricing': ['Xem bảng giá', 'Chính sách đặt cọc', 'Chi phí phát sinh'],
       'location': ['Tìm trạm gần nhất', 'Xem bản đồ trạm', 'Hướng dẫn đường đi'],
       'help': ['Hướng dẫn sử dụng', 'Liên hệ hỗ trợ', 'Câu hỏi thường gặp'],
-      'vehicle_info': ['Thông tin xe máy điện', 'So sánh các loại xe', 'Tính năng xe'],
+      'vehicle_info': ['Xem xe có sẵn', 'So sánh các loại xe', 'Đặt xe ngay'],
       'battery': ['Thời gian sạc pin', 'Phạm vi di chuyển', 'Trạm sạc gần đây'],
       'contract': ['Điều khoản hợp đồng', 'Quy trình ký hợp đồng', 'Trách nhiệm các bên'],
       'rental_history': ['Xem rental gần đây', 'Thống kê khách hàng', 'Phân tích doanh thu'],
       'kyc': ['Hướng dẫn xác thực', 'Giấy tờ cần thiết', 'Thời gian xác thực'],
-      'cancellation': ['Chính sách hủy', 'Hoàn tiền cọc', 'Phí hủy đơn'],
+      'cancellation': ['Xem booking của tôi', 'Chính sách hủy', 'Liên hệ hỗ trợ'],
       'return': ['Quy trình trả xe', 'Kiểm tra xe', 'Hoàn tất thuê xe'],
       'issue': ['Báo cáo sự cố', 'Liên hệ hỗ trợ khẩn cấp', 'Xử lý vấn đề thường gặp'],
       'gratitude': ['Đánh giá dịch vụ', 'Thuê xe lần tiếp theo', 'Khuyến mãi mới'],
-      'greeting': ['Đặt xe ngay', 'Xem xe có sẵn', 'Tìm trạm gần nhất'],
+      'greeting': ['Xem xe có sẵn', 'Tìm trạm gần nhất', 'Hướng dẫn thuê xe'],
       'general': ['Hỏi thêm thông tin', 'Liên hệ hỗ trợ', 'Xem hướng dẫn'],
       'unknown': ['Hỏi thêm thông tin', 'Liên hệ hỗ trợ', 'Xem hướng dẫn'],
       'error': ['Thử lại', 'Liên hệ hỗ trợ', 'Đặt câu hỏi khác']

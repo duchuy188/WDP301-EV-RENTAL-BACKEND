@@ -54,16 +54,37 @@ class ContractService {
         return a && b;
       });
       
-      // Compile template với Handlebars
-      const compiledTemplate = handlebars.compile(template);
+      // Sanitize data để tránh break HTML
+      const sanitizedData = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (typeof value === 'string') {
+          // Escape các ký tự đặc biệt HTML
+          sanitizedData[key] = value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        } else {
+          sanitizedData[key] = value;
+        }
+      }
       
-      // Render với data
-      const renderedHTML = compiledTemplate(data);
+      // Compile template với Handlebars
+      const compiledTemplate = handlebars.compile(template, {
+        noEscape: false, // Enable HTML escaping
+        strict: false     // Allow undefined variables
+      });
+      
+      // Render với sanitized data
+      const renderedHTML = compiledTemplate(sanitizedData);
       
       return renderedHTML;
     } catch (error) {
       console.error('Lỗi khi render template:', error);
-      throw new Error('Không thể render contract template');
+      console.error('Template:', template?.substring(0, 200));
+      console.error('Data keys:', Object.keys(data));
+      throw new Error(`Không thể render contract template: ${error.message}`);
     }
   }
 
@@ -137,7 +158,7 @@ class ContractService {
         pdfData = await page.pdf({
           format: 'A4',
           printBackground: true,
-          preferCSSPageSize: false, // Thay đổi thành false
+          preferCSSPageSize: false,
           displayHeaderFooter: false,
           margin: {
             top: '20mm',
@@ -145,7 +166,11 @@ class ContractService {
             bottom: '20mm',
             left: '15mm'
           },
-          timeout: 60000 // Thêm timeout cho PDF generation
+          timeout: 60000,
+          // Thêm options để Gmail-friendly
+          omitBackground: false,
+          tagged: false, // Disable PDF/UA tagging
+          outline: false // Disable bookmarks
         });
         console.log('PDF generation completed');
       } catch (pdfError) {
@@ -353,7 +378,7 @@ class ContractService {
                   `<img src="data:image/png;base64,${contract.customer_signature}" style="max-width: 200px; max-height: 100px; border: 1px solid #ddd;" />` : 
                   '<div class="signature-line"></div>'
                 }
-                <div>${contract.user_id.fullname}</div>
+                <div>${contract.user_id?.fullname || 'Khách hàng'}</div>
                 ${contract.customer_signed_at ? `<div>Ký ngày: ${formatDateTime(contract.customer_signed_at)}</div>` : ''}
             </div>
             <div class="signature-box">
@@ -362,7 +387,7 @@ class ContractService {
                   `<img src="data:image/png;base64,${contract.staff_signature}" style="max-width: 200px; max-height: 100px; border: 1px solid #ddd;" />` : 
                   '<div class="signature-line"></div>'
                 }
-                <div>${contract.staff_signed_by ? contract.staff_signed_by.fullname : 'Chưa ký'}</div>
+                <div>${contract.staff_signed_by?.fullname || 'Chưa ký'}</div>
                 ${contract.staff_signed_at ? `<div>Ký ngày: ${formatDateTime(contract.staff_signed_at)}</div>` : ''}
             </div>
         </div>

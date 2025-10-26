@@ -13,6 +13,79 @@ class AIController {
     
     return translations[trend] || trend;
   }
+
+  // Lấy status indicator cho trend
+  static getStatusIndicator(trend) {
+    if (trend.includes('increasing')) {
+      return { status: 'success', color: 'green', icon: 'trending-up', badge: '📈' };
+    } else if (trend.includes('decreasing')) {
+      return { status: 'warning', color: 'red', icon: 'trending-down', badge: '📉' };
+    } else {
+      return { status: 'info', color: 'blue', icon: 'minus', badge: '➡️' };
+    }
+  }
+
+  // Tính health score tổng thể (0-100)
+  static calculateHealthScore(trendAnalysis, vehicleRecs, forecast) {
+    let score = 50; // Base score
+    
+    // Trend bonus/penalty (±30 điểm)
+    const growthRate = trendAnalysis?.trends?.growthRate || 0;
+    if (growthRate > 0) {
+      score += Math.min(30, growthRate * 1.5); // Max +30
+    } else {
+      score += Math.max(-30, growthRate * 1.5); // Max -30
+    }
+    
+    // Utilization bonus (±15 điểm)
+    if (vehicleRecs?.overallUtilization !== undefined) {
+      const utilization = vehicleRecs.overallUtilization;
+      if (utilization >= 60 && utilization <= 80) {
+        score += 15; // Optimal range
+      } else if (utilization > 80) {
+        score += 10; // High but might need more vehicles
+      } else if (utilization < 30) {
+        score -= 15; // Too low
+      }
+    }
+    
+    // Confidence bonus (±10 điểm)
+    const confidence = forecast?.totalForecast?.confidence || 70;
+    score += (confidence - 70) * 0.5; // ±10 từ baseline 70%
+    
+    // Conversion rate bonus (±15 điểm) 
+    if (trendAnalysis?.factors?.customerSatisfaction) {
+      const satisfaction = trendAnalysis.factors.customerSatisfaction;
+      if (satisfaction === 'excellent') score += 15;
+      else if (satisfaction === 'good') score += 10;
+      else if (satisfaction === 'fair') score += 0;
+      else if (satisfaction === 'poor') score -= 15;
+    }
+    
+    // Pricing bonus (±10 điểm)
+    if (trendAnalysis?.factors?.pricing) {
+      const pricing = trendAnalysis.factors.pricing;
+      if (pricing === 'competitive') score += 10;
+      else if (pricing === 'underperforming') score -= 5;
+      else if (pricing === 'needs_revision') score -= 10;
+    }
+    
+    // Clamp to 0-100
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
+
+  // Lấy health status và màu
+  static getHealthStatus(score) {
+    if (score >= 80) {
+      return { status: 'Xuất sắc', color: 'green', icon: '💚', badge: 'success' };
+    } else if (score >= 60) {
+      return { status: 'Tốt', color: 'blue', icon: '💙', badge: 'info' };
+    } else if (score >= 40) {
+      return { status: 'Trung bình', color: 'yellow', icon: '💛', badge: 'warning' };
+    } else {
+      return { status: 'Cần cải thiện', color: 'red', icon: '❤️', badge: 'danger' };
+    }
+  }
   // Dự báo nhu cầu tổng quan
   static async getDemandForecast(req, res) {
     try {
@@ -164,6 +237,11 @@ class AIController {
         AIService.getVehicleRecommendations()
       ]);
       
+      // Tính health score
+      const healthScore = AIController.calculateHealthScore(trendAnalysis, vehicleRecommendations, demandForecast);
+      const healthStatus = AIController.getHealthStatus(healthScore);
+      const trendStatus = AIController.getStatusIndicator(trendAnalysis.trends.overall);
+      
       // Tổng hợp kết quả
       const dashboard = {
         overview: {
@@ -172,7 +250,11 @@ class AIController {
           vehiclesNeeded: vehicleRecommendations.totalVehiclesNeeded,
           estimatedInvestment: vehicleRecommendations.estimatedInvestment,
           predictedBookings: demandForecast.totalForecast.predictedBookings,
-          confidence: demandForecast.totalForecast.confidence
+          confidence: demandForecast.totalForecast.confidence,
+          // Thêm health indicators
+          healthScore,
+          healthStatus,
+          trendStatus
         },
         demandForecast: {
           period: demandForecast.totalForecast.period,

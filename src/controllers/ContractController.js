@@ -203,12 +203,28 @@ const createContract = async (req, res) => {
         (rental.booking_id.total_price - rental.booking_id.deposit_amount).toLocaleString('vi-VN') : 
         '0',
       
+      // Helper function để convert payment method sang tiếng Việt
+      payment_method_vn: (method) => {
+        const methodMap = {
+          'cash': 'Tiền mặt',
+          'vnpay': 'VNPay',
+      
+        };
+        return methodMap[method] || method;
+      },
+      
       // Deposit info chỉ hiện khi >= 3 ngày  
       deposit_paid: rental.booking_id.total_days >= 3 ? 
         (depositPayment && depositPayment.status === 'completed' ? 'Đã thanh toán' : 'Chưa thanh toán') : 
         'Không cần cọc',
       deposit_payment_status: rental.booking_id.total_days >= 3 ? (depositPayment?.status || 'none') : 'none',
-      deposit_payment_method: rental.booking_id.total_days >= 3 ? (depositPayment?.payment_method || '') : '',
+      deposit_payment_method: rental.booking_id.total_days >= 3 ? 
+        (depositPayment?.payment_method ? 
+          (['cash', 'vnpay', 'qr_code', 'bank_transfer'].includes(depositPayment.payment_method) ? 
+            {'cash': 'Tiền mặt', 'vnpay': 'VNPay', 'qr_code': 'QR Code', 'bank_transfer': 'Chuyển khoản'}[depositPayment.payment_method] : 
+            depositPayment.payment_method) : 
+          '') : 
+        '',
       deposit_payment_date: rental.booking_id.total_days >= 3 ? (depositPayment?.completed_at ? formatVietnamTime(depositPayment.completed_at, 'DD/MM/YYYY HH:mm') : '') : '',
       
       // Rental fee info khác nhau theo total_days
@@ -216,7 +232,13 @@ const createContract = async (req, res) => {
         (rentalFeePayment && rentalFeePayment.status === 'completed' ? 'Đã thanh toán' : 'Chưa thanh toán') : 
         'Đã thanh toán', // Thuê < 3 ngày đã trả đầy đủ khi nhận xe
       rental_fee_payment_status: rental.booking_id.total_days >= 3 ? (rentalFeePayment?.status || 'none') : 'completed',
-      rental_fee_payment_method: rental.booking_id.total_days >= 3 ? (rentalFeePayment?.payment_method || '') : 'cash',
+      rental_fee_payment_method: rental.booking_id.total_days >= 3 ? 
+        (rentalFeePayment?.payment_method ? 
+          (['cash', 'vnpay', 'qr_code', 'bank_transfer'].includes(rentalFeePayment.payment_method) ? 
+            {'cash': 'Tiền mặt', 'vnpay': 'VNPay', 'qr_code': 'QR Code', 'bank_transfer': 'Chuyển khoản'}[rentalFeePayment.payment_method] : 
+            rentalFeePayment.payment_method) : 
+          '') : 
+        'Tiền mặt',
       rental_fee_payment_date: rental.booking_id.total_days >= 3 ? (rentalFeePayment?.completed_at ? formatVietnamTime(rentalFeePayment.completed_at, 'DD/MM/YYYY HH:mm') : '') : '',
       
       additional_fees_count: additionalFeePayments.length,
@@ -471,21 +493,25 @@ const signContract = async (req, res) => {
       contract.customer_signed_by = req.user._id;
     }
 
+   
+    await contract.save();
+    
     // Cập nhật status
     if (contract.staff_signature && contract.customer_signature) {
       contract.status = 'signed';
+      await contract.save(); // Save lần nữa để update status
       
-      // ✅ AUTO GỬI EMAIL KHI CÓ ĐỦ 2 CHỮ KÝ
-      // Populate contract trước khi gửi email
+     
+      // Populate contract SAU KHI ĐÃ SAVE để có đầy đủ data!
       const populatedContractForEmail = await Contract.findById(contract._id)
         .populate('user_id', 'fullname email phone')
-        .populate('vehicle_id', 'name license_plate model')
-        .populate('station_id', 'name address');
+        .populate('vehicle_id', 'name license_plate model color')
+        .populate('station_id', 'name address')
+        .populate('staff_signed_by', 'fullname email')
+        .populate('customer_signed_by', 'fullname email');
       
       await sendContractEmail(populatedContractForEmail);
     }
-
-    await contract.save();
 
     // Populate contract data
     const populatedContract = await Contract.findById(contract._id)

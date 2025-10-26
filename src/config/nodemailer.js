@@ -1088,6 +1088,10 @@ const getPaymentSuccessTemplate = (userName, paymentDetails) => {
 
 // Template email hợp đồng đã ký - Green EV Theme
 const getContractSignedTemplate = (contract) => {
+    // Destructure pdfBuffer để tránh lỗi khi render
+    const { pdfBuffer, ...contractData } = contract;
+    const pdfSizeKB = pdfBuffer ? Math.round(pdfBuffer.length / 1024) : 150;
+    
     return `
     <!DOCTYPE html>
     <html lang="vi">
@@ -1112,7 +1116,7 @@ const getContractSignedTemplate = (contract) => {
             </div>
             
             <div class="content">
-                <div class="greeting">Xin chào ${contract.user_id?.fullname || 'Khách hàng'}!</div>
+                <div class="greeting">Xin chào ${contractData.user_id?.fullname || 'Khách hàng'}!</div>
                 
                 <div class="message">
                     🎉 <strong>Chúc mừng! Hợp đồng thuê xe điện của bạn đã được ký thành công!</strong><br><br>
@@ -1123,20 +1127,20 @@ const getContractSignedTemplate = (contract) => {
                 <div class="features">
                     <h3>Thông tin hợp đồng</h3>
                     <ul>
-                        <li><strong>Mã hợp đồng:</strong> <span style="color: #48bb78; font-weight: bold;">${contract.code || 'N/A'}</span></li>
-                        <li><strong>Xe điện:</strong> ${contract.vehicle_id?.name || 'N/A'} - ${contract.vehicle_id?.license_plate || 'N/A'}</li>
-                        <li><strong>Thời gian thuê:</strong> ${contract.valid_from ? new Date(contract.valid_from).toLocaleDateString('vi-VN') : 'N/A'} - ${contract.valid_until ? new Date(contract.valid_until).toLocaleDateString('vi-VN') : 'N/A'}</li>
-                        <li><strong>Điểm thuê:</strong> ${contract.station_id?.name || 'N/A'}</li>
-                        <li><strong>Địa chỉ:</strong> ${contract.station_id?.address || 'N/A'}</li>
+                        <li><strong>Mã hợp đồng:</strong> <span style="color: #48bb78; font-weight: bold;">${contractData.code || 'N/A'}</span></li>
+                        <li><strong>Xe điện:</strong> ${contractData.vehicle_id?.name || 'N/A'} - ${contractData.vehicle_id?.license_plate || 'N/A'}</li>
+                        <li><strong>Thời gian thuê:</strong> ${contractData.valid_from ? new Date(contractData.valid_from).toLocaleDateString('vi-VN') : 'N/A'} - ${contractData.valid_until ? new Date(contractData.valid_until).toLocaleDateString('vi-VN') : 'N/A'}</li>
+                        <li><strong>Điểm thuê:</strong> ${contractData.station_id?.name || 'N/A'}</li>
+                        <li><strong>Địa chỉ:</strong> ${contractData.station_id?.address || 'N/A'}</li>
                         <li><strong>Trạng thái:</strong> <span style="color: #48bb78; font-weight: bold;">Đã ký thành công</span></li>
                     </ul>
                 </div>
 
-                <div class="attachment-box">
+                <div style="background: linear-gradient(135deg, #fefcbf 0%, #f6e05e 100%); padding: 25px; border-radius: 15px; border-left: 5px solid #d69e2e; margin: 25px 0; box-shadow: 0 5px 15px rgba(214, 158, 46, 0.1);">
                     <strong>📎 File đính kèm:</strong><br><br>
-                    • <strong>Hợp đồng PDF:</strong> hop-dong-${contract.code || 'N/A'}.pdf<br>
+                    • <strong>Hợp đồng PDF:</strong> hop-dong-${contractData.code || 'N/A'}.pdf<br>
                     • <strong>Nội dung:</strong> Hợp đồng thuê xe điện đã được ký bởi cả hai bên<br>
-                    • <strong>Kích thước:</strong> ~${contract.pdfBuffer ? Math.round(contract.pdfBuffer.length / 1024) : 150}KB<br>
+                    • <strong>Kích thước:</strong> ~${pdfSizeKB}KB<br>
                     • <strong>Định dạng:</strong> PDF (Portable Document Format)
                 </div>
 
@@ -1160,7 +1164,7 @@ const getContractSignedTemplate = (contract) => {
                 <p>🌿 <strong>Eco Commitment:</strong> 100% renewable energy | Carbon negative footprint</p>
                 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
                     <p style="font-size: 11px; color: #a0aec0;">
-                        Contract Code: ${contract.code || 'N/A'} | Signed: ${new Date().toLocaleDateString('vi-VN')}<br>
+                        Contract Code: ${contractData.code || 'N/A'} | Signed: ${new Date().toLocaleDateString('vi-VN')}<br>
                         🔋 Powered by 100% renewable energy | Carbon negative operation
                     </p>
                 </div>
