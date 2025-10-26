@@ -39,7 +39,8 @@ class ChatbotController {
         message.trim(),
         userRole,
         userId,
-        conversationHistory
+        conversationHistory,
+        currentSessionId
       );
 
       if (!response.success) {

@@ -206,11 +206,11 @@ userStatsSchema.methods.updateRiskScore = function() {
     if (!violation.resolved && violation.date >= sixMonthsAgo) {
       let points = violation.points || 5;
       
-      // Nhân theo severity
+      // Nhân theo severity (giảm multiplier để cân bằng hơn)
       switch (violation.severity) {
-        case 'low': points *= 1; break;
-        case 'medium': points *= 2; break;
-        case 'high': points *= 3; break;
+        case 'low': points *= 1.0; break;
+        case 'medium': points *= 1.5; break;
+        case 'high': points *= 2.0; break;
       }
       
       newScore += points;
