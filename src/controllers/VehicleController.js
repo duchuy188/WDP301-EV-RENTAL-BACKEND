@@ -1048,14 +1048,17 @@ exports.getPublicVehicles = async (req, res) => {
     if (model) baseQuery.model = model; 
     if (station_id) baseQuery.station_id = new mongoose.Types.ObjectId(station_id);
 
-    // Aggregate để nhóm xe theo model - CHỈ LẤY 1 MÀU ĐẠI DIỆN
+    // Aggregate để nhóm xe theo model và type - CHỈ LẤY 1 MÀU ĐẠI DIỆN
     const aggregateQuery = [
       { $match: baseQuery },
       // Sắp xếp để lấy màu đầu tiên 
       { $sort: { color: 1, createdAt: 1 } },
       {
         $group: {
-          _id: '$model',
+          _id: {
+            model: '$model',
+            type: '$type'
+          },
           // Thông tin của màu đại diện (màu đầu tiên)
           brand: { $first: '$brand' },
           model: { $first: '$model' },
@@ -1093,7 +1096,7 @@ exports.getPublicVehicles = async (req, res) => {
       {
         $project: {
           _id: 0,
-          id: '$_id', 
+          id: '$_id.model', // Lấy model làm ID chính
           model: 1,
           brand: 1,
           year: 1,
@@ -1133,10 +1136,10 @@ exports.getPublicVehicles = async (req, res) => {
 
     const vehicles = await Vehicle.aggregate(aggregateQuery);
 
-    // Đếm tổng số model
+    // Đếm tổng số model và type
     const total = await Vehicle.aggregate([
       { $match: baseQuery },
-      { $group: { _id: '$model' } },
+      { $group: { _id: { model: '$model', type: '$type' } } },
       { $count: 'total' }
     ]);
 
