@@ -78,6 +78,20 @@ class BookingValidator {
       };
     }
     
+   
+    const activeBookings = await Booking.countDocuments({
+      user_id: userId,
+      status: { $in: ['pending', 'confirmed'] }
+    });
+    
+    const MAX_ACTIVE_BOOKINGS = 3;
+    if (activeBookings >= MAX_ACTIVE_BOOKINGS) {
+      return {
+        valid: false,
+        error: `Bạn chỉ có thể có tối đa ${MAX_ACTIVE_BOOKINGS} đặt xe hoạt động cùng lúc`
+      };
+    }
+    
     // KHÔNG check KYC ở đây - Staff sẽ check tại quầy
     
     return { valid: true };
@@ -101,6 +115,18 @@ class BookingValidator {
       return {
         valid: false,
         error: 'Ngày bắt đầu phải từ hôm nay trở đi'
+      };
+    }
+    
+    //  Check giới hạn đặt trước tối đa 30 ngày (giống booking thông thường)
+    const MAX_ADVANCE_DAYS = 30;
+    const maxAdvanceDate = new Date(now);
+    maxAdvanceDate.setDate(maxAdvanceDate.getDate() + MAX_ADVANCE_DAYS);
+    
+    if (dates.startDate > maxAdvanceDate) {
+      return {
+        valid: false,
+        error: `Chỉ có thể đặt xe tối đa ${MAX_ADVANCE_DAYS} ngày trước`
       };
     }
     
@@ -247,6 +273,50 @@ class BookingValidator {
       return {
         valid: false,
         error: 'Trạm đã hết xe'
+      };
+    }
+    
+    return { valid: true };
+  }
+  
+  /**
+   * Validate giờ nhận/trả xe trong giờ làm việc của trạm 
+   */
+  async validateStationHours(stationId, pickupTime, returnTime) {
+    const station = await Station.findById(stationId);
+    
+    if (!station) {
+      return {
+        valid: false,
+        error: 'Trạm không tồn tại'
+      };
+    }
+    
+    // Parse opening/closing time
+    const [openHour, openMin] = station.opening_time.split(':').map(Number);
+    const [closeHour, closeMin] = station.closing_time.split(':').map(Number);
+    
+    // Parse pickup/return time (format: "HH:MM" or "08:00")
+    const [pickupHour, pickupMin] = pickupTime.split(':').map(Number);
+    const [returnHour, returnMin] = returnTime.split(':').map(Number);
+    
+    // Convert to minutes for easy comparison
+    const openingMinutes = openHour * 60 + openMin;
+    const closingMinutes = closeHour * 60 + closeMin;
+    const pickupMinutes = pickupHour * 60 + pickupMin;
+    const returnMinutes = returnHour * 60 + returnMin;
+    
+    if (pickupMinutes < openingMinutes || pickupMinutes > closingMinutes) {
+      return {
+        valid: false,
+        error: `Giờ nhận xe phải trong giờ làm việc của trạm (${station.opening_time} - ${station.closing_time})`
+      };
+    }
+    
+    if (returnMinutes < openingMinutes || returnMinutes > closingMinutes) {
+      return {
+        valid: false,
+        error: `Giờ trả xe phải trong giờ làm việc của trạm (${station.opening_time} - ${station.closing_time})`
       };
     }
     

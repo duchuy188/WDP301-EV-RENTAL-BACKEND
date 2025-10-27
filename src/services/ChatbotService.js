@@ -548,6 +548,7 @@ class ChatbotService {
               status: 'active'
             }).populate('user_id', 'fullname email phone')
               .populate('vehicle_id', 'name type model license_plate')
+              .populate('booking_id', 'end_date')
               .sort({ actual_start_time: -1 });
               
             console.log(`📋 Tìm thấy ${context.currentRentals?.length || 0} rental đang hoạt động tại trạm ${user.stationId}`);
@@ -996,11 +997,11 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ nhân viên trạm (Sta
 === XE ĐANG THUÊ (${currentRentals?.length || 0} xe) ===
 ${currentRentals?.slice(0, 5).map(rental => {
   const customerName = rental.user_id?.fullname || 'Không rõ';
-  const vehicleType = rental.vehicle_id?.type || 'Không rõ';
+  const vehicleName = rental.vehicle_id?.name || rental.vehicle_id?.license_plate || 'Không rõ xe';
   const startTime = rental.actual_start_time ? formatVietnamTime(rental.actual_start_time, 'DD/MM HH:mm') : 'Không rõ';
-  const expectedEnd = rental.expected_end_time ? formatVietnamTime(rental.expected_end_time, 'DD/MM HH:mm') : 'Không rõ';
+  const expectedEnd = rental.booking_id?.end_date ? formatVietnamTime(rental.booking_id.end_date, 'DD/MM HH:mm') : 'Không rõ';
   
-  return `• ${customerName} - ${vehicleType} (${startTime} → ${expectedEnd})`;
+  return `• ${customerName} - ${vehicleName} (${startTime} → ${expectedEnd})`;
 }).join('\n') || 'Không có xe đang thuê'}
 
 === XE TRONG TRẠM (${stationVehicles?.length || 0} xe) ===
@@ -1098,10 +1099,16 @@ Format JSON:
     const allVehicles = context.allVehicles;
     const allStations = context.allStations;
     const currentTime = formatVietnamTime(new Date(), 'DD/MM/YYYY HH:mm');
+    const currentYear = new Date().getFullYear();
     
     // Tạo danh sách model xe trong hệ thống
     const vehicleModels = allVehicles ? 
       [...new Set(allVehicles.map(v => `${v.brand} ${v.model}`))].slice(0, 10) : [];
+    
+  
+    const totalRentalRevenue = vehicleStats?.reduce((sum, stat) => sum + (stat.total_revenue || 0), 0) || 0;
+    const totalPenaltyRevenue = penaltyStats?.summary?.total_penalty_amount || 0;
+    const totalRevenue = totalRentalRevenue + totalPenaltyRevenue;
     
     return `
 Bạn là trợ lý AI của EV Rental System hỗ trợ Admin.
@@ -1110,7 +1117,16 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ Admin.
 - Tổng xe: ${systemStats?.totalVehicles || 0}
 - Xe available: ${systemStats?.availableVehicles || 0}
 - Xe đang thuê: ${systemStats?.rentedVehicles || 0}
-- Doanh thu tháng: ${systemStats?.monthlyRevenue?.toLocaleString('vi-VN') || 0} VND
+
+=== DOANH THU ===
+- Doanh thu tháng này: ${systemStats?.monthlyRevenue?.toLocaleString('vi-VN') || 0} VND
+- DOANH THU NĂM ${currentYear}: ${systemStats?.yearlyRevenue?.toLocaleString('vi-VN') || 0} VND
+
+=== CHI TIẾT DOANH THU (Tất cả thời gian) ===
+- Doanh thu từ thuê xe: ${totalRentalRevenue.toLocaleString('vi-VN')} VND
+- Doanh thu từ phí phạt: ${totalPenaltyRevenue.toLocaleString('vi-VN')} VND
+- TỔNG: ${totalRevenue.toLocaleString('vi-VN')} VND
+- Tỷ lệ phí phạt: ${totalRevenue > 0 ? ((totalPenaltyRevenue / totalRevenue) * 100).toFixed(1) : 0}%
 
 === THỐNG KÊ XE ĐƯỢC THUÊ ===
 ${vehicleStats?.length > 0 ? 
@@ -1118,10 +1134,12 @@ ${vehicleStats?.length > 0 ?
     const vehicleName = stat.vehicle_info?.name || 'Xe không rõ tên';
     const vehicleBrand = stat.vehicle_info?.brand || 'Không rõ hãng';
     const vehicleModel = stat.vehicle_info?.model || 'Không rõ model';
+    const vehicleColor = stat.vehicle_info?.color || 'Không rõ màu';
+    const licensePlate = stat.vehicle_info?.license_plate || 'N/A';
     const totalRentals = stat.total_rentals || 0;
     const totalRevenue = stat.total_revenue || 0;
     
-    return `${index + 1}. ${vehicleName} (${vehicleBrand} ${vehicleModel}): ${totalRentals} lần thuê - ${totalRevenue.toLocaleString('vi-VN')} VND`;
+    return `${index + 1}. ${vehicleName} - ${vehicleBrand} ${vehicleModel} màu ${vehicleColor} (${licensePlate}): ${totalRentals} lần thuê - ${totalRevenue.toLocaleString('vi-VN')} VND`;
   }).join('\n')
   : 'Chưa có dữ liệu thống kê xe được thuê'
 }
@@ -1177,8 +1195,11 @@ QUAN TRỌNG - HƯỚNG DẪN TRẢ LỜI:
 3. Nếu hỏi về xe được thuê nhiều nhất, dùng ĐÚNG danh sách thống kê xe ở trên
 4. Nếu hỏi về trạm được thuê nhiều nhất, dùng ĐÚNG danh sách thống kê trạm ở trên
 5. Nếu hỏi về model xe, dùng ĐÚNG danh sách model xe ở trên
-6. Trả lời bằng tiếng Việt, chuyên nghiệp
-7. Đưa ra insights dựa trên SỐ LIỆU THỰC TẾ
+6. Nếu hỏi về doanh thu năm nay, dùng "DOANH THU NĂM ${currentYear}" ở trên
+7. Nếu hỏi về doanh thu tháng này, dùng "Doanh thu tháng này" ở trên
+8. Trả lời bằng tiếng Việt, chuyên nghiệp
+9. Đưa ra insights dựa trên SỐ LIỆU THỰC TẾ
+10. LUÔN có số liệu cụ thể, KHÔNG nói "Không có số liệu"
 
 Format JSON:
 {
@@ -2681,19 +2702,40 @@ Trả về JSON format:
       endOfMonth.setMonth(endOfMonth.getMonth() + 1, 0);
       endOfMonth.setHours(23, 59, 59, 999);
 
-      const monthlyRevenue = await Payment.aggregate([
-        {
-          $match: {
-            status: 'completed',
-            createdAt: { $gte: startOfMonth, $lte: endOfMonth }
+      // Tính doanh thu năm hiện tại
+      const currentYear = new Date().getFullYear();
+      const startOfYear = new Date(currentYear, 0, 1, 0, 0, 0, 0);
+      const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59, 999);
+
+      const [monthlyRevenue, yearlyRevenue] = await Promise.all([
+        Payment.aggregate([
+          {
+            $match: {
+              status: 'completed',
+              createdAt: { $gte: startOfMonth, $lte: endOfMonth }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: '$amount' }
+            }
           }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: '$amount' }
+        ]),
+        Payment.aggregate([
+          {
+            $match: {
+              status: 'completed',
+              createdAt: { $gte: startOfYear, $lte: endOfYear }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: '$amount' }
+            }
           }
-        }
+        ])
       ]);
 
       return {
@@ -2701,7 +2743,8 @@ Trả về JSON format:
         totalVehicles,
         availableVehicles,
         rentedVehicles,
-        monthlyRevenue: monthlyRevenue[0]?.total || 0
+        monthlyRevenue: monthlyRevenue[0]?.total || 0,
+        yearlyRevenue: yearlyRevenue[0]?.total || 0
       };
     } catch (error) {
       console.error('Error getting system stats:', error);
@@ -2710,7 +2753,8 @@ Trả về JSON format:
         totalVehicles: 0,
         availableVehicles: 0,
         rentedVehicles: 0,
-        monthlyRevenue: 0
+        monthlyRevenue: 0,
+        yearlyRevenue: 0
       };
     }
   }

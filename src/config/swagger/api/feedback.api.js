@@ -5,7 +5,13 @@
  * /api/feedback:
  *   post:
  *     summary: Tạo feedback (đánh giá hoặc khiếu nại)
- *     description: Customer tạo feedback cho rental đã hoàn thành (status = 'completed')
+ *     description: |
+ *       Customer tạo feedback cho rental đã hoàn thành (status = 'completed')
+ *       
+ *       **Lưu ý quan trọng:**
+ *       - Nếu `type=complaint` và `category=staff`: BẮT BUỘC phải có `staff_role` (pickup hoặc return)
+ *       - `staff_role=pickup`: Khiếu nại về nhân viên nhận xe
+ *       - `staff_role=return`: Khiếu nại về nhân viên trả xe
  *     tags: [Feedback]
  *     security:
  *       - bearerAuth: []
@@ -15,6 +21,44 @@
  *         multipart/form-data:
  *           schema:
  *             $ref: '#/components/schemas/FeedbackCreateRequest'
+ *           examples:
+ *             rating:
+ *               summary: Tạo đánh giá
+ *               value:
+ *                 type: rating
+ *                 rental_id: "64f1a2b3c4d5e6f7a8b9c0d2"
+ *                 overall_rating: 5
+ *                 staff_service: 5
+ *                 vehicle_condition: 4
+ *                 station_cleanliness: 5
+ *                 checkout_process: 4
+ *                 comment: "Dịch vụ rất tốt, sẽ thuê lại"
+ *             complaint_staff_pickup:
+ *               summary: Khiếu nại nhân viên nhận xe
+ *               value:
+ *                 type: complaint
+ *                 rental_id: "64f1a2b3c4d5e6f7a8b9c0d2"
+ *                 category: staff
+ *                 staff_role: pickup
+ *                 title: "Nhân viên nhận xe thái độ không tốt"
+ *                 description: "Nhân viên nhận xe có thái độ thiếu chuyên nghiệp, không hướng dẫn kỹ"
+ *             complaint_staff_return:
+ *               summary: Khiếu nại nhân viên trả xe
+ *               value:
+ *                 type: complaint
+ *                 rental_id: "64f1a2b3c4d5e6f7a8b9c0d2"
+ *                 category: staff
+ *                 staff_role: return
+ *                 title: "Nhân viên trả xe tính phí không rõ ràng"
+ *                 description: "Nhân viên trả xe tính thêm phí nhưng không giải thích rõ ràng"
+ *             complaint_vehicle:
+ *               summary: Khiếu nại về xe
+ *               value:
+ *                 type: complaint
+ *                 rental_id: "64f1a2b3c4d5e6f7a8b9c0d2"
+ *                 category: vehicle
+ *                 title: "Xe bị hỏng phanh"
+ *                 description: "Xe VH015 bị hỏng phanh trước, rất nguy hiểm"
  *     responses:
  *       201:
  *         description: Feedback được tạo thành công

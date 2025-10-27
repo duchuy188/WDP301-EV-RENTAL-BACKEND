@@ -591,16 +591,33 @@ exports.updateVehicleStatus = async (req, res) => {
     
     // Kiểm tra logic chuyển đổi trạng thái
     const validTransitions = {
-      'draft': ['available'], // Draft chỉ có thể chuyển sang Available
-      'available': ['reserved', 'rented', 'maintenance'], // Available có thể chuyển sang Reserved, Rented hoặc Maintenance
+      'draft': ['available'],
+      'available': ['reserved', 'rented', 'maintenance'], 
+      'reserved': [], 
       'rented': [], 
       'maintenance': ['available', 'draft'] 
     };
     
+   
+    if (!validTransitions[oldStatus]) {
+      return res.status(400).json({ 
+        message: `Trạng thái hiện tại '${oldStatus}' không hợp lệ hoặc không thể thay đổi` 
+      });
+    }
+    
     // Kiểm tra chuyển đổi có hợp lệ không
     if (!validTransitions[oldStatus].includes(status)) {
+      // Thông báo cụ thể cho từng trường hợp
+      let errorMessage = `Không thể chuyển trạng thái từ ${oldStatus} sang ${status}`;
+      
+      if (oldStatus === 'reserved') {
+        errorMessage = 'Xe đang được đặt trước. Vui lòng hủy booking hoặc đợi khách thanh toán để thay đổi trạng thái.';
+      } else if (oldStatus === 'rented') {
+        errorMessage = 'Xe đang được thuê. Vui lòng đợi khách trả xe để thay đổi trạng thái.';
+      }
+      
       return res.status(400).json({ 
-        message: `Không thể chuyển trạng thái từ ${oldStatus} sang ${status}` 
+        message: errorMessage
       });
     }
     
