@@ -78,6 +78,14 @@ class BookingValidator {
       };
     }
     
+    
+    if (user.role !== 'EV Renter') {
+      return {
+        valid: false,
+        error: 'Chỉ khách hàng (EV Renter) mới có thể đặt xe qua chatbot. Admin và Staff vui lòng sử dụng hệ thống quản lý.'
+      };
+    }
+    
    
     const activeBookings = await Booking.countDocuments({
       user_id: userId,

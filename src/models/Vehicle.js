@@ -127,29 +127,8 @@ const vehicleSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Pre-save validation: Kiểm tra model + type unique
-vehicleSchema.pre('save', async function(next) {
- 
-  if (this.isNew || this.isModified('model') || this.isModified('type')) {
-    try {
-      const existingVehicle = await this.constructor.findOne({
-        model: this.model,
-        type: this.type,
-        _id: { $ne: this._id },
-        is_active: true 
-      });
-      
-      if (existingVehicle) {
-        const error = new Error(`Model ${this.model} đã tồn tại với type ${this.type}. Mỗi model chỉ có thể có 1 type duy nhất.`);
-        error.name = 'ValidationError';
-        return next(error);
-      }
-    } catch (error) {
-      return next(error);
-    }
-  }
-  next();
-});
+
+
 
 // Indexes
 vehicleSchema.index({ station_id: 1 });

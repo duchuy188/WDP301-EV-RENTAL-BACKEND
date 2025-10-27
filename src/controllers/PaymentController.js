@@ -163,6 +163,28 @@ const createPayment = async (req, res) => {
       completed_at: paymentStatus === 'completed' ? nowVietnam().toDate() : null
     });
 
+
+    if (!rental_id && booking._id) {
+      try {
+        
+        const rental = await Rental.findOne({ 
+          booking_id: booking._id,
+          status: { $in: ['pending_deposit', 'active'] } 
+        }).sort({ createdAt: -1 }); 
+        
+        if (rental) {
+          payment.rental_id = rental._id;
+          await payment.save();
+          console.log(`✅ Auto-linked rental ${rental.code} (${rental._id}) to payment ${payment.code}`);
+        } else {
+          console.log(`⚠️ No rental found for booking ${booking.code} - Payment created without rental_id`);
+        }
+      } catch (linkError) {
+        console.error('❌ Error linking rental to payment:', linkError);
+        // Không throw error, chỉ log để không ảnh hưởng việc tạo payment
+      }
+    }
+
     // Tạo VNPay QR Code chỉ khi amount > 0, status = pending và payment_method = vnpay
     if (paymentStatus === 'pending' && calculatedAmount > 0 && payment_method === 'vnpay') {
       const vnpayService = new VNPayService();
