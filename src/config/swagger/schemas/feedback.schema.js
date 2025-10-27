@@ -81,6 +81,11 @@
  *           enum: [vehicle, staff, payment, service, other]
  *           example: "vehicle"
  *           description: Danh mục khiếu nại
+ *         staff_role:
+ *           type: string
+ *           enum: [pickup, return]
+ *           example: "pickup"
+ *           description: Vai trò nhân viên (nhận xe hoặc trả xe) - Chỉ có khi category=staff
  *         # Status fields
  *         status:
  *           type: string

@@ -195,9 +195,30 @@ class BookingHandler {
       // ✅ Return time = pickup time (cùng giờ với pickup)
       const returnTime = pickupTime;
       
+      // ✅ Validate giờ làm việc của trạm (giống booking thông thường)
+      const stationHoursValidation = await BookingValidator.validateStationHours(
+        bookingData.stationId,
+        pickupTime,
+        returnTime
+      );
+      
+      if (!stationHoursValidation.valid) {
+        return {
+          success: false,
+          message: `❌ ${stationHoursValidation.error}`,
+          suggestions: ['Chọn giờ khác trong giờ làm việc', 'Liên hệ hỗ trợ'],
+          actions: ['change_time', 'contact_support']
+        };
+      }
+      
       // Lấy thông tin user để ghi vào notes
       const user = await User.findById(bookingData.userId).select('fullname email');
       const customerName = user ? (user.fullname || user.email) : 'Khách hàng';
+      
+      // ✅ Generate QR Code (giống booking thông thường)
+      const { generateQRCode } = require('../../../utils/qrCodeGenerator');
+      const qrCodeData = await generateQRCode(bookingCode);
+      const qrExpiresAt = new Date(bookingData.startDate.getTime() + 24 * 60 * 60 * 1000); // 24 hours after start
       
       // ✅ Update vehicle status sang 'reserved' (giống booking bình thường)
       const updatedVehicle = await Vehicle.findOneAndUpdate(
@@ -232,6 +253,8 @@ class BookingHandler {
         booking_type: 'online',
         status: 'pending', // Pending chờ staff confirm
         created_by: bookingData.userId,
+        qr_code: qrCodeData,          // ✅ QR code để nhận xe
+        qr_expires_at: qrExpiresAt,   // ✅ QR hết hạn sau 24h
         notes: `Booking từ chatbot AI - Khách hàng: ${customerName}`
       });
       
@@ -250,6 +273,40 @@ class BookingHandler {
       } catch (stationError) {
         console.log('Station sync failed:', stationError.message);
         // Không fail booking vì station sync lỗi
+      }
+      
+      // ✅ Gửi email xác nhận booking (giống booking thông thường)
+      try {
+        const { sendEmail, getBookingConfirmationTemplate } = require('../../../config/nodemailer');
+        
+        if (!user.fullname) {
+          console.error('❌ user.fullname is undefined');
+          throw new Error('user.fullname is required for email');
+        }
+        
+        await sendEmail({
+          to: user.email,
+          subject: 'Xác nhận đặt xe điện - EV Rental (Chatbot)',
+          html: getBookingConfirmationTemplate(user.fullname, {
+            bookingId: booking._id.toString(),
+            bookingCode: booking.code,
+            carModel: booking.vehicle_id.name,
+            carColor: booking.vehicle_id.color,
+            carPlate: booking.vehicle_id.license_plate,
+            stationName: booking.station_id.name,
+            stationAddress: booking.station_id.address,
+            pickupDate: booking.start_date.toLocaleDateString('vi-VN'),
+            returnDate: booking.end_date.toLocaleDateString('vi-VN'),
+            pickupTime: booking.pickup_time,
+            totalPrice: booking.total_price.toLocaleString('vi-VN'),
+            depositAmount: booking.deposit_amount.toLocaleString('vi-VN'),
+            qrExpiresAt: booking.qr_expires_at.toLocaleString('vi-VN')
+          })
+        });
+        console.log('✅ Email xác nhận booking (chatbot) đã được gửi đến:', user.email);
+      } catch (emailError) {
+        console.error('❌ Lỗi khi gửi email xác nhận:', emailError.message);
+        // Không throw error, chỉ log để không làm fail booking
       }
       
       console.log('✅ Booking created successfully:', booking.code);

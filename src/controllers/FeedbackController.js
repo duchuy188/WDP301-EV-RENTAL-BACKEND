@@ -130,7 +130,7 @@ exports.createFeedback = async (req, res) => {
        
       };
     } else if (type === 'complaint') {
-      const { title, description, category, comment } = req.body;
+      const { title, description, category, comment, staff_role } = req.body;
       
       if (!title || !description || !category) {
         return res.status(400).json({ 
@@ -152,6 +152,11 @@ exports.createFeedback = async (req, res) => {
         comment: comment || '',
         status: 'pending'
       };
+      
+      // ✅ Lưu staff_role nếu complaint về staff
+      if (category === 'staff' && staff_role) {
+        feedbackData.staff_role = staff_role;
+      }
     }
     
     // Xử lý images nếu có
@@ -220,6 +225,7 @@ exports.getMyFeedbacks = async (req, res) => {
           { path: 'station_id', select: 'name address' }
         ]},
         { path: 'user_id', select: 'fullname email' },
+        { path: 'staff_id', select: 'fullname email' },
         { path: 'resolved_by', select: 'fullname email' }
       ])
       .sort({ createdAt: -1 })

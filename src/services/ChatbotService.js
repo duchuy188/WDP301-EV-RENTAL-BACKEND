@@ -548,6 +548,7 @@ class ChatbotService {
               status: 'active'
             }).populate('user_id', 'fullname email phone')
               .populate('vehicle_id', 'name type model license_plate')
+              .populate('booking_id', 'end_date')
               .sort({ actual_start_time: -1 });
               
             console.log(`📋 Tìm thấy ${context.currentRentals?.length || 0} rental đang hoạt động tại trạm ${user.stationId}`);
@@ -996,11 +997,11 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ nhân viên trạm (Sta
 === XE ĐANG THUÊ (${currentRentals?.length || 0} xe) ===
 ${currentRentals?.slice(0, 5).map(rental => {
   const customerName = rental.user_id?.fullname || 'Không rõ';
-  const vehicleType = rental.vehicle_id?.type || 'Không rõ';
+  const vehicleName = rental.vehicle_id?.name || rental.vehicle_id?.license_plate || 'Không rõ xe';
   const startTime = rental.actual_start_time ? formatVietnamTime(rental.actual_start_time, 'DD/MM HH:mm') : 'Không rõ';
-  const expectedEnd = rental.expected_end_time ? formatVietnamTime(rental.expected_end_time, 'DD/MM HH:mm') : 'Không rõ';
+  const expectedEnd = rental.booking_id?.end_date ? formatVietnamTime(rental.booking_id.end_date, 'DD/MM HH:mm') : 'Không rõ';
   
-  return `• ${customerName} - ${vehicleType} (${startTime} → ${expectedEnd})`;
+  return `• ${customerName} - ${vehicleName} (${startTime} → ${expectedEnd})`;
 }).join('\n') || 'Không có xe đang thuê'}
 
 === XE TRONG TRẠM (${stationVehicles?.length || 0} xe) ===

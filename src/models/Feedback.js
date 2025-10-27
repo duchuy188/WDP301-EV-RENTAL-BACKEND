@@ -42,6 +42,13 @@ const feedbackSchema = new mongoose.Schema({
     type: String, 
     enum: ['vehicle', 'staff', 'payment', 'service', 'other'] 
   },
+  staff_role: {
+    type: String,
+    enum: ['pickup', 'return'],
+    required: function() {
+      return this.type === 'complaint' && this.category === 'staff';
+    }
+  },
   
   // Trạng thái xử lý (chỉ cho complaint)
   status: { 
