@@ -1002,8 +1002,11 @@ class RentalController {
    
       const contract = await Contract.findOne({
         rental_id: rental._id,
-        is_active: true
-      }).select('status code staff_signed_at customer_signed_at staff_signed_by customer_signed_by');
+        is_active: true,
+        status: { $ne: 'cancelled' } 
+      })
+      .sort({ createdAt: -1 }) 
+      .select('status code staff_signed_at customer_signed_at staff_signed_by customer_signed_by');
 
       res.json({
         success: true,
