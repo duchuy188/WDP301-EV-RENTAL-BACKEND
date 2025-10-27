@@ -35,10 +35,10 @@ class CancelHandler {
   
   /**
    * Extract booking code từ message
-   * Ví dụ: "Hủy booking BK123", "Cancel BKMH7A5JXR"
+   * Ví dụ: "Hủy booking BKC9V30M", "Cancel BK123ABC"
    */
   extractBookingCode(message) {
-    const pattern = /\b(BK[A-Z0-9]{8,})\b/i;
+    const pattern = /\b(BK[A-Z0-9]{6,})\b/i;  // BK + 6 ký tự trở lên
     const match = message.match(pattern);
     return match ? match[1].toUpperCase() : null;
   }
@@ -244,7 +244,7 @@ Cảm ơn bạn đã sử dụng dịch vụ!`;
     try {
       // Extract selection (số thứ tự hoặc booking code)
       const numberMatch = message.match(/^(\d+)$/);
-      const codeMatch = message.match(/\b(BK[A-Z0-9]{8,})\b/i);
+      const codeMatch = message.match(/\b(BK[A-Z0-9]{6,})\b/i);  // BK + 6 ký tự trở lên
       
       let bookingCode = null;
       

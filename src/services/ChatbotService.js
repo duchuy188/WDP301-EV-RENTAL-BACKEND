@@ -22,7 +22,7 @@ class ChatbotService {
     this.statsCache = new Map();
     this.cacheExpiry = 5 * 60 * 1000; // 5 phút
     
-    
+
   }
 
   // Lấy thống kê xe được thuê nhiều nhất
@@ -2402,7 +2402,7 @@ Trả về JSON format:
       };
     }
   }
-
+  
   // Phân tích intent từ message
   detectIntent(message) {
     if (!message) return 'unknown';
@@ -2709,18 +2709,18 @@ Trả về JSON format:
 
       const [monthlyRevenue, yearlyRevenue] = await Promise.all([
         Payment.aggregate([
-          {
-            $match: {
-              status: 'completed',
-              createdAt: { $gte: startOfMonth, $lte: endOfMonth }
-            }
-          },
-          {
-            $group: {
-              _id: null,
-              total: { $sum: '$amount' }
-            }
+        {
+          $match: {
+            status: 'completed',
+            createdAt: { $gte: startOfMonth, $lte: endOfMonth }
           }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
+        }
         ]),
         Payment.aggregate([
           {
