@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Vehicle = require('../models/Vehicle');
 const Station = require('../models/Station');
 const mongoose = require('mongoose');
+const { nowVietnam } = require('../config/timezone');
 
 // Tạo feedback (Customer)
 exports.createFeedback = async (req, res) => {
@@ -613,7 +614,7 @@ exports.getFeedbackStats = async (req, res) => {
     const { period = '30d', station_id } = req.query;
     
     // Tính date range
-    const now = new Date();
+    const now = nowVietnam().toDate();
     let startDate;
     
     switch (period) {

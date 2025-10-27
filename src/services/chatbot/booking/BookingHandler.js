@@ -48,6 +48,37 @@ class BookingHandler {
           extracted.dates?.endDate
         );
         
+        // NẾU user ĐÃ chọn trạm cụ thể
+        if (extracted.stationInfo?.stationId) {
+          // CHỈ show xe alternatives TRONG CÙNG TRẠM ĐÓ, KHÔNG cho phép đặt xe ở trạm khác
+          if (alternatives.sameModel.length > 0 || alternatives.sameColor.length > 0) {
+            return {
+              success: false,
+              message: BookingFormatter.formatNoVehicleWithAlternatives(extracted, alternatives),
+              suggestions: this.generateAlternativeSuggestions(alternatives),
+              actions: ['view_alternatives', 'change_criteria', 'contact_support'],
+              context: {
+                alternatives: alternatives,
+                originalRequest: extracted
+              }
+            };
+          } else {
+            // Không có xe nào trong trạm user chọn
+            const vehicleDesc = [
+              extracted.vehicleInfo.model,
+              extracted.vehicleInfo.color ? `màu ${extracted.vehicleInfo.color}` : null
+            ].filter(Boolean).join(' ');
+            
+            return {
+              success: false,
+              message: `❌ **RẤT TIẾC**\n\nTrạm **${extracted.stationInfo.stationName}** không có xe ${vehicleDesc || 'phù hợp'} trong thời gian bạn chọn.\n\n💡 **Bạn có thể:**\n• Chọn xe khác màu/model tại trạm này\n• Chọn trạm khác gần bạn\n• Thay đổi thời gian thuê\n• Liên hệ hỗ trợ để tư vấn`,
+              suggestions: ['Xem xe khác tại trạm này', 'Chọn trạm khác', 'Liên hệ hỗ trợ'],
+              actions: ['view_station_vehicles', 'change_station', 'contact_support']
+            };
+          }
+        }
+        
+        // NẾU user CHƯA chọn trạm cụ thể → có thể gợi ý xe ở bất kỳ trạm nào
         if (alternatives && (alternatives.sameModel.length > 0 || alternatives.sameColor.length > 0 || alternatives.nearby.length > 0)) {
           return {
             success: false,
@@ -61,7 +92,7 @@ class BookingHandler {
           };
         }
         
-        // Nếu không có alternatives nào, trả về error thông thường
+        // Không có xe nào
         return {
           success: false,
           message: BookingFormatter.formatError(['Không tìm thấy xe phù hợp với yêu cầu của bạn']),
@@ -91,7 +122,7 @@ class BookingHandler {
         userId,
         dates: extracted.dates,
         vehicleId: selectedVehicle._id,
-        stationId: selectedVehicle.station_id._id
+        stationId: extracted.stationInfo?.stationId || selectedVehicle.station_id._id
       });
       
       if (!validation.valid) {
@@ -114,7 +145,7 @@ class BookingHandler {
           bookingData: {
             userId,
             vehicleId: selectedVehicle._id,
-            stationId: selectedVehicle.station_id._id,
+            stationId: extracted.stationInfo?.stationId || selectedVehicle.station_id._id,
             startDate: extracted.dates.startDate,
             endDate: extracted.dates.endDate,
             totalPrice: pricing.totalPrice,
@@ -296,16 +327,18 @@ class BookingHandler {
   
   /**
    * Tìm xe alternatives khi không có xe đúng yêu cầu
+   * ⚠️ QUAN TRỌNG: Nếu user đã chọn trạm cụ thể (stationId có giá trị),
+   * sameModel và sameColor CHỈ tìm trong trạm đó, KHÔNG tìm ở trạm khác
    */
   async findAlternativeVehicles(vehicleInfo, stationId, startDate, endDate) {
     const alternatives = {
-      sameModel: [],  // Cùng model khác màu
-      sameColor: [],  // Cùng màu khác model
-      nearby: []      // Xe tương tự ở trạm gần
+      sameModel: [],  // Cùng model khác màu (CHỈ trong trạm user chọn nếu có stationId)
+      sameColor: [],  // Cùng màu khác model (CHỈ trong trạm user chọn nếu có stationId)
+      nearby: []      // Xe tương tự ở trạm gần (CHỈ để gợi ý, KHÔNG tự động đặt)
     };
     
     try {
-      // 1. Tìm xe cùng model khác màu (tại cùng trạm hoặc tất cả trạm)
+      // 1. Tìm xe cùng model khác màu
       if (vehicleInfo.model) {
         const sameModelQuery = {
           model: new RegExp(vehicleInfo.model, 'i'),
@@ -313,6 +346,7 @@ class BookingHandler {
           is_active: true
         };
         
+        // ✅ NẾU user đã chọn trạm cụ thể → CHỈ tìm trong trạm đó
         if (stationId) {
           sameModelQuery.station_id = stationId;
         }
@@ -334,7 +368,7 @@ class BookingHandler {
         alternatives.sameModel = sameModelVehicles;
       }
       
-      // 2. Tìm xe cùng màu khác model (tại cùng trạm hoặc tất cả trạm)
+      // 2. Tìm xe cùng màu khác model
       if (vehicleInfo.color) {
         const sameColorQuery = {
           color: new RegExp(vehicleInfo.color, 'i'),
@@ -342,6 +376,7 @@ class BookingHandler {
           is_active: true
         };
         
+        // ✅ NẾU user đã chọn trạm cụ thể → CHỈ tìm trong trạm đó
         if (stationId) {
           sameColorQuery.station_id = stationId;
         }
@@ -363,7 +398,8 @@ class BookingHandler {
         alternatives.sameColor = sameColorVehicles;
       }
       
-      // 3. Tìm xe tương tự ở trạm gần (nếu user đã chọn trạm cụ thể)
+      // 3. Tìm xe tương tự ở trạm gần (CHỈ để GỢI Ý, KHÔNG tự động đặt)
+      // ⚠️ Nearby chỉ được dùng khi user ĐÃ chọn trạm cụ thể
       if (stationId && (vehicleInfo.model || vehicleInfo.color)) {
         // Lấy thông tin trạm hiện tại
         const currentStation = await Station.findById(stationId).select('name address');

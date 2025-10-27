@@ -2,6 +2,19 @@ const { Vehicle, Station } = require('../../../models');
 
 class BookingExtractor {
   /**
+   * Normalize text - Bỏ dấu tiếng Việt để dễ so sánh
+   */
+  normalizeText(text) {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Bỏ dấu
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
+  }
+  
+  /**
    * Extract booking information từ user message
    */
   async extractBookingInfo(message, userId) {
@@ -138,6 +151,7 @@ class BookingExtractor {
   
   /**
    * Extract vehicle info (model, color)
+   * Hỗ trợ cả có dấu và không dấu
    */
   extractVehicleInfo(message) {
     const result = {
@@ -146,33 +160,42 @@ class BookingExtractor {
       type: null
     };
     
-    // Extract model
+    const normalized = this.normalizeText(message);
+    
+    // Extract model (không cần dấu)
     const models = ['klara', 'feliz', 'impes', 'theon', 'vento'];
     for (const model of models) {
-      if (message.includes(model)) {
+      if (normalized.includes(model)) {
         result.model = model.charAt(0).toUpperCase() + model.slice(1) + ' S';
         break;
       }
     }
     
-    // Extract color
+    // Extract color - Hỗ trợ CÓ DẤU và KHÔNG DẤU
     const colorMap = {
+      // Có dấu
       'đỏ': 'Đỏ',
-      'do': 'Đỏ',
       'trắng': 'Trắng',
-      'trang': 'Trắng',
+      'xanh dương': 'Xanh Dương',
+      'xanh lá': 'Xanh Lá',
       'xanh': 'Xanh',
       'đen': 'Đen',
-      'den': 'Đen',
       'vàng': 'Vàng',
-      'vang': 'Vàng',
       'hồng': 'Hồng',
-      'hong': 'Hồng',
       'xám': 'Xám',
-      'xam': 'Xám',
-      'cam': 'Cam'
+      'cam': 'Cam',
+      // Không dấu
+      'do': 'Đỏ',
+      'trang': 'Trắng',
+      'xanh duong': 'Xanh Dương',
+      'xanh la': 'Xanh Lá',
+      'den': 'Đen',
+      'vang': 'Vàng',
+      'hong': 'Hồng',
+      'xam': 'Xám'
     };
     
+    // Thử match với message gốc trước (có dấu)
     for (const [key, value] of Object.entries(colorMap)) {
       if (message.includes(key)) {
         result.color = value;
@@ -180,10 +203,20 @@ class BookingExtractor {
       }
     }
     
+    // Nếu chưa tìm thấy, thử với normalized (không dấu)
+    if (!result.color) {
+      for (const [key, value] of Object.entries(colorMap)) {
+        if (normalized.includes(key)) {
+          result.color = value;
+          break;
+        }
+      }
+    }
+    
     // Extract type
-    if (message.includes('scooter') || message.includes('xe ga')) {
+    if (normalized.includes('scooter') || normalized.includes('xe ga')) {
       result.type = 'scooter';
-    } else if (message.includes('motorcycle') || message.includes('xe số')) {
+    } else if (normalized.includes('motorcycle') || normalized.includes('xe so')) {
       result.type = 'motorcycle';
     }
     
@@ -192,23 +225,75 @@ class BookingExtractor {
   
   /**
    * Extract station info
+   * Hỗ trợ tìm theo tên trạm, địa chỉ, quận (cả có dấu và không dấu)
    */
   async extractStationInfo(message) {
-    // Tìm tên trạm trong message
     try {
+      const normalized = this.normalizeText(message);
+      
       // Lấy danh sách trạm
       const stations = await Station.find({ status: 'active' })
         .select('name address code');
       
-      // Tìm trạm match với message
+      // 1. Tìm theo tên trạm (có dấu hoặc không dấu)
       for (const station of stations) {
         const stationNameLower = station.name.toLowerCase();
-        if (message.includes(stationNameLower)) {
+        const stationNameNormalized = this.normalizeText(station.name);
+        
+        if (message.includes(stationNameLower) || normalized.includes(stationNameNormalized)) {
           return {
             stationId: station._id,
             stationName: station.name,
             stationAddress: station.address
           };
+        }
+      }
+      
+      // 2. Tìm theo địa chỉ/quận (có dấu và không dấu)
+      const locationPatterns = [
+        // Có dấu
+        { pattern: 'quận 1', normalized: 'quan 1' },
+        { pattern: 'quận 2', normalized: 'quan 2' },
+        { pattern: 'quận 3', normalized: 'quan 3' },
+        { pattern: 'quận 4', normalized: 'quan 4' },
+        { pattern: 'quận 5', normalized: 'quan 5' },
+        { pattern: 'quận 6', normalized: 'quan 6' },
+        { pattern: 'quận 7', normalized: 'quan 7' },
+        { pattern: 'quận 8', normalized: 'quan 8' },
+        { pattern: 'quận 9', normalized: 'quan 9' },
+        { pattern: 'quận 10', normalized: 'quan 10' },
+        { pattern: 'quận 11', normalized: 'quan 11' },
+        { pattern: 'quận 12', normalized: 'quan 12' },
+        { pattern: 'thủ đức', normalized: 'thu duc' },
+        { pattern: 'bình thạnh', normalized: 'binh thanh' },
+        { pattern: 'tân bình', normalized: 'tan binh' },
+        { pattern: 'phú nhuận', normalized: 'phu nhuan' },
+        { pattern: 'gò vấp', normalized: 'go vap' },
+        { pattern: 'bình tân', normalized: 'binh tan' },
+        { pattern: 'tân phú', normalized: 'tan phu' },
+        { pattern: 'bình dương', normalized: 'binh duong' }
+      ];
+      
+      for (const station of stations) {
+        const addressLower = (station.address || '').toLowerCase();
+        const addressNormalized = this.normalizeText(station.address || '');
+        
+        for (const { pattern, normalized: normalizedPattern } of locationPatterns) {
+          // Check với message có dấu
+          const hasPatternInMessage = message.includes(pattern);
+          // Check với message không dấu
+          const hasNormalizedPattern = normalized.includes(normalizedPattern);
+          
+          // Check với địa chỉ trạm
+          const hasPatternInAddress = addressLower.includes(pattern) || addressNormalized.includes(normalizedPattern);
+          
+          if ((hasPatternInMessage || hasNormalizedPattern) && hasPatternInAddress) {
+            return {
+              stationId: station._id,
+              stationName: station.name,
+              stationAddress: station.address
+            };
+          }
         }
       }
     } catch (error) {

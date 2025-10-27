@@ -6,6 +6,7 @@ const User = require('../models/User');
 const Maintenance = require('../models/Maintenance');
 const Feedback = require('../models/Feedback');
 const mongoose = require('mongoose');
+const { nowVietnam } = require('../config/timezone');
 
 // Tổng quan doanh thu
 exports.getRevenueOverview = async (req, res) => {
@@ -137,7 +138,7 @@ exports.getRevenueOverview = async (req, res) => {
 // Doanh thu theo trạm
 exports.getRevenueByStation = async (req, res) => {
     try {
-        const { period = 'month', date = new Date().toISOString().split('T')[0], payment_method = 'all' } = req.query;
+        const { period = 'month', date = nowVietnam().toDate().toISOString().split('T')[0], payment_method = 'all' } = req.query;
         
         const dateRange = getDateRange(period, date);
         
@@ -344,7 +345,7 @@ exports.getRevenueTrends = async (req, res) => {
 exports.getStationRevenueDetail = async (req, res) => {
     try {
         const { stationId } = req.params;
-        const { period = 'month', date = new Date().toISOString().split('T')[0], payment_method = 'all' } = req.query;
+        const { period = 'month', date = nowVietnam().toDate().toISOString().split('T')[0], payment_method = 'all' } = req.query;
         
         const dateRange = getDateRange(period, date);
         
@@ -557,7 +558,7 @@ exports.getStationRevenueDetail = async (req, res) => {
 };
 
 // Helper functions
-function getDateRange(period, date = new Date()) {
+function getDateRange(period, date = nowVietnam().toDate()) {
     const now = new Date(date);
     let start, end;
     
@@ -588,7 +589,7 @@ function getDateRange(period, date = new Date()) {
     return { start, end };
 }
 
-function getPreviousPeriod(period, date = new Date()) {
+function getPreviousPeriod(period, date = nowVietnam().toDate()) {
     const now = new Date(date);
     let start, end;
     
@@ -666,8 +667,8 @@ exports.getPeakAnalysis = async (req, res) => {
         }
         
         // Tính date range
-        const endDate = new Date();
-        const startDate = new Date();
+        const endDate = nowVietnam().toDate();
+        const startDate = nowVietnam().toDate();
         switch (period) {
             case '7d':
                 startDate.setDate(endDate.getDate() - 7);
@@ -835,8 +836,8 @@ exports.getMaintenanceAnalytics = async (req, res) => {
         const { period = '30d', station_id } = req.query;
         
         // Tính date range
-        const endDate = new Date();
-        const startDate = new Date();
+        const endDate = nowVietnam().toDate();
+        const startDate = nowVietnam().toDate();
         switch (period) {
             case '7d':
                 startDate.setDate(endDate.getDate() - 7);
@@ -1021,8 +1022,8 @@ exports.getStaffPerformance = async (req, res) => {
         const { period = '30d', station_id } = req.query;
         
         // Tính date range
-        const endDate = new Date();
-        const startDate = new Date();
+        const endDate = nowVietnam().toDate();
+        const startDate = nowVietnam().toDate();
         switch (period) {
             case '7d':
                 startDate.setDate(endDate.getDate() - 7);
@@ -1240,8 +1241,8 @@ exports.getStaffPerformanceDetail = async (req, res) => {
         }
         
         // Tính date range
-        const endDate = new Date();
-        const startDate = new Date();
+        const endDate = nowVietnam().toDate();
+        const startDate = nowVietnam().toDate();
         switch (period) {
             case '7d':
                 startDate.setDate(endDate.getDate() - 7);

@@ -161,9 +161,9 @@ exports.bulkCreateVehicles = async (req, res) => {
     }
     
     //Validate data type để tránh crash
-    if (isNaN(yearNum) || yearNum < 2020 || yearNum > new Date().getFullYear() + 1) {
+    if (isNaN(yearNum) || yearNum < 2020 || yearNum > nowVietnam().toDate().getFullYear() + 1) {
       return res.status(400).json({ 
-        message: `Năm sản xuất phải là số từ 2020 đến ${new Date().getFullYear() + 1}` 
+        message: `Năm sản xuất phải là số từ 2020 đến ${nowVietnam().toDate().getFullYear() + 1}` 
       });
     }
 
@@ -214,7 +214,7 @@ exports.bulkCreateVehicles = async (req, res) => {
         deposit_percentage,
         status: 'draft',
         technical_status: 'good',
-        license_plate: `TEMP_${Date.now()}_${i}`, // Temporary license_plate
+        license_plate: `TEMP_${Date.now()}_${lastId}_${i}`, // Temporary license_plate - unique with vehicle ID
         images: imageUrls,
         created_by: req.user._id
       });
@@ -503,8 +503,7 @@ exports.assignVehiclesByQuantity = async (req, res) => {
     if (model) query.model = model;
     if (status === 'draft') {
       query.license_plate = { 
-        $ne: null, 
-        $ne: '',
+        $nin: [null, ''],  
         $not: /^TEMP_/  
       };
     }
@@ -575,8 +574,8 @@ exports.updateVehicleStatus = async (req, res) => {
     
     // Tìm xe
     const vehicle = await Vehicle.findById(id);
-    if (!vehicle) {
-      return res.status(404).json({ message: 'Không tìm thấy xe' });
+    if (!vehicle || !vehicle.is_active) {
+      return res.status(404).json({ message: 'Không tìm thấy xe hoặc xe đã bị xóa' });
     }
     
     // Lưu trạng thái cũ để cập nhật trạm
@@ -651,7 +650,7 @@ exports.updateVehicleStatus = async (req, res) => {
       }
       
       // Tạo báo cáo bảo trì
-      const maintenanceCode = `MT${Date.now().toString().substring(6)}`;
+      const maintenanceCode = `MT${Date.now().toString().substring(6)}_${vehicle.name}`;
       await Maintenance.create({
         code: maintenanceCode,
         vehicle_id: vehicle._id,
@@ -851,10 +850,10 @@ exports.deleteVehicle = async (req, res) => {
       return res.status(400).json({ message: 'Xe đã bị xóa trước đó' });
     }
 
-    // Kiểm tra xe có đang được thuê không
-    if (vehicle.status === 'rented') {
+    // Kiểm tra xe có đang được thuê hoặc đặt trước không
+    if (vehicle.status === 'rented' || vehicle.status === 'reserved') {
       return res.status(400).json({ 
-        message: 'Không thể xóa xe đang được thuê. Vui lòng đợi khách hàng trả xe.' 
+        message: 'Không thể xóa xe đang được thuê/đặt trước.' 
       });
     }
     
@@ -1009,7 +1008,7 @@ exports.reportMaintenance = async (req, res) => {
     }
     
     // Tạo mã bảo trì
-    const maintenanceCode = `MT${Date.now().toString().substring(6)}`;
+    const maintenanceCode = `MT${Date.now().toString().substring(6)}_${vehicle.name}`;
     
     // Tạo báo cáo bảo trì
     const maintenance = new Maintenance({
@@ -1744,13 +1743,23 @@ exports.importPricingUpdates = async (req, res) => {
     // Cập nhật giá cho từng xe
     const updatePromises = result.data.map(async ({ vehicle_code, new_price, new_deposit_percentage }) => {
       // Tìm xe theo mã xe
-      const vehicle = await Vehicle.findOne({ name: vehicle_code });
+      const vehicle = await Vehicle.findOne({ 
+        name: vehicle_code,
+        is_active: true  
+      });
+      
       if (!vehicle) {
         return {
           success: false,
           vehicle_code,
-          message: 'Không tìm thấy xe'
+          message: 'Không tìm thấy xe hoặc xe đã bị xóa'
         };
+      }
+
+    
+      let warning = null;
+      if (vehicle.status === 'rented' || vehicle.status === 'reserved') {
+        warning = 'Xe đang được thuê/đặt. Giá mới áp dụng từ lần thuê tiếp theo.';
       }
 
       // Cập nhật giá và phần trăm cọc
@@ -1770,7 +1779,8 @@ exports.importPricingUpdates = async (req, res) => {
         new_price,
         old_deposit_percentage: vehicle.deposit_percentage,
         new_deposit_percentage,
-        status: vehicle.status
+        status: vehicle.status,
+        warning  // Cảnh báo nếu có
       };
     });
 
