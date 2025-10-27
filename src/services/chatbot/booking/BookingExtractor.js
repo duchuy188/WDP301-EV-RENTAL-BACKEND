@@ -23,8 +23,8 @@ class BookingExtractor {
     // Extract dates
     const dates = this.extractDates(messageLower);
     
-    // Extract vehicle info (model, color)
-    const vehicleInfo = this.extractVehicleInfo(messageLower);
+   
+    const vehicleInfo = await this.extractVehicleInfo(messageLower);
     
     // Extract station
     const stationInfo = await this.extractStationInfo(messageLower);
@@ -152,8 +152,9 @@ class BookingExtractor {
   /**
    * Extract vehicle info (model, color)
    * Hỗ trợ cả có dấu và không dấu
+   * ⚠️ TỰ ĐỘNG LẤY MODEL TỪ DB - Hỗ trợ model mới mà không cần sửa code
    */
-  extractVehicleInfo(message) {
+  async extractVehicleInfo(message) {
     const result = {
       model: null,
       color: null,
@@ -162,51 +163,67 @@ class BookingExtractor {
     
     const normalized = this.normalizeText(message);
     
-    // Extract model (không cần dấu)
-    const models = ['klara', 'feliz', 'impes', 'theon', 'vento'];
-    for (const model of models) {
-      if (normalized.includes(model)) {
-        result.model = model.charAt(0).toUpperCase() + model.slice(1) + ' S';
-        break;
+    // Extract model - LẤY TỪ DB thay vì hardcode
+    try {
+      // Lấy tất cả model duy nhất từ DB
+      const modelsFromDB = await Vehicle.distinct('model');
+      
+      // Tìm model trong message
+      for (const modelFromDB of modelsFromDB) {
+        // Normalize model từ DB để so sánh (bỏ dấu, lowercase)
+        // ⚠️ CHỈ BỎ " S" (có khoảng trắng), KHÔNG BỎ "s" cuối (ví dụ: "Impes")
+        const modelNormalized = this.normalizeText(modelFromDB).replace(/\s+s$/i, ''); // Bỏ " S" (có space) cuối nếu có
+        
+        if (normalized.includes(modelNormalized)) {
+          // Lấy phần tên gốc (bỏ " S" có space nếu có) để RegExp match linh hoạt
+          result.model = modelFromDB.replace(/\s+S$/i, '').trim();
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching models from DB:', error);
+      // Fallback về hardcode nếu DB lỗi
+      const modelsFallback = ['klara', 'feliz', 'impes', 'theon', 'vento'];
+      for (const model of modelsFallback) {
+        if (normalized.includes(model)) {
+          result.model = model.charAt(0).toUpperCase() + model.slice(1);
+          break;
+        }
       }
     }
     
-    // Extract color - Hỗ trợ CÓ DẤU và KHÔNG DẤU
-    const colorMap = {
-      // Có dấu
-      'đỏ': 'Đỏ',
-      'trắng': 'Trắng',
-      'xanh dương': 'Xanh Dương',
-      'xanh lá': 'Xanh Lá',
-      'xanh': 'Xanh',
-      'đen': 'Đen',
-      'vàng': 'Vàng',
-      'hồng': 'Hồng',
-      'xám': 'Xám',
-      'cam': 'Cam',
-      // Không dấu
-      'do': 'Đỏ',
-      'trang': 'Trắng',
-      'xanh duong': 'Xanh Dương',
-      'xanh la': 'Xanh Lá',
-      'den': 'Đen',
-      'vang': 'Vàng',
-      'hong': 'Hồng',
-      'xam': 'Xám'
-    };
-    
-    // Thử match với message gốc trước (có dấu)
-    for (const [key, value] of Object.entries(colorMap)) {
-      if (message.includes(key)) {
-        result.color = value;
-        break;
+    // Extract color - LẤY TỪ DB để tự động hỗ trợ màu mới
+    try {
+      // Lấy tất cả màu duy nhất từ DB
+      const colorsFromDB = await Vehicle.distinct('color');
+      
+      // Tìm color trong message (có dấu trước)
+      for (const colorFromDB of colorsFromDB) {
+        if (!colorFromDB) continue;
+        
+        const colorLower = colorFromDB.toLowerCase();
+        const colorNormalized = this.normalizeText(colorFromDB);
+        
+        // Match với message gốc (có dấu) hoặc normalized (không dấu)
+        if (message.includes(colorLower) || normalized.includes(colorNormalized)) {
+          result.color = colorFromDB; // Giữ nguyên format từ DB
+          break;
+        }
       }
-    }
-    
-    // Nếu chưa tìm thấy, thử với normalized (không dấu)
-    if (!result.color) {
-      for (const [key, value] of Object.entries(colorMap)) {
-        if (normalized.includes(key)) {
+    } catch (error) {
+      console.error('Error fetching colors from DB:', error);
+      // Fallback về colorMap hardcode nếu DB lỗi
+      const colorMapFallback = {
+        'đỏ': 'Đỏ', 'trắng': 'Trắng', 'xanh dương': 'Xanh Dương',
+        'xanh lá': 'Xanh Lá', 'xanh': 'Xanh', 'đen': 'Đen',
+        'vàng': 'Vàng', 'hồng': 'Hồng', 'xám': 'Xám', 'cam': 'Cam',
+        'do': 'Đỏ', 'trang': 'Trắng', 'xanh duong': 'Xanh Dương',
+        'xanh la': 'Xanh Lá', 'den': 'Đen', 'vang': 'Vàng',
+        'hong': 'Hồng', 'xam': 'Xám'
+      };
+      
+      for (const [key, value] of Object.entries(colorMapFallback)) {
+        if (message.includes(key) || normalized.includes(key)) {
           result.color = value;
           break;
         }
@@ -308,6 +325,10 @@ class BookingExtractor {
    * Lọc bỏ xe bị trùng lịch nếu có startDate và endDate
    */
   async findMatchingVehicles(vehicleInfo, stationId, startDate = null, endDate = null) {
+    console.log('🔍 ===== FINDING MATCHING VEHICLES =====');
+    console.log('📝 Input vehicleInfo:', vehicleInfo);
+    console.log('🏢 StationId:', stationId);
+    
     const query = {
       status: 'available',
       is_active: true
@@ -318,24 +339,50 @@ class BookingExtractor {
     }
     
     if (vehicleInfo.model) {
-      query.model = new RegExp(vehicleInfo.model, 'i');
+      console.log('✅ Creating RegExp for model:', vehicleInfo.model);
+      // RegExp linh hoạt: "Klara" match cả "Klara" và "Klara S"
+      // Ví dụ: /^Klara( S)?$/i → match "Klara" hoặc "Klara S"
+      query.model = new RegExp(`^${vehicleInfo.model}( S)?$`, 'i');
+      console.log('📋 RegExp created:', query.model);
     }
     
     if (vehicleInfo.color) {
+      console.log('✅ Creating RegExp for color:', vehicleInfo.color);
       query.color = new RegExp(vehicleInfo.color, 'i');
+      console.log('📋 RegExp created:', query.color);
     }
     
     if (vehicleInfo.type) {
       query.type = vehicleInfo.type;
     }
     
+    console.log('🔎 ===== FINAL QUERY =====');
+    console.log('📝 Query:', {
+      ...query,
+      model: query.model instanceof RegExp ? query.model.source : query.model,
+      color: query.color instanceof RegExp ? query.color.source : query.color
+    });
+    console.log('📅 Date range:', startDate, 'to', endDate);
+    
+    // Query thật với RegExp
     let vehicles = await Vehicle.find(query)
       .populate('station_id', 'name address');
+    
+    console.log(`📦 Found ${vehicles.length} vehicles BEFORE conflict check:`, 
+      vehicles.map(v => ({ 
+        id: v._id, 
+        name: v.name, 
+        model: v.model, 
+        color: v.color,
+        station: v.station_id?.name
+      })));
     
     // Nếu có thời gian, filter ra xe bị conflict
     if (startDate && endDate && vehicles.length > 0) {
       const { Booking } = require('../../../models');
       const vehicleIds = vehicles.map(v => v._id);
+      
+      console.log('🔍 Checking conflicts for vehicles:', vehicleIds.map(id => id.toString()));
       
       // Tìm booking bị conflict
       const conflictingBookings = await Booking.find({
@@ -357,11 +404,28 @@ class BookingExtractor {
         ]
       });
       
+      console.log(`❌ Found ${conflictingBookings.length} conflicting bookings:`, 
+        conflictingBookings.map(b => ({
+          vehicle_id: b.vehicle_id,
+          code: b.code,
+          status: b.status,
+          start: b.start_date,
+          end: b.end_date
+        })));
+      
       const conflictingVehicleIds = conflictingBookings.map(b => b.vehicle_id.toString());
+      
+      console.log('🚫 Conflicting vehicle IDs:', conflictingVehicleIds);
       
       // Filter ra xe không bị conflict
       vehicles = vehicles.filter(v => !conflictingVehicleIds.includes(v._id.toString()));
+      
+      console.log(`✅ After conflict filter: ${vehicles.length} vehicles remaining:`,
+        vehicles.map(v => ({ name: v.name, model: v.model, color: v.color })));
     }
+    
+    console.log('🏁 ===== FINAL RESULT =====');
+    console.log(`✅ Returning ${vehicles.length} vehicles`);
     
     return vehicles;
   }

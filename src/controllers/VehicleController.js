@@ -142,19 +142,6 @@ exports.bulkCreateVehicles = async (req, res) => {
       return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc' });
     }
     
-    // Kiểm tra model + type đã tồn tại chưa
-    const existingModelType = await Vehicle.findOne({
-      model,
-      type,
-      is_active: true
-    });
-    
-    if (existingModelType) {
-      return res.status(400).json({ 
-        message: `Model ${model} đã tồn tại với type ${type}. Mỗi model chỉ có thể có 1 type duy nhất. Vui lòng chọn model khác hoặc type khác.` 
-      });
-    }
-    
     //   Validate quantity
     if (quantity <= 0 || quantity > 100) {
       return res.status(400).json({ message: 'Số lượng xe phải từ 1 đến 100' });
@@ -773,27 +760,7 @@ exports.updateVehicle = async (req, res) => {
       }
     }
     
-    // Validation model + type unique (nếu đang thay đổi model hoặc type)
-    if (model || type) {
-      const newModel = model || vehicle.model;
-      const newType = type || vehicle.type;
-      
-      // Chỉ kiểm tra nếu có sự thay đổi
-      if (newModel !== vehicle.model || newType !== vehicle.type) {
-        const existingModelType = await Vehicle.findOne({
-          model: newModel,
-          type: newType,
-          _id: { $ne: id },
-          is_active: true
-        });
-        
-        if (existingModelType) {
-          return res.status(400).json({ 
-            message: `Model ${newModel} đã tồn tại với type ${newType}. Mỗi model chỉ có thể có 1 type duy nhất.` 
-          });
-        }
-      }
-    }
+    // (Removed: Model+type uniqueness validation - allow multiple vehicles with same model+type but different colors)
     
     // Cập nhật thông tin - Mongoose sẽ validate các trường còn lại
     if (license_plate) vehicle.license_plate = license_plate;
