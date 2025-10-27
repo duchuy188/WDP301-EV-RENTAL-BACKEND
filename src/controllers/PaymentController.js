@@ -160,7 +160,7 @@ const createPayment = async (req, res) => {
       notes: notes || '',
       is_penalty_fee: false, //  Staff tạo payment thủ công, không phải phí phạt
       processed_by: req.user._id,
-      completed_at: paymentStatus === 'completed' ? new Date() : null
+      completed_at: paymentStatus === 'completed' ? nowVietnam().toDate() : null
     });
 
     // Tạo VNPay QR Code chỉ khi amount > 0, status = pending và payment_method = vnpay
@@ -237,7 +237,7 @@ const confirmPayment = async (req, res) => {
     payment.status = 'completed';
     payment.transaction_id = transaction_id || `TXN_${Date.now()}`;
     payment.notes = notes || payment.notes;
-    payment.completed_at = new Date();
+    payment.completed_at = nowVietnam().toDate();
     await payment.save();
 
     // Check and update rental status based on payment type
@@ -298,7 +298,7 @@ const confirmPayment = async (req, res) => {
             if (rental.status === 'active') {
               await Rental.findByIdAndUpdate(payment.rental_id, {
                 status: 'completed',
-                actual_end_time: new Date()
+                actual_end_time: nowVietnam().toDate()
               });
               
               // Cập nhật booking status thành completed
@@ -400,7 +400,7 @@ const cancelPayment = async (req, res) => {
     // Cập nhật payment
     payment.status = 'cancelled';
     payment.notes = reason || payment.notes;
-    payment.cancelled_at = new Date();
+    payment.cancelled_at = nowVietnam().toDate();
     await payment.save();
 
     return res.status(200).json({
@@ -648,7 +648,7 @@ const handleVNPayCallback = async (req, res) => {
         vnp_BankCode: 'VNPAY',
         vnp_CardType: 'QRCODE',
         vnp_OrderInfo: `Thanh toan ${payment.code}`,
-        vnp_PayDate: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
+        vnp_PayDate: nowVietnam().toDate().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
         vnp_ResponseCode: '00',
         vnp_TransactionNo: payment.transaction_id || 'AUTO_' + Date.now(),
         vnp_TransactionStatus: '00',
@@ -661,7 +661,7 @@ const handleVNPayCallback = async (req, res) => {
     if (callbackResult.status === 'success') {
       payment.status = 'completed';
       payment.transaction_id = callbackResult.transactionNo;
-      payment.completed_at = new Date();
+      payment.completed_at = nowVietnam().toDate();
       payment.notes = `${payment.notes}\nVNPay: ${callbackResult.message}`;
       
       await payment.save();
@@ -697,7 +697,7 @@ const handleVNPayCallback = async (req, res) => {
             else if (payment.payment_type === 'rental_fee' && rental.status === 'active') {
               await Rental.findByIdAndUpdate(rental._id, { 
                 status: 'completed', 
-                actual_end_time: new Date() 
+                actual_end_time: nowVietnam().toDate() 
               });
               console.log(`✅ Rental ${rental._id} completed - rental fee paid via VNPay`);
             }
@@ -763,7 +763,7 @@ const handleVNPayCallback = async (req, res) => {
         vnp_BankCode: 'VNPAY',
         vnp_CardType: 'QRCODE',
         vnp_OrderInfo: `Thanh toan ${payment.code}`,
-        vnp_PayDate: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
+        vnp_PayDate: nowVietnam().toDate().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
         vnp_ResponseCode: '00',
         vnp_TransactionNo: payment.transaction_id || 'AUTO_' + Date.now(),
         vnp_TransactionStatus: '00',
@@ -773,7 +773,7 @@ const handleVNPayCallback = async (req, res) => {
       
     } else {
       payment.status = 'cancelled';  
-      payment.cancelled_at = new Date();
+      payment.cancelled_at = nowVietnam().toDate();
       payment.notes = `${payment.notes}\nVNPay: ${callbackResult.message}`;
       
       await payment.save();
@@ -784,7 +784,7 @@ const handleVNPayCallback = async (req, res) => {
         vnp_BankCode: 'VNPAY',
         vnp_CardType: 'QRCODE',
         vnp_OrderInfo: `Thanh toan ${payment.code}`,
-        vnp_PayDate: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
+        vnp_PayDate: nowVietnam().toDate().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
         vnp_ResponseCode: '99',
         vnp_TransactionNo: payment.transaction_id || 'FAILED_' + Date.now(),
         vnp_TransactionStatus: '99',
@@ -829,7 +829,7 @@ const handleVNPayWebhook = async (req, res) => {
     if (webhookResult.status === 'success') {
       payment.status = 'completed';
       payment.transaction_id = webhookResult.transactionNo;
-      payment.completed_at = new Date();
+      payment.completed_at = nowVietnam().toDate();
       payment.notes = `${payment.notes}\nVNPay IPN: ${webhookResult.message}`;
       
       await payment.save();
@@ -887,7 +887,7 @@ const handleVNPayWebhook = async (req, res) => {
       
     } else {
       payment.status = 'cancelled';
-      payment.cancelled_at = new Date();
+      payment.cancelled_at = nowVietnam().toDate();
       payment.notes = `${payment.notes}\nVNPay IPN: ${webhookResult.message}`;
       
       await payment.save();

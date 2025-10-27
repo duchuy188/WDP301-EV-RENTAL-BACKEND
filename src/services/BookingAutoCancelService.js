@@ -2,6 +2,7 @@ const Booking = require("../models/Booking");
 const Vehicle = require("../models/Vehicle");
 const User = require("../models/User");
 const { sendEmail } = require("../config/nodemailer");
+const { nowVietnam } = require("../config/timezone");
 
 /**
  * Tự động hủy các booking quá hạn
@@ -11,18 +12,19 @@ const { sendEmail } = require("../config/nodemailer");
  */
 const autoCancelExpiredBookings = async () => {
   try {
-    const now = new Date();
+  
+    const now = nowVietnam().toDate();
     
     // Tìm các booking cần hủy
     const expiredBookings = await Booking.find({
       status: "pending",
       $or: [
-        // Quá 2 tiếng sau pickup time
+      
         {
           $expr: {
-            $lt: [
-              { $add: ["$start_date", { $multiply: [2, 60, 60, 1000] }] }, // +2 hours
-              now
+            $gt: [
+              now,
+              { $add: ["$start_date", { $multiply: [2, 60, 60, 1000] }] }
             ]
           }
         },

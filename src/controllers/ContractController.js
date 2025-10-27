@@ -18,7 +18,7 @@ const Station = require('../models/Station');
 const Payment = require('../models/Payment');
 const ContractService = require('../services/ContractService');
 const nodemailer = require('../config/nodemailer');
-const { formatVietnamTime } = require('../config/timezone');
+const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 
 // Gửi email hợp đồng cho customer
 const sendContractEmail = async (contract) => {
@@ -469,7 +469,7 @@ const signContract = async (req, res) => {
       }
       
       contract.staff_signature = signature;
-      contract.staff_signed_at = new Date();
+      contract.staff_signed_at = nowVietnam().toDate();
       contract.staff_signed_by = req.user._id;
       
     } else if (signature_type === 'customer') {
@@ -489,7 +489,7 @@ const signContract = async (req, res) => {
       }
       
       contract.customer_signature = signature;
-      contract.customer_signed_at = new Date();
+      contract.customer_signed_at = nowVietnam().toDate();
       contract.customer_signed_by = req.user._id;
     }
 

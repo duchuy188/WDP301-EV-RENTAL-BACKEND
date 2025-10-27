@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { nowVietnam } = require('../config/timezone');
 
 const userStatsSchema = new mongoose.Schema({
   // Liên kết
@@ -124,7 +125,7 @@ userStatsSchema.methods.updateStats = async function(rentalData) {
   this.total_distance += distance || 0;
   this.total_spent += spent || 0;
   this.total_days += days || 0;
-  this.last_rental_date = rental_date || new Date();
+  this.last_rental_date = rental_date || nowVietnam().toDate();
   
   // Cập nhật giờ cao điểm
   const hour = rental_date.getHours();
@@ -190,29 +191,22 @@ userStatsSchema.methods.updateStats = async function(rentalData) {
     this.updateRiskScore();
   }
   
-  this.last_updated = new Date();
+  this.last_updated = nowVietnam().toDate();
   await this.save();
 };
 
 // RISK MANAGEMENT METHODS - LOGIC 6 THÁNG
 userStatsSchema.methods.updateRiskScore = function() {
-  const now = new Date();
+  const now = nowVietnam().toDate();
   const sixMonthsAgo = new Date(now.getTime() - (6 * 30 * 24 * 60 * 60 * 1000));
   
   let newScore = 0;
   
-  // CHỈ TÍNH VIOLATIONS TRONG 6 THÁNG GẦN ĐÂY
+ 
+  
   this.violations.forEach(violation => {
-    if (!violation.resolved && violation.date >= sixMonthsAgo) {
+    if (violation.date >= sixMonthsAgo) {
       let points = violation.points || 5;
-      
-      // Nhân theo severity (giảm multiplier để cân bằng hơn)
-      switch (violation.severity) {
-        case 'low': points *= 1.0; break;
-        case 'medium': points *= 1.5; break;
-        case 'high': points *= 2.0; break;
-      }
-      
       newScore += points;
     }
   });
@@ -234,12 +228,15 @@ userStatsSchema.methods.addViolation = function(violationData) {
     description: violationData.description,
     severity: violationData.severity || 'low',
     points: violationData.points || 5,
-    date: new Date()
+    date: nowVietnam().toDate(),
+    resolved: violationData.resolved || false,
+    resolved_date: violationData.resolved_date || null,
+    resolved_by: violationData.resolved_by || null
   };
   
   this.violations.push(violation);
   this.total_violations += 1;
-  this.last_violation_date = new Date();
+  this.last_violation_date = nowVietnam().toDate();
   
   // Cập nhật risk score
   this.updateRiskScore();
@@ -250,11 +247,13 @@ userStatsSchema.methods.addViolation = function(violationData) {
 userStatsSchema.methods.resetRiskScore = function() {
   this.risk_score = 0;
   this.risk_level = 'low';
-  this.violations.forEach(violation => {
-    violation.resolved = true;
-    violation.resolved_date = new Date();
-  });
-  this.last_updated = new Date();
+  
+
+  this.violations = [];
+  this.total_violations = 0;
+  this.last_violation_date = null;
+  
+  this.last_updated = nowVietnam().toDate();
 };
 
 const UserStats = mongoose.model('UserStats', userStatsSchema);

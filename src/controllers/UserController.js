@@ -600,11 +600,16 @@ exports.getRiskyCustomers = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Tạo query cho UserStats
-    const userStatsQuery = {};
+   
+    const userStatsQuery = {
+      risk_score: { $gt: 0 }
+    };
+    
+   
     if (minRiskScore !== undefined) {
       userStatsQuery.risk_score = { $gte: parseInt(minRiskScore) };
     }
+    
     if (riskLevel) {
       userStatsQuery.risk_level = riskLevel;
     }
@@ -665,10 +670,14 @@ exports.getRiskyCustomers = async (req, res) => {
     });
 
     // Tính total với cùng filter
-    const totalQuery = {};
+    const totalQuery = {
+      risk_score: { $gt: 0 }
+    };
+    
     if (minRiskScore !== undefined) {
       totalQuery.risk_score = { $gte: parseInt(minRiskScore) };
     }
+    
     if (riskLevel) {
       totalQuery.risk_level = riskLevel;
     }

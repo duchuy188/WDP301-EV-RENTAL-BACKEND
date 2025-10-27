@@ -8,6 +8,7 @@ const Booking = require('../models/Booking');
 const PaymentService = require('../services/PaymentService');
 const VNPayService = require('../services/VNPayService');
 const { uploadToCloudinary } = require('../config/cloudinary');
+const { nowVietnam } = require('../config/timezone');
 const { sendEmail, getCheckoutReceiptTemplate } = require('../config/nodemailer');
 
 class RentalController {
@@ -37,7 +38,7 @@ class RentalController {
       }
 
       // Tính thời gian thuê thực tế
-      const now = new Date();
+      const now = nowVietnam().toDate();
       const rentalDuration = Math.floor((now - rental.actual_start_time) / (1000 * 60 * 60)); // giờ
       
       res.json({
@@ -189,7 +190,7 @@ class RentalController {
       }
 
       // Cập nhật rental
-      rental.actual_end_time = new Date();
+      rental.actual_end_time = nowVietnam().toDate();
       rental.return_staff_id = req.user._id;
       rental.vehicle_condition_after = vehicle_condition_after;
       rental.late_fee = 0;
@@ -521,7 +522,7 @@ class RentalController {
       }
 
       // Cập nhật rental
-      rental.actual_end_time = new Date();
+      rental.actual_end_time = nowVietnam().toDate();
       rental.return_staff_id = req.user._id;
       rental.vehicle_condition_after = vehicle_condition_after;
       rental.late_fee = validatedLateFee;
@@ -630,7 +631,7 @@ class RentalController {
             points: 5,
            
             resolved: true,
-            resolved_date: new Date(),
+            resolved_date: nowVietnam().toDate(),
             resolved_by: req.user._id
           };
         } else if (validatedDamageFee > 0) {
@@ -641,7 +642,7 @@ class RentalController {
             points: 10,
             // Auto-resolve vì đã tính phí
             resolved: true,
-            resolved_date: new Date(),
+            resolved_date: nowVietnam().toDate(),
             resolved_by: req.user._id
           };
         } else if (validatedOtherFees > 0) {
@@ -652,7 +653,7 @@ class RentalController {
             points: 5,
             // Auto-resolve vì đã tính phí
             resolved: true,
-            resolved_date: new Date(),
+            resolved_date: nowVietnam().toDate(),
             resolved_by: req.user._id
           };
         }

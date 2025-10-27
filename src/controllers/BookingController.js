@@ -70,7 +70,7 @@ const canCancelBooking = (booking) => {
     return false;
   }
   
-  const now = new Date();
+  const now = nowVietnam().toDate();
   const bookingStart = new Date(booking.start_date);
   const timeDiff = bookingStart.getTime() - now.getTime();
   const hoursDiff = timeDiff / (1000 * 3600);
@@ -198,7 +198,7 @@ const createBooking = async (req, res) => {
     
     // Kiểm tra giới hạn thời gian đặt trước
     const MAX_ADVANCE_DAYS = 30;
-    const maxAdvanceDate = new Date();
+    const maxAdvanceDate = nowVietnam().toDate();
     maxAdvanceDate.setDate(maxAdvanceDate.getDate() + MAX_ADVANCE_DAYS);
     
     if (startDate > maxAdvanceDate) {
@@ -213,17 +213,17 @@ const createBooking = async (req, res) => {
     const calculatedReturnTime = `${pickupHour.toString().padStart(2, '0')}:${pickupMinute.toString().padStart(2, '0')}`;
     
     // Kiểm tra giờ pickup/return hợp lệ
-    const pickupTimeObj = new Date();
+    const pickupTimeObj = nowVietnam().toDate();
     pickupTimeObj.setHours(pickupHour, pickupMinute);
-    const returnTimeObj = new Date();
+    const returnTimeObj = nowVietnam().toDate();
     returnTimeObj.setHours(pickupHour, pickupMinute);
     
     // Kiểm tra giờ mở/đóng cửa trạm
     const stationOpeningParts = station.opening_time.split(':');
     const stationClosingParts = station.closing_time.split(':');
-    const stationOpening = new Date();
+    const stationOpening = nowVietnam().toDate();
     stationOpening.setHours(parseInt(stationOpeningParts[0]), parseInt(stationOpeningParts[1]));
-    const stationClosing = new Date();
+    const stationClosing = nowVietnam().toDate();
     stationClosing.setHours(parseInt(stationClosingParts[0]), parseInt(stationClosingParts[1]));
     
     if (pickupTimeObj < stationOpening || pickupTimeObj > stationClosing) {
@@ -581,7 +581,7 @@ const confirmBooking = async (req, res) => {
     }
 
     // Chặn confirm nếu quá 2 giờ sau thời điểm nhận xe
-    const now = new Date();
+    const now = nowVietnam().toDate();
     const PICKUP_GRACE_MS = 2 * 60 * 60 * 1000; // 2 giờ
 
     if (now > new Date(booking.start_date.getTime() + PICKUP_GRACE_MS)) {
@@ -599,7 +599,7 @@ const confirmBooking = async (req, res) => {
     
     // Auto check-in when confirming booking
     if (!booking.qr_used_at) {
-      booking.qr_used_at = new Date();
+      booking.qr_used_at = nowVietnam().toDate();
       await booking.save();
     }
     
@@ -633,7 +633,7 @@ const confirmBooking = async (req, res) => {
         user_id: booking.user_id._id,
         vehicle_id: booking.vehicle_id._id,
         station_id: booking.station_id._id,
-        actual_start_time: new Date(),
+        actual_start_time: nowVietnam().toDate(),
         pickup_staff_id: staff_id,
         vehicle_condition_before: {
           mileage: vehicle_condition_before?.mileage || 0,
@@ -690,7 +690,7 @@ const confirmBooking = async (req, res) => {
       
       // 5. Update booking status
       booking.status = 'confirmed';
-      booking.confirmed_at = new Date();
+      booking.confirmed_at = nowVietnam().toDate();
       booking.confirmed_by = staff_id;
       await booking.save();
       bookingUpdated = true;
@@ -808,7 +808,7 @@ const cancelBooking = async (req, res) => {
     // Update booking status
     booking.status = 'cancelled';
     booking.cancellation_reason = reason || 'User cancelled';
-    booking.cancelled_at = new Date();
+    booking.cancelled_at = nowVietnam().toDate();
     booking.cancelled_by = user_id;
     await booking.save();
     
@@ -1091,7 +1091,7 @@ const scanQRCode = async (req, res) => {
     }
     
     // Check if QR code is expired
-    if (booking.qr_expires_at && new Date() > booking.qr_expires_at) {
+    if (booking.qr_expires_at && nowVietnam().toDate() > booking.qr_expires_at) {
       return res.status(400).json({ 
         message: 'QR code đã hết hạn' 
       });
@@ -1109,7 +1109,7 @@ const scanQRCode = async (req, res) => {
     if (!booking.qr_used_at) {
       // Update booking to mark as checked-in
       await Booking.findByIdAndUpdate(booking._id, {
-        qr_used_at: new Date()
+        qr_used_at: nowVietnam().toDate()
       });
       isCheckedIn = true;
     }
@@ -1128,7 +1128,7 @@ const scanQRCode = async (req, res) => {
         return_time: booking.return_time,
         status: booking.status,
         qr_expires_at: formatVietnamTime(booking.qr_expires_at),
-        qr_used_at: isCheckedIn ? formatVietnamTime(new Date()) : formatVietnamTime(booking.qr_used_at),
+        qr_used_at: isCheckedIn ? formatVietnamTime(nowVietnam().toDate()) : formatVietnamTime(booking.qr_used_at),
         isCheckedIn: true
       }
     });
@@ -1272,7 +1272,7 @@ const createWalkInBooking = async (req, res) => {
     
     // Kiểm tra giới hạn thời gian đặt trước
     const MAX_ADVANCE_DAYS = 30;
-    const maxAdvanceDate = new Date();
+    const maxAdvanceDate = nowVietnam().toDate();
     maxAdvanceDate.setDate(maxAdvanceDate.getDate() + MAX_ADVANCE_DAYS);
     
     if (startDate > maxAdvanceDate) {
@@ -1349,17 +1349,17 @@ const createWalkInBooking = async (req, res) => {
     }
     
     // Kiểm tra giờ pickup/return hợp lệ
-    const pickupTimeObj = new Date();
+    const pickupTimeObj = nowVietnam().toDate();
     pickupTimeObj.setHours(pickupHour, pickupMinute);
-    const returnTimeObj = new Date();
+    const returnTimeObj = nowVietnam().toDate();
     returnTimeObj.setHours(pickupHour, pickupMinute);
     
     // Kiểm tra giờ mở/đóng cửa trạm
     const stationOpeningParts = station.opening_time.split(':');
     const stationClosingParts = station.closing_time.split(':');
-    const stationOpening = new Date();
+    const stationOpening = nowVietnam().toDate();
     stationOpening.setHours(parseInt(stationOpeningParts[0]), parseInt(stationOpeningParts[1]));
-    const stationClosing = new Date();
+    const stationClosing = nowVietnam().toDate();
     stationClosing.setHours(parseInt(stationClosingParts[0]), parseInt(stationClosingParts[1]));
     
     if (pickupTimeObj < stationOpening || pickupTimeObj > stationClosing) {

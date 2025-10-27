@@ -107,7 +107,7 @@ class ExcelService {
         }
         
         // Validate format biển số
-        const licensePlateRegex = /^[0-9]{2}[A-Z]-[0-9]{3}\.[0-9]{2}$/;
+        const licensePlateRegex = /^[0-9]{2}[A-Z]{1,2}-[0-9]{3,5}\.[0-9]{2}$/;
         if (!licensePlateRegex.test(licensePlate)) {
           result.errors.push({
             row: i,
@@ -181,7 +181,7 @@ class ExcelService {
       guideSheet.addRow(['HƯỚNG DẪN CẬP NHẬT GIÁ XE']);
       guideSheet.addRow(['1. Nhập giá mới vào cột "Giá Mới"']);
       guideSheet.addRow(['2. Nhập phần trăm cọc mới vào cột "Cọc Mới (%)"']);
-      guideSheet.addRow(['3. Giá phải từ 50,000đ đến 300,000đ']);
+      guideSheet.addRow(['3. Giá phải từ 50,000đ đến 500,000đ']);
       guideSheet.addRow(['4. Phần trăm cọc phải từ 0% đến 100% (0% = không cọc, 100% = cọc full)']);
       guideSheet.addRow(['5. Xe đang được thuê (RENTED) vẫn được update giá mới']);
       guideSheet.addRow(['6. Hợp đồng đang active sẽ giữ nguyên giá cũ']);
