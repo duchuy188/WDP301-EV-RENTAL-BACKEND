@@ -2,6 +2,8 @@ const { Booking, User, Vehicle, Station } = require('../../../models');
 const BookingExtractor = require('./BookingExtractor');
 const BookingValidator = require('./BookingValidator');
 const BookingFormatter = require('./BookingFormatter');
+const QRCode = require('qrcode');
+const { uploadToCloudinary } = require('../../../config/cloudinary');
 
 class BookingHandler {
   /**
@@ -173,8 +175,8 @@ class BookingHandler {
     try {
       console.log('✅ Creating booking with data:', bookingData);
       
-      // Tạo booking code
-      const bookingCode = 'BK' + Date.now().toString(36).toUpperCase();
+      // Tạo booking code (đảm bảo unique)
+      const bookingCode = await this.generateBookingCode();
       
       // Get vehicle info để lấy price_per_day
       const { Vehicle } = require('../../../models');
@@ -192,10 +194,10 @@ class BookingHandler {
         ? '08:00' // Default nếu user chỉ nói ngày
         : `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
       
-      // ✅ Return time = pickup time (cùng giờ với pickup)
+      //  Return time = pickup time (cùng giờ với pickup)
       const returnTime = pickupTime;
-      
-      // ✅ Validate giờ làm việc của trạm (giống booking thông thường)
+    
+      // Validate giờ làm việc của trạm (giống booking thông thường)
       const stationHoursValidation = await BookingValidator.validateStationHours(
         bookingData.stationId,
         pickupTime,
@@ -215,12 +217,11 @@ class BookingHandler {
       const user = await User.findById(bookingData.userId).select('fullname email');
       const customerName = user ? (user.fullname || user.email) : 'Khách hàng';
       
-      // ✅ Generate QR Code (giống booking thông thường)
-      const { generateQRCode } = require('../../../utils/qrCodeGenerator');
-      const qrCodeData = await generateQRCode(bookingCode);
+      //  Generate QR Code (giống booking thông thường)
+      const qrCodeData = await this.generateQRCode(bookingCode);
       const qrExpiresAt = new Date(bookingData.startDate.getTime() + 24 * 60 * 60 * 1000); // 24 hours after start
       
-      // ✅ Update vehicle status sang 'reserved' (giống booking bình thường)
+      //  Update vehicle status sang 'reserved' (giống booking bình thường)
       const updatedVehicle = await Vehicle.findOneAndUpdate(
         { _id: bookingData.vehicleId, status: 'available' },
         { status: 'reserved' },
@@ -253,8 +254,8 @@ class BookingHandler {
         booking_type: 'online',
         status: 'pending', // Pending chờ staff confirm
         created_by: bookingData.userId,
-        qr_code: qrCodeData,          // ✅ QR code để nhận xe
-        qr_expires_at: qrExpiresAt,   // ✅ QR hết hạn sau 24h
+        qr_code: qrCodeData.text,     //  QR code string để nhận xe
+        qr_expires_at: qrExpiresAt,   //  QR hết hạn sau 24h
         notes: `Booking từ chatbot AI - Khách hàng: ${customerName}`
       });
       
@@ -264,7 +265,7 @@ class BookingHandler {
         { path: 'station_id', select: 'name address phone' }
       ]);
       
-      // ✅ Update station stats (giống booking bình thường)
+      //  Update station stats (giống booking bình thường)
       try {
         const station = await Station.findById(bookingData.stationId);
         if (station) {
@@ -275,7 +276,7 @@ class BookingHandler {
         // Không fail booking vì station sync lỗi
       }
       
-      // ✅ Gửi email xác nhận booking (giống booking thông thường)
+      //  Gửi email xác nhận booking (giống booking thông thường)
       try {
         const { sendEmail, getBookingConfirmationTemplate } = require('../../../config/nodemailer');
         
@@ -284,6 +285,15 @@ class BookingHandler {
           throw new Error('user.fullname is required for email');
         }
         
+        // Populate booking để lấy thông tin station và vehicle cho email
+        await booking.populate([
+          { path: 'vehicle_id', select: 'name brand model color license_plate' },
+          { path: 'station_id', select: 'name address phone' }
+        ]);
+        
+        const startDate = new Date(booking.start_date);
+        const endDate = new Date(booking.end_date);
+        
         await sendEmail({
           to: user.email,
           subject: 'Xác nhận đặt xe điện - EV Rental (Chatbot)',
@@ -291,15 +301,12 @@ class BookingHandler {
             bookingId: booking._id.toString(),
             bookingCode: booking.code,
             carModel: booking.vehicle_id.name,
-            carColor: booking.vehicle_id.color,
-            carPlate: booking.vehicle_id.license_plate,
-            stationName: booking.station_id.name,
-            stationAddress: booking.station_id.address,
-            pickupDate: booking.start_date.toLocaleDateString('vi-VN'),
-            returnDate: booking.end_date.toLocaleDateString('vi-VN'),
-            pickupTime: booking.pickup_time,
-            totalPrice: booking.total_price.toLocaleString('vi-VN'),
-            depositAmount: booking.deposit_amount.toLocaleString('vi-VN'),
+            pickupTime: `${booking.pickup_time} - ${startDate.toLocaleDateString('vi-VN')}`,
+            pickupLocation: booking.station_id.name,
+            returnTime: `${booking.return_time} - ${endDate.toLocaleDateString('vi-VN')}`,
+            totalCost: booking.total_price.toLocaleString('vi-VN') + ' VND',
+            qrCode: booking.qr_code,
+            qrCodeImage: qrCodeData.imageUrl,
             qrExpiresAt: booking.qr_expires_at.toLocaleString('vi-VN')
           })
         });
@@ -563,6 +570,56 @@ class BookingHandler {
     suggestions.push('Thay đổi yêu cầu');
     
     return suggestions.slice(0, 3);
+  }
+
+  /**
+   * Generate QR Code (giống BookingController)
+   */
+  async generateQRCode(bookingCode) {
+    const qrText = bookingCode;
+    console.log('🔍 Generating QR code for booking:', qrText);
+    
+    try {
+      // Generate QR code as buffer
+      const qrBuffer = await QRCode.toBuffer(qrText, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      
+      // Upload to Cloudinary
+      const cloudinaryResult = await uploadToCloudinary(qrBuffer, 'qr-codes');
+      console.log('✅ QR code uploaded to Cloudinary:', cloudinaryResult.url);
+      
+      return {
+        text: qrText,
+        imageUrl: cloudinaryResult.url
+      };
+    } catch (error) {
+      console.error('❌ Error generating QR code:', error);
+      return {
+        text: qrText,
+        imageUrl: null
+      };
+    }
+  }
+
+  /**
+   * Generate booking code (giống BookingController)
+   */
+  async generateBookingCode() {
+    let code;
+    let exists = true;
+    
+    while (exists) {
+      code = 'BK' + Math.random().toString(36).substr(2, 6).toUpperCase();
+      exists = await Booking.findOne({ code });
+    }
+    
+    return code;
   }
 }
 
