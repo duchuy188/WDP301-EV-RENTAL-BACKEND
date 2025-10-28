@@ -354,7 +354,10 @@ const confirmPayment = async (req, res) => {
               }
               
               await Vehicle.findByIdAndUpdate(rental.vehicle_id, {
-                status: vehicleStatus
+                status: vehicleStatus,
+                reserved_for: '',
+                reserved_at: null,
+                reserved_until: null
               });
               
               console.log(`✅ Rental ${payment.rental_id} completed - checkout payments done`);
@@ -761,7 +764,10 @@ const handleVNPayCallback = async (req, res) => {
                 }
                 
                 await Vehicle.findByIdAndUpdate(rental.vehicle_id, {
-                  status: vehicleStatus
+                  status: vehicleStatus,
+                  reserved_for: '',
+                  reserved_at: null,
+                  reserved_until: null
                 });
                 
                 console.log(`✅ Rental ${rental._id} completed - all payments done via VNPay`);
@@ -1007,6 +1013,249 @@ const updatePaymentMethod = async (req, res) => {
   }
 };
 
+// ========== HOLDING FEE CALLBACK HANDLER ==========
+// VNPay Callback for Holding Fee (Online Booking)
+const handleHoldingFeeCallback = async (req, res) => {
+  try {
+    console.log('\n💳 ========== HOLDING FEE CALLBACK ==========');
+    console.log('Query params:', req.query);
+    
+    const vnpayService = new VNPayService();
+    const callbackResult = vnpayService.processCallback(req.query);
+    
+    console.log('Callback result:', callbackResult);
+    
+    if (!callbackResult.success) {
+      console.error('❌ VNPay callback failed:', callbackResult.message);
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&message=${encodeURIComponent(callbackResult.message)}`);
+    }
+    
+    // Extract timestamp from VNPay txnRef
+    // VNPay strip ký tự: "PENDING_1761660920669_amo02tz8n" → "1761660920669028" (giữ cả số từ random)
+    // Timestamp luôn 13 số (Date.now()), lấy 13 số đầu
+    const vnpayTxnRef = callbackResult.orderId; // Chỉ có số
+    const timestamp = vnpayTxnRef.substring(0, 13); // Lấy 13 số đầu = timestamp
+    console.log(`🔑 VNPay txnRef: ${vnpayTxnRef} → Timestamp: ${timestamp}`);
+    
+    // Find pending booking bằng timestamp
+    const PendingBooking = require('../models/PendingBooking');
+    const pendingBooking = await PendingBooking.findOne({ 
+      temp_id: { $regex: `^PENDING_${timestamp}_` }, // Match "PENDING_<13số>_<bất kỳ>"
+      status: 'pending_payment'
+    }).populate('user_id');
+    
+    if (!pendingBooking) {
+      console.error(`❌ Pending booking not found or expired for timestamp: ${timestamp}`);
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=expired`);
+    }
+    
+    console.log(`✅ Found pending booking: ${pendingBooking.temp_id} (${pendingBooking._id})`);
+    console.log(`👤 User: ${pendingBooking.user_id.fullname} (${pendingBooking.user_id.email})`);
+    
+    // Check payment status
+    if (callbackResult.responseCode !== '00') {
+      console.error(`❌ Payment failed - Response code: ${callbackResult.responseCode}`);
+      
+      // Update pending booking status
+      pendingBooking.status = 'cancelled';
+      await pendingBooking.save();
+      
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&code=${callbackResult.responseCode}`);
+    }
+    
+    // Payment successful - Create actual booking
+    console.log('💰 Payment successful - Creating booking...');
+    
+    const Booking = require('../models/Booking');
+    const Vehicle = require('../models/Vehicle');
+    const Station = require('../models/Station');
+    const QRCode = require('qrcode');
+    const { uploadToCloudinary } = require('../config/cloudinary');
+    const { sendEmail, getBookingConfirmationTemplate } = require('../config/nodemailer');
+    
+    // Generate booking code
+    const generateBookingCode = async () => {
+      let code;
+      let exists = true;
+      while (exists) {
+        code = 'BK' + Math.random().toString(36).substr(2, 6).toUpperCase();
+        exists = await Booking.findOne({ code });
+      }
+      return code;
+    };
+    
+    const code = await generateBookingCode();
+    console.log(`📝 Generated booking code: ${code}`);
+    
+    // Generate QR code
+    const qrBuffer = await QRCode.toBuffer(code, {
+      width: 300,
+      margin: 2,
+      color: { dark: '#000000', light: '#FFFFFF' }
+    });
+    const cloudinaryResult = await uploadToCloudinary(qrBuffer, 'qr-codes');
+    const qrExpiresAt = new Date(pendingBooking.booking_data.start_date.getTime() + 24 * 60 * 60 * 1000);
+    
+    // ✅ Convert soft lock → hard lock (vehicle already reserved from createBooking)
+    const vehicle = await Vehicle.findOneAndUpdate(
+      { 
+        _id: pendingBooking.booking_data.vehicle_id,
+        status: 'reserved',
+        reserved_for: 'holding_fee_payment'  // Must be soft lock
+      },
+      { 
+        reserved_for: 'booking',  // Change to hard lock
+        $unset: { reserved_until: '' }  // Remove expiry time
+      },
+      { new: true }
+    );
+    
+    if (!vehicle) {
+      console.error('❌ Vehicle not found or not in correct reserved state');
+      pendingBooking.status = 'cancelled';
+      await pendingBooking.save();
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=vehicle_unavailable`);
+    }
+    
+    console.log(`🚗 Reserved vehicle: ${vehicle.name} (${vehicle.license_plate})`);
+    
+    // ========== CRITICAL SECTION: Wrap in try-catch with rollback ==========
+    let booking = null;
+    let payment = null;
+    
+    try {
+      // Create booking
+      booking = await Booking.create({
+        code,
+        user_id: pendingBooking.user_id._id,
+        vehicle_id: pendingBooking.booking_data.vehicle_id,
+        station_id: pendingBooking.booking_data.station_id,
+        start_date: pendingBooking.booking_data.start_date,
+        end_date: pendingBooking.booking_data.end_date,
+        pickup_time: pendingBooking.booking_data.pickup_time,
+        return_time: pendingBooking.booking_data.return_time,
+        booking_type: 'online',
+        price_per_day: pendingBooking.booking_data.price_per_day,
+        total_days: pendingBooking.booking_data.total_days,
+        total_price: pendingBooking.booking_data.total_price,
+        deposit_amount: pendingBooking.booking_data.deposit_amount,
+        special_requests: pendingBooking.booking_data.special_requests || '',
+        notes: pendingBooking.booking_data.notes || '',
+        qr_code: code,
+        qr_expires_at: qrExpiresAt,
+        
+        // Holding fee info
+        holding_fee: {
+          amount: 50000,
+          status: 'paid',
+          payment_method: 'vnpay',
+          paid_at: nowVietnam().toDate()
+        },
+        
+        created_by: pendingBooking.user_id._id
+      });
+      
+      console.log(`✅ Created booking: ${booking.code} (${booking._id})`);
+      
+      // Create Payment record for holding fee
+      const Payment = require('../models/Payment');
+      payment = await Payment.create({
+        code: 'PAY' + Math.random().toString(36).substr(2, 8).toUpperCase(),
+        rental_id: null,
+        user_id: pendingBooking.user_id._id,
+        booking_id: booking._id,
+        amount: 50000,
+        payment_method: 'vnpay',
+        payment_type: 'holding_fee',
+        status: 'completed',
+        transaction_id: callbackResult.transactionNo,
+        completed_at: nowVietnam().toDate(),
+        notes: 'Phí giữ chỗ online booking',
+        processed_by: pendingBooking.user_id._id
+      });
+      
+      // Link payment to booking
+      booking.holding_fee.payment_id = payment._id;
+      await booking.save();
+      
+      console.log(`💳 Created payment: ${payment.code}`);
+      
+      // Update pending booking status
+      pendingBooking.status = 'completed';
+      await pendingBooking.save();
+      
+    } catch (createError) {
+      // ❌ ROLLBACK: Unreserve vehicle if booking/payment creation fails
+      console.error('❌ CRITICAL ERROR creating booking/payment:', createError);
+      console.log('🔄 ROLLBACK: Unreserving vehicle...');
+      
+      await Vehicle.findByIdAndUpdate(pendingBooking.booking_data.vehicle_id, {
+        status: 'available',
+        reserved_for: '',
+        reserved_at: null,
+        reserved_until: null
+      });
+      
+      // Mark pending booking as cancelled
+      pendingBooking.status = 'cancelled';
+      await pendingBooking.save();
+      
+      console.log('✅ Vehicle unreserved, pending booking cancelled');
+      
+      // Delete partial booking if created
+      if (booking) {
+        await Booking.findByIdAndDelete(booking._id);
+        console.log('🗑️ Partial booking deleted');
+      }
+      
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=system_error&message=Failed to create booking`);
+    }
+    
+    // Send confirmation email
+    try {
+      const station = await Station.findById(booking.station_id);
+      const vehicle_full = await Vehicle.findById(booking.vehicle_id);
+      
+      await sendEmail({
+        to: pendingBooking.user_id.email,
+        subject: '✅ Xác nhận đặt xe thành công - EV Rental',
+        html: getBookingConfirmationTemplate(pendingBooking.user_id.fullname, {
+          bookingId: booking._id.toString(),
+          bookingCode: booking.code,
+          carModel: vehicle_full.name,
+          pickupTime: `${booking.pickup_time} - ${booking.start_date.toLocaleDateString('vi-VN')}`,
+          pickupLocation: station.name,
+          returnTime: `${booking.return_time} - ${booking.end_date.toLocaleDateString('vi-VN')}`,
+          totalCost: booking.total_price.toLocaleString('vi-VN') + ' VND',
+          qrCode: booking.qr_code,
+          qrCodeImage: cloudinaryResult.url,
+          qrExpiresAt: booking.qr_expires_at.toLocaleString('vi-VN')
+        })
+      });
+      console.log(`📧 Confirmation email sent to ${pendingBooking.user_id.email}`);
+    } catch (emailError) {
+      console.error('❌ Email error:', emailError.message);
+    }
+    
+    // Update station stats
+    try {
+      const station = await Station.findById(booking.station_id);
+      await station.syncVehicleCount();
+    } catch (stationError) {
+      console.log('Station sync failed:', stationError.message);
+    }
+    
+    console.log('🔚 ========== END HOLDING FEE CALLBACK ==========\n');
+    
+    // Redirect to success page
+    return res.redirect(`${process.env.FRONTEND_URL}/booking-success?code=${booking.code}&holdingFeePaid=true`);
+    
+  } catch (error) {
+    console.error('❌ Error in holding fee callback:', error);
+    return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=system_error`);
+  }
+};
+
 module.exports = {
   createPayment,
   confirmPayment,
@@ -1016,5 +1265,6 @@ module.exports = {
   getAllPayments,
   updatePaymentMethod,
   handleVNPayCallback,
-  handleVNPayWebhook
+  handleVNPayWebhook,
+  handleHoldingFeeCallback // NEW
 };

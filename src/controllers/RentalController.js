@@ -1000,7 +1000,7 @@ class RentalController {
         });
       }
 
-   
+      // Get contract
       const contract = await Contract.findOne({
         rental_id: rental._id,
         is_active: true,
@@ -1008,6 +1008,18 @@ class RentalController {
       })
       .sort({ createdAt: -1 }) 
       .select('status code staff_signed_at customer_signed_at staff_signed_by customer_signed_by');
+
+      // Get ALL payments for this rental (holding_fee, deposit, rental_fee, additional_fee)
+      const Payment = require('../models/Payment');
+      const payments = await Payment.find({
+        $or: [
+          { rental_id: rental._id },
+          { booking_id: rental.booking_id }
+        ],
+        is_active: true
+      })
+      .select('code payment_type amount payment_method status transaction_id vnpay_transaction_no vnpay_bank_code reason createdAt')
+      .sort({ createdAt: 1 }); // Sắp xếp theo thời gian tạo
 
       res.json({
         success: true,
@@ -1021,7 +1033,8 @@ class RentalController {
             staff_signed_by: contract.staff_signed_by,
             customer_signed_by: contract.customer_signed_by,
             is_signed: contract.status === 'signed'
-          } : null
+          } : null,
+          payments: payments // ← NEW: Include all payments
         }
       });
     } catch (error) {

@@ -33,7 +33,7 @@
  *           example: "qr_code"
  *         payment_type:
  *           type: string
- *           enum: [deposit, rental_fee, additional_fee]
+ *           enum: [holding_fee, deposit, rental_fee, additional_fee]
  *           description: Loại thanh toán
  *           example: "deposit"
  *         status:
@@ -117,11 +117,11 @@
  *           example: "60f7b3b3b3b3b3b3b3b3b3b3"
  *         payment_type:
  *           type: string
- *           enum: [deposit, rental_fee, additional_fee]
+ *           enum: [holding_fee, deposit, rental_fee, additional_fee]
  *           description: Loại thanh toán
  *           example: "rental_fee"
- *           x-enumNames: ["Cọc xe", "Phí thuê xe", "Phí phát sinh"]
- *           x-enum-varnames: [DEPOSIT, RENTAL_FEE, ADDITIONAL_FEE]
+ *           x-enumNames: ["Phí giữ chỗ", "Cọc xe", "Phí thuê xe", "Phí phát sinh"]
+ *           x-enum-varnames: [HOLDING_FEE, DEPOSIT, RENTAL_FEE, ADDITIONAL_FEE]
  *         amount:
  *           type: number
  *           minimum: 0

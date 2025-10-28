@@ -83,6 +83,58 @@
  *           type: number
  *           description: Số tiền đặt cọc (VND)
  *           example: 150000
+ *         holding_fee:
+ *           type: object
+ *           description: "Phí giữ chỗ (chỉ cho online booking) - NON-REFUNDABLE"
+ *           properties:
+ *             amount:
+ *               type: number
+ *               description: "Số tiền phí giữ chỗ (50,000đ cố định)"
+ *               example: 50000
+ *             status:
+ *               type: string
+ *               enum: [unpaid, paid]
+ *               description: "Trạng thái thanh toán"
+ *               example: "paid"
+ *             payment_method:
+ *               type: string
+ *               enum: [vnpay, cash, '']
+ *               description: "Phương thức thanh toán"
+ *               example: "vnpay"
+ *             paid_at:
+ *               type: string
+ *               format: date-time
+ *               description: "Thời gian thanh toán"
+ *               example: "2025-10-28T21:32:31.000Z"
+ *             payment_id:
+ *               type: object
+ *               description: "Chi tiết payment record (populated)"
+ *               properties:
+ *                 code:
+ *                   type: string
+ *                   example: "PAYYPIXB38I"
+ *                 amount:
+ *                   type: number
+ *                   example: 50000
+ *                 payment_method:
+ *                   type: string
+ *                   example: "vnpay"
+ *                 status:
+ *                   type: string
+ *                   example: "completed"
+ *                 transaction_id:
+ *                   type: string
+ *                   example: "1761661808416"
+ *                 vnpay_transaction_no:
+ *                   type: string
+ *                   example: "15223417"
+ *                 vnpay_bank_code:
+ *                   type: string
+ *                   example: "NCB"
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2025-10-28T21:32:31.000Z"
  *         late_fee:
  *           type: number
  *           description: Phí trễ (VND)
@@ -143,6 +195,16 @@
  *           format: date-time
  *           description: Thời gian sử dụng QR code
  *           example: "2024-01-15T09:00:00.000Z"
+ *         edit_count:
+ *           type: number
+ *           description: "Số lần đã chỉnh sửa booking (max 1 lần)"
+ *           example: 1
+ *           minimum: 0
+ *           maximum: 1
+ *         edit_reason:
+ *           type: string
+ *           description: "Lý do chỉnh sửa booking (nếu có)"
+ *           example: "Tôi có việc đột xuất ngày 15/11 nên cần đổi lịch"
  *         created_by:
  *           type: string
  *           description: ID người dùng tạo đặt xe

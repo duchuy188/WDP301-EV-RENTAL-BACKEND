@@ -156,6 +156,47 @@
  *           format: date-time
  *           description: Thời gian cập nhật
  *           example: "2025-01-25T18:00:00.000Z"
+ *         payments:
+ *           type: array
+ *           description: "Tất cả payments liên quan (holding_fee, deposit, rental_fee, additional_fee)"
+ *           items:
+ *             type: object
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 example: "PAYYPIXB38I"
+ *               payment_type:
+ *                 type: string
+ *                 enum: [holding_fee, deposit, rental_fee, additional_fee]
+ *                 example: "holding_fee"
+ *               amount:
+ *                 type: number
+ *                 example: 50000
+ *               payment_method:
+ *                 type: string
+ *                 enum: [cash, vnpay]
+ *                 example: "vnpay"
+ *               status:
+ *                 type: string
+ *                 enum: [pending, completed, cancelled]
+ *                 example: "completed"
+ *               transaction_id:
+ *                 type: string
+ *                 example: "1761661808416"
+ *               vnpay_transaction_no:
+ *                 type: string
+ *                 example: "15223417"
+ *               vnpay_bank_code:
+ *                 type: string
+ *                 example: "NCB"
+ *               reason:
+ *                 type: string
+ *                 description: "Lý do (cho additional_fee)"
+ *                 example: ""
+ *               createdAt:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2025-10-28T21:32:31.000Z"
  * 
  *     CheckoutInfoResponse:
  *       type: object

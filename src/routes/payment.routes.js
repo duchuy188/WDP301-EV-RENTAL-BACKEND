@@ -9,7 +9,8 @@ const {
   getAllPayments,
   updatePaymentMethod,
   handleVNPayCallback,
-  handleVNPayWebhook
+  handleVNPayWebhook,
+  handleHoldingFeeCallback
 } = require('../controllers/PaymentController');
 
 const authenticateToken = require('../middlewares/authMiddleware');
@@ -46,5 +47,8 @@ router.get('/', authenticateToken, requireRole(['Station Staff', 'Admin']), getA
 // ✅ VNPay Routes (KHÔNG cần authentication)
 router.get('/vnpay/callback', handleVNPayCallback);
 router.post('/vnpay/webhook', handleVNPayWebhook);
+
+// ✅ Holding Fee Callback (Online Booking) - KHÔNG cần authentication
+router.get('/holding-fee/callback', handleHoldingFeeCallback);
 
 module.exports = router;
