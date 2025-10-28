@@ -7,6 +7,7 @@ const {
   getBookingDetails,
   confirmBooking,
   cancelBooking,
+  updateBooking, // ← NEW
   getAllBookings,
   getStationBookings,
   scanQRCode
@@ -19,6 +20,7 @@ const { vehicleImageUpload } = require('../middlewares/vehicleImageUpload');
 router.post('/', authenticateToken, createBooking);
 router.get('/user', authenticateToken, getUserBookings);
 router.get('/:id', authenticateToken, getBookingDetails);
+router.put('/:id', authenticateToken, updateBooking); 
 router.delete('/:id', authenticateToken, cancelBooking);
 
 // Staff routes (Station Staff)

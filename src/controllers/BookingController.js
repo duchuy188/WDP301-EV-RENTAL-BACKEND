@@ -1,4 +1,5 @@
 const Booking = require('../models/Booking');
+const PendingBooking = require('../models/PendingBooking');
 const User = require('../models/User');
 const Vehicle = require('../models/Vehicle');
 const Station = require('../models/Station');
@@ -6,11 +7,13 @@ const Payment = require('../models/Payment');
 const Rental = require('../models/Rental');
 const Contract = require('../models/Contract');
 const ContractTemplate = require('../models/ContractTemplate');
-const { sendEmail, getBookingConfirmationTemplate, getBookingCancellationTemplate, getWalkInCustomerEmailTemplate } = require('../config/nodemailer');
+const { sendEmail, getBookingConfirmationTemplate, getBookingCancellationTemplate, getWalkInCustomerEmailTemplate, getBookingUpdateTemplate } = require('../config/nodemailer');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 const DepositService = require('../services/DepositService');
+const VNPayService = require('../services/VNPayService');
 const QRCode = require('qrcode');
+const moment = require('moment');
 
 // Helper function to generate booking code
 const generateBookingCode = async () => {
@@ -83,7 +86,7 @@ const canCancelBooking = (booking) => {
   return true;
 };
 
-// Create new booking
+// Create new booking - NEW FLOW WITH HOLDING FEE
 const createBooking = async (req, res) => {
   try {
     const { 
@@ -105,6 +108,11 @@ const createBooking = async (req, res) => {
         message: 'Thiếu thông tin bắt buộc' 
       });
     }
+    
+    console.log('\n🚀 ========== ONLINE BOOKING WITH HOLDING FEE ==========');
+    console.log(`📝 User: ${user_id}`);
+    console.log(`🚗 Vehicle: ${model} ${color}`);
+    console.log(`📅 Dates: ${start_date} → ${end_date}`);
     
  
     const pickupTimeParts = pickup_time.split(':');
@@ -323,106 +331,186 @@ const createBooking = async (req, res) => {
     const totalPrice = calculateTotalPrice(pricePerDay, totalDays);
     const depositAmount = DepositService.calculateDeposit(pricePerDay, totalDays);
     
-    // Generate booking code and QR code
-    const code = await generateBookingCode();
-    const qrCodeData = await generateQRCode(code); // Truyền booking code vào QR
-    console.log('🔍 Generated QR Code Data:', qrCodeData); // Debug log
-    const qrExpiresAt = new Date(startDate.getTime() + 24 * 60 * 60 * 1000); // 24 hours after start
+    console.log(`💰 Pricing: ${pricePerDay.toLocaleString()}đ/day × ${totalDays} days = ${totalPrice.toLocaleString()}đ`);
+    console.log(`💵 Deposit: ${depositAmount.toLocaleString()}đ`);
     
-    // Xử lý lỗi khi xe đang được đặt đồng thời
-    const updatedVehicle = await Vehicle.findOneAndUpdate(
-      { _id: vehicle._id, status: 'available' },
-      { status: 'reserved' },
+    // ========== NEW FLOW: RESERVE VEHICLE + CREATE PENDING BOOKING ==========
+    
+    // 1. Generate unique temp ID
+    const tempId = 'PENDING_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    console.log(`🔑 Temp ID: ${tempId}`);
+    
+    // 2. Expires in 15 minutes
+    const expiresAt = moment().add(15, 'minutes').toDate();
+    
+    // 3. ✅ RESERVE VEHICLE IMMEDIATELY (Soft lock - holding fee payment)
+    const reservedVehicle = await Vehicle.findOneAndUpdate(
+      {
+        _id: vehicle._id,
+        status: 'available'  // Double check still available (atomic operation)
+      },
+      {
+        status: 'reserved',
+        reserved_for: 'holding_fee_payment',
+        reserved_at: nowVietnam().toDate(),
+        reserved_until: expiresAt
+      },
       { new: true }
     );
     
-    if (!updatedVehicle || updatedVehicle.status !== 'reserved') {
-      return res.status(400).json({ 
-        message: 'Xe đã được đặt bởi người khác' 
+    if (!reservedVehicle) {
+      // Race condition: Vehicle was just booked by another request
+      console.error(`❌ Race condition: Vehicle ${vehicle._id} was just reserved by another user`);
+      return res.status(409).json({
+        success: false,
+        message: 'Xe vừa được đặt bởi người khác. Vui lòng thử lại.',
+        code: 'VEHICLE_RACE_CONDITION'
       });
     }
     
-    // Create booking
-    const booking = await Booking.create({
-      code,
-      user_id,
-      vehicle_id: vehicle._id,
-      station_id,
-      start_date: startDate,
-      end_date: endDate,
-      pickup_time,
-      return_time: calculatedReturnTime,
-      booking_type: 'online',
-      price_per_day: pricePerDay,
-      total_days: totalDays,
-      total_price: totalPrice,
-      deposit_amount: depositAmount,
-      special_requests: special_requests || '',
-      notes: notes || '',
-      qr_code: qrCodeData.text,
-      qr_expires_at: qrExpiresAt,
-      created_by: user_id
-    });
+    console.log(`🔒 Vehicle ${vehicle.license_plate} RESERVED (soft lock) until ${moment(expiresAt).format('HH:mm:ss DD/MM/YYYY')}`);
     
-    // Send confirmation email
-    try {
    
-      if (!user.fullname) {
-        console.error('❌ user.fullname is undefined');
-        throw new Error('user.fullname is required for email');
+    let pendingBooking = null;
+    let vnpayResult = null;
+    
+    try {
+      // 4. Create pending booking
+      pendingBooking = await PendingBooking.create({
+        temp_id: tempId,
+        user_id,
+        booking_data: {
+          model,
+          color,
+          station_id,
+          vehicle_id: vehicle._id,
+          start_date: startDate,
+          end_date: endDate,
+          pickup_time,
+          return_time: calculatedReturnTime,
+          special_requests: special_requests || '',
+          notes: notes || '',
+          price_per_day: pricePerDay,
+          total_days: totalDays,
+          total_price: totalPrice,
+          deposit_amount: depositAmount
+        },
+        holding_fee_amount: 50000, // Fixed 50k
+        status: 'pending_payment',
+        expires_at: expiresAt
+      });
+      
+      console.log(`✅ Created pending booking: ${pendingBooking._id}`);
+      
+      // 5. Create VNPay payment URL for holding fee
+      // IMPORTANT: Override VNPay return URL to holding fee callback
+      const vnpayService = new VNPayService();
+      
+      // Temporarily override return URL for this specific payment
+      const originalReturnUrl = vnpayService.config.vnp_ReturnUrl;
+      vnpayService.config.vnp_ReturnUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/holding-fee/callback`;
+      
+      const paymentData = {
+        payment_code: tempId,
+        amount: 50000, // Holding fee 50k
+        payment_type: 'holding_fee'
+      };
+      
+      const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress || '127.0.0.1';
+      vnpayResult = vnpayService.createPaymentUrl(paymentData, clientIP);
+      
+      // Restore original return URL
+      vnpayService.config.vnp_ReturnUrl = originalReturnUrl;
+      
+      // Update pending booking với VNPay URL
+      pendingBooking.vnpay_url = vnpayResult.paymentUrl;
+      await pendingBooking.save();
+      
+      console.log(`💳 VNPay URL created: ${vnpayResult.paymentUrl.substring(0, 80)}...`);
+      console.log(`⏰ Payment expires at: ${moment(expiresAt).format('HH:mm:ss DD/MM/YYYY')}`);
+      
+    } catch (createError) {
+      // ❌ ROLLBACK: Unreserve vehicle if pending booking or VNPay creation fails
+      console.error('❌ ERROR creating pending booking/VNPay URL:', createError);
+      console.log('🔄 ROLLBACK: Unreserving vehicle...');
+      
+      await Vehicle.findByIdAndUpdate(vehicle._id, {
+        status: 'available',
+        reserved_for: '',
+        reserved_at: null,
+        reserved_until: null
+      });
+      
+      // Delete partial pending booking if created
+      if (pendingBooking) {
+        await PendingBooking.findByIdAndDelete(pendingBooking._id);
+        console.log('🗑️ Partial pending booking deleted');
       }
       
-      await sendEmail({
-        to: user.email,
-        subject: 'Xác nhận đặt xe điện - EV Rental',
-        html: getBookingConfirmationTemplate(user.fullname, {
-          bookingId: booking._id.toString(),  // MongoDB ID: "68d17520f344602a72d7b154"
-          bookingCode: booking.code,          // Booking Code: "BK4D3MU8"
-          carModel: vehicle.name,
-          pickupTime: `${pickup_time} - ${startDate.toLocaleDateString('vi-VN')}`,
-          pickupLocation: station.name,
-          returnTime: `${calculatedReturnTime} - ${endDate.toLocaleDateString('vi-VN')}`,
-          totalCost: totalPrice.toLocaleString('vi-VN') + ' VND',
-          qrCode: booking.qr_code,           // QR Code: "BK4D3MU8"
-          qrCodeImage: qrCodeData.imageUrl,
-          qrExpiresAt: booking.qr_expires_at.toLocaleString('vi-VN')
-        })
+      console.log('✅ Vehicle unreserved successfully');
+      
+      return res.status(500).json({
+        success: false,
+        message: 'Không thể tạo booking. Vui lòng thử lại.',
+        error: createError.message
       });
-      console.log('✅ Email xác nhận booking đã được gửi đến:', user.email);
-    } catch (emailError) {
-      console.error('❌ Lỗi khi gửi email xác nhận:', emailError.message);
-      // Không throw error, chỉ log
     }
     
-    // Update station stats
-    try {
-      const station = await Station.findById(station_id);
-      await station.syncVehicleCount();
-    } catch (stationError) {
-      console.log('Station sync failed during booking creation:', stationError.message);
-     
-    }
-
-    // Populate booking data for response
-    const populatedBooking = await Booking.findById(booking._id)
-      .populate('user_id', 'fullname email phone')
-      .populate('vehicle_id', 'name license_plate model brand')
-      .populate('station_id', 'name address phone');
+    console.log('🔚 ========== END ONLINE BOOKING FLOW ==========\n');
     
-    // Format timezone for response
-    const formattedBooking = {
-      ...populatedBooking.toObject(),
-      start_date: formatVietnamTime(populatedBooking.start_date),
-      end_date: formatVietnamTime(populatedBooking.end_date),
-      createdAt: formatVietnamTime(populatedBooking.createdAt),
-      updatedAt: formatVietnamTime(populatedBooking.updatedAt),
-      qr_expires_at: formatVietnamTime(populatedBooking.qr_expires_at)
-    };
-    
-    res.status(201).json({
-      message: 'Đặt xe thành công',
-      booking: formattedBooking,
-      requiresKYC: user.kycStatus !== 'approved'
+    // 6. Return response with payment URL
+    res.status(200).json({
+      success: true,
+      message: 'Vui lòng thanh toán phí giữ chỗ để hoàn tất đặt xe',
+      requiresPayment: true,
+      data: {
+        pending_booking_id: pendingBooking._id,
+        temp_id: tempId,
+        
+        // Vehicle info
+        vehicle: {
+          name: vehicle.name,
+          model: vehicle.model,
+          color: vehicle.color,
+          license_plate: vehicle.license_plate,
+          price_per_day: pricePerDay
+        },
+        
+        // Station info
+        station: {
+          name: station.name,
+          address: station.address
+        },
+        
+        // Booking details
+        booking_details: {
+          start_date: formatVietnamTime(startDate),
+          end_date: formatVietnamTime(endDate),
+          pickup_time,
+          return_time: calculatedReturnTime,
+          total_days: totalDays,
+          total_price: totalPrice,
+          deposit_amount: depositAmount
+        },
+        
+        // Payment info
+        holding_fee: {
+          amount: 50000,
+          status: 'unpaid',
+          payment_url: vnpayResult.paymentUrl,
+          expires_at: formatVietnamTime(expiresAt),
+          expires_in_minutes: 15
+        },
+        
+        // Instructions
+        next_steps: [
+          '1. Click vào payment_url để thanh toán phí giữ chỗ 50,000đ',
+          '2. Link thanh toán có hiệu lực trong 15 phút',
+          '3. Sau khi thanh toán thành công, booking sẽ được tạo tự động',
+          '4. Bạn sẽ nhận email xác nhận booking',
+          '5. Xe sẽ được giữ chỗ cho bạn'
+        ]
+      }
     });
     
   } catch (error) {
@@ -450,8 +538,11 @@ const getUserBookings = async (req, res) => {
     const skip = (page - 1) * limit;
     
     const bookings = await Booking.find(query)
-      .populate('vehicle_id', 'name license_plate model brand color images')
-      .populate('station_id', 'name address phone')
+      .populate('vehicle_id', 'name license_plate model brand year color images price_per_day deposit_amount')
+      .populate('station_id', 'name address phone email opening_time closing_time')
+      .populate('confirmed_by', 'fullname')
+      .populate('cancelled_by', 'fullname')
+      .populate('holding_fee.payment_id', 'code amount payment_method status transaction_id vnpay_transaction_no vnpay_bank_code createdAt') 
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -468,7 +559,14 @@ const getUserBookings = async (req, res) => {
       confirmed_at: formatVietnamTime(booking.confirmed_at),
       cancelled_at: formatVietnamTime(booking.cancelled_at),
       qr_expires_at: formatVietnamTime(booking.qr_expires_at),
-      qr_used_at: formatVietnamTime(booking.qr_used_at)
+      qr_used_at: formatVietnamTime(booking.qr_used_at),
+      edit_history: booking.edit_history?.map(h => ({
+        _id: h._id,
+        edited_at: formatVietnamTime(h.edited_at),
+        edited_by: h.edited_by,
+        changes: h.changes,
+        reason: h.reason
+      })) || []
     }));
     
     res.status(200).json({
@@ -502,7 +600,8 @@ const getBookingDetails = async (req, res) => {
       .populate('vehicle_id', 'name license_plate model brand year color images price_per_day deposit_amount')
       .populate('station_id', 'name address phone email opening_time closing_time')
       .populate('confirmed_by', 'fullname')
-      .populate('cancelled_by', 'fullname');
+      .populate('cancelled_by', 'fullname')
+      .populate('holding_fee.payment_id', 'code amount payment_method status transaction_id vnpay_transaction_no vnpay_bank_code createdAt'); // ← NEW: Populate holding fee payment
     
     if (!booking) {
       return res.status(404).json({ 
@@ -597,6 +696,33 @@ const confirmBooking = async (req, res) => {
       });
     }
     
+    // ========== HOLDING FEE VERIFICATION (DEFENSIVE CHECK) ==========
+    // NOTE: Về lý thuyết check này REDUNDANT vì:
+    // - Online booking chỉ được tạo SAU KHI VNPay callback thành công
+    // - PendingBooking tự động expire sau 15 phút nếu không thanh toán
+    // - Nếu user không thanh toán → Không có booking nào được tạo
+    // NHƯNG vẫn check để:
+    // - Defense in depth: Phòng data corruption/manual edits/bugs
+    // - Explicit validation: Code rõ ràng hơn
+    // - Future-proof: An toàn nếu có thay đổi logic sau này
+    
+    if (booking.booking_type === 'online') {
+      // Online booking MUST have paid holding fee
+      if (!booking.holding_fee || booking.holding_fee.status !== 'paid') {
+        console.error(`⚠️ UNEXPECTED: Online booking ${booking.code} without paid holding fee`);
+        return res.status(400).json({
+          message: 'Booking online chưa thanh toán phí giữ chỗ. Không thể xác nhận.',
+          holding_fee_status: booking.holding_fee?.status || 'unpaid',
+          required_action: 'User phải thanh toán phí giữ chỗ 50,000đ trước khi confirm',
+          note: 'This should not happen - Contact support if you see this error'
+        });
+      }
+      console.log(`✅ Holding fee verified: ${booking.holding_fee.amount}đ paid at ${booking.holding_fee.paid_at}`);
+    } else {
+      // Walk-in booking không cần holding fee
+      console.log('✅ Walk-in booking - No holding fee required');
+    }
+    
     // Auto check-in when confirming booking
     if (!booking.qr_used_at) {
       booking.qr_used_at = nowVietnam().toDate();
@@ -656,16 +782,27 @@ const confirmBooking = async (req, res) => {
         console.log(`✅ Vehicle ${booking.vehicle_id._id} mileage updated to ${vehicle_condition_before.mileage} km`);
       }
       
-      // 2. Chuẩn bị thông tin payment (không tạo payment tự động)
+      // 2. Chuẩn bị thông tin payment
+      // ✅ TRỪ holding fee nếu là online booking
+      const holdingFeePaid = (booking.booking_type === 'online' && booking.holding_fee?.status === 'paid') 
+        ? booking.holding_fee.amount 
+        : 0;
+      
       if (booking.total_days < 3) {
-        // Thuê < 3 ngày, thanh toán ngay toàn bộ
+        // Thuê < 3 ngày, thanh toán ngay toàn bộ (trừ holding fee đã TT)
         paymentType = 'rental_fee';
-        paymentAmount = booking.total_price;
+        paymentAmount = booking.total_price - holdingFeePaid;
       } else {
-        // Thuê >= 3 ngày, cọc trước
+        // Thuê >= 3 ngày, cọc trước (trừ holding fee đã TT)
         paymentType = 'deposit';
-        paymentAmount = booking.deposit_amount;
+        paymentAmount = booking.deposit_amount - holdingFeePaid;
       }
+
+      console.log(`💰 Payment calculation:
+        - Type: ${paymentType}
+        - Original amount: ${paymentType === 'deposit' ? booking.deposit_amount : booking.total_price}đ
+        - Holding fee paid: ${holdingFeePaid}đ
+        - Final amount to pay: ${paymentAmount}đ`);
 
       // 3. Tạo payment tự động với phương thức thanh toán được chọn
       payment = await Payment.create({
@@ -677,7 +814,9 @@ const confirmBooking = async (req, res) => {
         payment_type: paymentType,
         payment_method: payment_method, // Sử dụng phương thức thanh toán từ request
         status: 'pending',
-        notes: paymentType === 'deposit' ? 'Tiền cọc thuê xe' : 'Phí thuê xe',
+        notes: holdingFeePaid > 0 
+          ? `${paymentType === 'deposit' ? 'Tiền cọc' : 'Phí thuê xe'} (đã trừ holding fee ${holdingFeePaid.toLocaleString('vi-VN')}đ)`
+          : (paymentType === 'deposit' ? 'Tiền cọc thuê xe' : 'Phí thuê xe'),
         is_penalty_fee: false, //  Confirm booking, không phải phí phạt
         processed_by: staff_id
       });
@@ -772,12 +911,16 @@ const confirmBooking = async (req, res) => {
   }
 };
 
-// Cancel booking
+// Cancel booking - WITH HOLDING FEE POLICY
 const cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
     const user_id = req.user.id;
+    
+    console.log('\n🚫 ========== CANCEL BOOKING REQUEST ==========');
+    console.log(`📝 Booking ID: ${id}`);
+    console.log(`👤 User ID: ${user_id}`);
     
     // Find booking
     const booking = await Booking.findById(id)
@@ -790,6 +933,9 @@ const cancelBooking = async (req, res) => {
         message: 'Booking không tồn tại' 
       });
     }
+    
+    console.log(`🔍 Booking: ${booking.code} (${booking.booking_type})`);
+    console.log(`💰 Holding fee status: ${booking.holding_fee?.status || 'N/A'}`);
     
     // Check permission - cho phép Staff cancel booking của user
     if (booking.user_id._id.toString() !== user_id && req.user.role !== 'Station Staff') {
@@ -805,6 +951,43 @@ const cancelBooking = async (req, res) => {
       });
     }
     
+    // ========== HOLDING FEE REFUND POLICY ==========
+    // Online bookings: Holding fee KHÔNG được hoàn lại
+    // Walk-in bookings: Không có holding fee
+    
+    let refundInfo = null;
+    
+    if (booking.booking_type === 'online' && booking.holding_fee?.status === 'paid') {
+      // HOLDING FEE KHÔNG ĐƯỢC HOÀN LẠI - NON-REFUNDABLE
+      console.log('⚠️ HOLDING FEE FORFEITED - Phí giữ chỗ KHÔNG được hoàn lại');
+      
+      refundInfo = {
+        holding_fee_paid: booking.holding_fee.amount,
+        holding_fee_refunded: 0,
+        policy: 'NON-REFUNDABLE - Phí giữ chỗ 50,000đ KHÔNG được hoàn lại khi hủy booking',
+        message: '❌ Bạn sẽ MẤT phí giữ chỗ 50,000đ đã thanh toán (KHÔNG HOÀN LẠI)'
+      };
+      
+      // Giữ nguyên holding_fee.status = 'paid' (KHÔNG có 'refunded' status)
+      
+    } else if (booking.booking_type === 'walk_in') {
+      console.log('✅ Walk-in booking - No holding fee');
+      refundInfo = {
+        holding_fee_paid: 0,
+        holding_fee_refunded: 0,
+        policy: 'Walk-in booking không có phí giữ chỗ',
+        message: 'Không có phí giữ chỗ'
+      };
+    } else {
+      console.log('ℹ️ No holding fee paid yet');
+      refundInfo = {
+        holding_fee_paid: 0,
+        holding_fee_refunded: 0,
+        policy: 'Chưa thanh toán phí giữ chỗ',
+        message: 'Không có phí giữ chỗ cần hoàn lại'
+      };
+    }
+    
     // Update booking status
     booking.status = 'cancelled';
     booking.cancellation_reason = reason || 'User cancelled';
@@ -812,10 +995,17 @@ const cancelBooking = async (req, res) => {
     booking.cancelled_by = user_id;
     await booking.save();
     
-    // Update vehicle status back to available
+    console.log(`✅ Booking ${booking.code} cancelled`);
+    
+    // Update vehicle status back to available + unreserve all fields
     await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
-      status: 'available'
+      status: 'available',
+      reserved_for: '',
+      reserved_at: null,
+      reserved_until: null
     });
+    
+    console.log(`🚗 Vehicle ${booking.vehicle_id.license_plate} → available (unreserved)`);
     
     // Update station stats
     const station = await Station.findById(booking.station_id._id);
@@ -833,6 +1023,8 @@ const cancelBooking = async (req, res) => {
       console.error('❌ Lỗi khi gửi email hủy:', emailError.message);
     }
     
+    console.log('🔚 ========== END CANCEL BOOKING ==========\n');
+    
     // Format timezone for response
     const formattedBooking = {
       ...booking.toObject(),
@@ -846,7 +1038,8 @@ const cancelBooking = async (req, res) => {
     
     res.status(200).json({
       message: 'Hủy booking thành công',
-      booking: formattedBooking
+      booking: formattedBooking,
+      refund_info: refundInfo // NEW: Thông tin về refund policy
     });
     
   } catch (error) {
@@ -893,19 +1086,40 @@ const getAllBookings = async (req, res) => {
     
     const bookings = await Booking.find(query)
       .populate('user_id', 'fullname email phone kycStatus')
-      .populate('vehicle_id', 'name license_plate model brand')
-      .populate('station_id', 'name address')
+      .populate('vehicle_id', 'name license_plate model brand year color images price_per_day deposit_amount')
+      .populate('station_id', 'name address phone email opening_time closing_time')
       .populate('confirmed_by', 'fullname')
       .populate('cancelled_by', 'fullname')
+      .populate('holding_fee.payment_id', 'code amount payment_method status transaction_id vnpay_transaction_no vnpay_bank_code createdAt') // ← NEW: Populate holding fee payment
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
     
     const total = await Booking.countDocuments(query);
     
+    // Format timezone for all bookings
+    const formattedBookings = bookings.map(booking => ({
+      ...booking.toObject(),
+      start_date: formatVietnamTime(booking.start_date),
+      end_date: formatVietnamTime(booking.end_date),
+      createdAt: formatVietnamTime(booking.createdAt),
+      updatedAt: formatVietnamTime(booking.updatedAt),
+      confirmed_at: formatVietnamTime(booking.confirmed_at),
+      cancelled_at: formatVietnamTime(booking.cancelled_at),
+      qr_expires_at: formatVietnamTime(booking.qr_expires_at),
+      qr_used_at: formatVietnamTime(booking.qr_used_at),
+      edit_history: booking.edit_history?.map(h => ({
+        _id: h._id,
+        edited_at: formatVietnamTime(h.edited_at),
+        edited_by: h.edited_by,
+        changes: h.changes,
+        reason: h.reason
+      })) || []
+    }));
+    
     res.status(200).json({
       message: 'Lấy danh sách booking thành công',
-      bookings,
+      bookings: formattedBookings,
       pagination: {
         current: parseInt(page),
         total: Math.ceil(total / limit),
@@ -1005,19 +1219,40 @@ const getStationBookings = async (req, res) => {
     
     const bookings = await Booking.find(query)
       .populate('user_id', 'fullname email phone kycStatus')
-      .populate('vehicle_id', 'name license_plate model brand')
-      .populate('station_id', 'name address')
+      .populate('vehicle_id', 'name license_plate model brand year color images price_per_day deposit_amount')
+      .populate('station_id', 'name address phone email opening_time closing_time')
       .populate('confirmed_by', 'fullname')
       .populate('cancelled_by', 'fullname')
+      .populate('holding_fee.payment_id', 'code amount payment_method status transaction_id vnpay_transaction_no vnpay_bank_code createdAt') // ← NEW: Populate holding fee payment
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
     
     const total = await Booking.countDocuments(query);
     
+    // Format timezone for all bookings
+    const formattedBookings = bookings.map(booking => ({
+      ...booking.toObject(),
+      start_date: formatVietnamTime(booking.start_date),
+      end_date: formatVietnamTime(booking.end_date),
+      createdAt: formatVietnamTime(booking.createdAt),
+      updatedAt: formatVietnamTime(booking.updatedAt),
+      confirmed_at: formatVietnamTime(booking.confirmed_at),
+      cancelled_at: formatVietnamTime(booking.cancelled_at),
+      qr_expires_at: formatVietnamTime(booking.qr_expires_at),
+      qr_used_at: formatVietnamTime(booking.qr_used_at),
+      edit_history: booking.edit_history?.map(h => ({
+        _id: h._id,
+        edited_at: formatVietnamTime(h.edited_at),
+        edited_by: h.edited_by,
+        changes: h.changes,
+        reason: h.reason
+      })) || []
+    }));
+    
     res.status(200).json({
       message: 'Lấy danh sách booking station thành công',
-      bookings,
+      bookings: formattedBookings,
       pagination: {
         current: parseInt(page),
         total: Math.ceil(total / limit),
@@ -1589,6 +1824,432 @@ const createWalkInBooking = async (req, res) => {
   }
 };
 
+// Update booking (User only - before 24h)
+const updateBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { start_date, end_date, station_id, model, color, reason } = req.body; 
+    const user_id = req.user.id;
+    
+    // 1. Find booking
+    const booking = await Booking.findById(id)
+      .populate('user_id', 'fullname email')
+      .populate('vehicle_id', 'name license_plate model brand color') // model & color are strings!
+      .populate('station_id', 'name address');
+    
+    if (!booking) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Booking không tồn tại' 
+      });
+    }
+    
+    // 2. Check ownership
+    if (booking.user_id._id.toString() !== user_id) {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Bạn không có quyền chỉnh sửa booking này' 
+      });
+    }
+    
+    // 3. Only allow editing online bookings
+    if (booking.booking_type !== 'online') {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Chỉ cho phép chỉnh sửa booking online',
+        current_type: booking.booking_type
+      });
+    }
+    
+    // 4. Only allow editing pending bookings
+    if (booking.status !== 'pending') {
+      return res.status(400).json({ 
+        success: false,
+        message: `Không thể chỉnh sửa booking đã ${booking.status}`,
+        current_status: booking.status,
+        allowed_status: 'pending'
+      });
+    }
+    
+    // 5. Must have paid holding fee
+    if (booking.holding_fee?.status !== 'paid') {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Booking chưa thanh toán phí giữ chỗ',
+        holding_fee_status: booking.holding_fee?.status || 'unpaid'
+      });
+    }
+    
+    // 6. ✋ CHECK EDIT COUNT - Only allow 1 edit
+    const currentEditCount = booking.edit_count || 0;
+    
+    if (currentEditCount >= 1) {
+      return res.status(400).json({ 
+        success: false,
+        message: '❌ Bạn đã chỉnh sửa booking này 1 lần rồi. Không thể chỉnh sửa thêm!',
+        edit_count: currentEditCount,
+        max_edits_allowed: 1,
+        last_edited: formatVietnamTime(booking.updatedAt), // Using updatedAt from timestamps
+        edit_reason: booking.edit_reason || '',
+        suggestion: 'Vui lòng hủy booking này (mất phí giữ chỗ 50k) và đặt lại booking mới nếu cần thay đổi'
+      });
+    }
+    
+    // 7. ⏰ CHECK TIME - Must edit at least 24h before pickup
+    const now = nowVietnam().toDate();
+    const pickupTime = new Date(booking.start_date);
+    const MINIMUM_EDIT_TIME = 24 * 60 * 60 * 1000; // 24 hours
+    const timeUntilPickup = pickupTime - now;
+    
+    if (timeUntilPickup < MINIMUM_EDIT_TIME) {
+      const hoursRemaining = Math.floor(timeUntilPickup / (60 * 60 * 1000));
+      
+      return res.status(400).json({ 
+        success: false,
+        message: 'Không thể chỉnh sửa booking trong vòng 24 giờ trước khi nhận xe',
+        details: {
+          pickup_time: formatVietnamTime(booking.start_date),
+          hours_remaining: hoursRemaining,
+          minimum_required: 24,
+          policy: 'Booking phải được chỉnh sửa trước thời gian nhận xe ít nhất 24 giờ'
+        },
+        alternatives: [
+          {
+            action: 'cancel',
+            description: 'Hủy booking này và tạo booking mới',
+            note: 'Phí giữ chỗ 50,000đ sẽ KHÔNG được hoàn lại'
+          },
+          {
+            action: 'contact_support',
+            description: 'Liên hệ trạm để được hỗ trợ đặc biệt',
+            phone: booking.station_id.phone
+          }
+        ]
+      });
+    }
+    
+    // ========== PROCESS UPDATE ==========
+    
+    // 7. Parse dates
+    const newStartDate = start_date ? new Date(start_date) : booking.start_date;
+    const newEndDate = end_date ? new Date(end_date) : booking.end_date;
+    
+    // Validate new dates
+    if (newStartDate <= now) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Ngày nhận xe mới phải sau thời điểm hiện tại' 
+      });
+    }
+    
+    if (newEndDate <= newStartDate) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Ngày trả xe phải sau ngày nhận xe' 
+      });
+    }
+    
+    const totalDays = Math.ceil((newEndDate - newStartDate) / (1000 * 60 * 60 * 24)) + 1;
+    
+    // 8. Get new station (or keep old)
+    const newStationId = station_id || booking.station_id._id.toString();
+    
+    const newStation = await Station.findById(newStationId);
+    
+    if (!newStation || newStation.status !== 'active') {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Trạm không tồn tại hoặc không hoạt động',
+        station_id: newStationId,
+        station_status: newStation?.status || 'not_found'
+      });
+    }
+    
+    const searchModel = model || booking.vehicle_id.model;   // Use new or keep old
+    const searchColor = color || booking.vehicle_id.color;   
+    
+    // 10. Find available vehicles at new station for new dates (same as createBooking)
+    const availableVehicles = await Vehicle.find({
+      model: searchModel,      // ← String, not ObjectID
+      color: searchColor,      // ← String
+      station_id: newStationId,
+      status: 'available',
+      is_active: true
+    }).select('name license_plate model color brand price_per_day');
+    
+    // Check if any vehicle is actually available for the date range
+    let selectedVehicle = null;
+    
+    for (const vehicle of availableVehicles) {
+      const conflictingBookings = await Booking.find({
+        vehicle_id: vehicle._id,
+        status: { $in: ['pending', 'confirmed'] },
+        _id: { $ne: booking._id }, // Exclude current booking
+        $or: [
+          {
+            start_date: { $lte: newEndDate },
+            end_date: { $gte: newStartDate }
+          }
+        ]
+      });
+      
+      if (conflictingBookings.length === 0) {
+        selectedVehicle = vehicle;
+        break;
+      }
+    }
+    
+    if (!selectedVehicle) {
+      // Find alternative models at the station
+      // Get unique combinations of model + color
+      const allVehiclesAtStation = await Vehicle.find({
+        station_id: newStationId,
+        status: 'available',
+        is_active: true
+      }).select('model color brand price_per_day');
+      
+      // Group by model + color
+      const modelColorMap = new Map();
+      for (const v of allVehiclesAtStation) {
+        const key = `${v.model}|${v.color}`;
+        if (!modelColorMap.has(key)) {
+          modelColorMap.set(key, {
+            model: v.model,
+            color: v.color,
+            brand: v.brand,
+            price_per_day: v.price_per_day,
+            vehicles: []
+          });
+        }
+        modelColorMap.get(key).vehicles.push(v);
+      }
+      
+      const alternatives = [];
+      
+      for (const [key, data] of modelColorMap) {
+        let availableCount = 0;
+        for (const v of data.vehicles) {
+          const conflicts = await Booking.find({
+            vehicle_id: v._id,
+            status: { $in: ['pending', 'confirmed'] },
+            _id: { $ne: booking._id }, // Exclude current booking
+            $or: [
+              {
+                start_date: { $lte: newEndDate },
+                end_date: { $gte: newStartDate }
+              }
+            ]
+          });
+          
+          if (conflicts.length === 0) availableCount++;
+        }
+        
+        if (availableCount > 0) {
+          alternatives.push({
+            model: data.model,
+            color: data.color,
+            brand: data.brand,
+            available_count: availableCount,
+            price_per_day: data.price_per_day,
+            estimated_total: data.price_per_day * totalDays
+          });
+        }
+      }
+      
+      return res.status(400).json({
+        success: false,
+        message: 'Model đã chọn không còn xe available cho ngày này',
+        station_name: newStation.name,
+        dates: `${start_date} → ${end_date}`,
+        available_alternatives: alternatives.length > 0 ? alternatives : null,
+        suggestion: alternatives.length > 0 
+          ? 'Chọn một trong các model trên và thử lại'
+          : 'Vui lòng chọn ngày khác hoặc trạm khác'
+      });
+    }
+    
+    console.log(`✅ Selected vehicle: ${selectedVehicle.name} (${selectedVehicle.license_plate})`);
+    
+    // 11. Calculate new pricing (selectedVehicle already has price_per_day)
+    const pricePerDay = selectedVehicle.price_per_day;
+    const totalPrice = calculateTotalPrice(pricePerDay, totalDays);
+    const depositAmount = DepositService.calculateDeposit(pricePerDay, totalDays);
+    
+    console.log(`💰 New pricing: ${pricePerDay.toLocaleString()}đ/day × ${totalDays} days = ${totalPrice.toLocaleString()}đ`);
+    console.log(`💵 New deposit: ${depositAmount.toLocaleString()}đ`);
+    
+    // 12. Unreserve old vehicle
+    const oldVehicleId = booking.vehicle_id._id;
+    if (oldVehicleId.toString() !== selectedVehicle._id.toString()) {
+      await Vehicle.findByIdAndUpdate(oldVehicleId, {
+        status: 'available'
+      });
+      console.log(`🔓 Unreserved old vehicle: ${booking.vehicle_id.license_plate}`);
+    }
+    
+    // 13. Reserve new vehicle
+    await Vehicle.findByIdAndUpdate(selectedVehicle._id, {
+      status: 'reserved'
+    });
+    console.log(`🔒 Reserved new vehicle: ${selectedVehicle.license_plate}`);
+    
+    // 14. Update booking
+    const oldData = {
+      start_date: booking.start_date,
+      end_date: booking.end_date,
+      vehicle: `${booking.vehicle_id.name} - ${booking.vehicle_id.license_plate}`,
+      station: booking.station_id.name,
+      total_price: booking.total_price,
+      deposit_amount: booking.deposit_amount
+    };
+    
+    const changes = {};
+    if (start_date) changes.start_date = { old: formatVietnamTime(booking.start_date), new: start_date };
+    if (end_date) changes.end_date = { old: formatVietnamTime(booking.end_date), new: end_date };
+    if (station_id && station_id !== booking.station_id._id.toString()) {
+      changes.station = { old: booking.station_id.name, new: newStation.name };
+    }
+    if (selectedVehicle._id.toString() !== booking.vehicle_id._id.toString()) {
+      changes.vehicle = { 
+        old: `${booking.vehicle_id.name} (${booking.vehicle_id.license_plate})`,
+        new: `${selectedVehicle.name} (${selectedVehicle.license_plate})`
+      };
+    }
+    if (model || color) {
+      changes.model_color = {
+        old: `${booking.vehicle_id.model} ${booking.vehicle_id.color}`,
+        new: `${searchModel} ${searchColor}`
+      };
+    }
+    
+    // Update booking fields
+    booking.start_date = newStartDate;
+    booking.end_date = newEndDate;
+    booking.vehicle_id = selectedVehicle._id;
+    booking.station_id = newStationId;
+    booking.total_days = totalDays;
+    booking.price_per_day = pricePerDay;
+    booking.total_price = totalPrice;
+    booking.deposit_amount = depositAmount;
+    
+    
+    booking.edit_count = (booking.edit_count || 0) + 1;
+    booking.edit_reason = reason || 'User requested booking modification';
+    // last_edited_at removed - using timestamps.updatedAt instead
+    
+    console.log(`📝 Setting edit_count to: ${booking.edit_count}`);
+    console.log(`📝 Edit reason: ${booking.edit_reason}`);
+    
+    await booking.save();
+    
+    console.log(`✅ Updated booking: ${booking.code}`);
+    console.log(`✅ SAVED edit_count: ${booking.edit_count}`);
+    
+    // 15. Send email notification using template
+    try {
+      const emailHtml = getBookingUpdateTemplate(
+        booking.user_id.fullname,
+        booking.code,
+        {
+          start_date: formatVietnamTime(oldData.start_date),
+          end_date: formatVietnamTime(oldData.end_date),
+          vehicle: oldData.vehicle,
+          station: oldData.station,
+          total_price: oldData.total_price,
+          deposit_amount: oldData.deposit_amount
+        },
+        {
+          start_date: formatVietnamTime(newStartDate),
+          end_date: formatVietnamTime(newEndDate),
+          vehicle: `${selectedVehicle.name} - ${selectedVehicle.license_plate}`,
+          station: newStation.name,
+          total_price: totalPrice,
+          deposit_amount: depositAmount
+        },
+        reason || null
+      );
+      
+      await sendEmail({
+        to: booking.user_id.email,
+        subject: `✅ Booking ${booking.code} đã được cập nhật - EV Rental`,
+        html: emailHtml
+      });
+      console.log(`📧 Email notification sent to ${booking.user_id.email}`);
+    } catch (emailError) {
+      console.error('❌ Failed to send email:', emailError.message);
+      // Don't fail the request if email fails
+    }
+    
+    // 16. Populate and return (same as getBookingDetails)
+    const updatedBooking = await Booking.findById(booking._id)
+      .populate('user_id', 'fullname email phone kycStatus')
+      .populate('vehicle_id', 'name license_plate model brand year color images price_per_day deposit_amount')
+      .populate('station_id', 'name address phone email opening_time closing_time')
+      .populate('confirmed_by', 'fullname')
+      .populate('cancelled_by', 'fullname')
+      .populate('holding_fee.payment_id', 'code amount payment_method status transaction_id vnpay_transaction_no vnpay_bank_code createdAt'); // ← NEW: Populate holding fee payment
+    
+    console.log(`🔚 ========== END UPDATE BOOKING ==========\n`);
+    
+    
+    const formattedBooking = {
+      ...updatedBooking.toObject(),
+      start_date: formatVietnamTime(updatedBooking.start_date),
+      end_date: formatVietnamTime(updatedBooking.end_date),
+      createdAt: formatVietnamTime(updatedBooking.createdAt),
+      updatedAt: formatVietnamTime(updatedBooking.updatedAt), // This shows last edit time
+      confirmed_at: formatVietnamTime(updatedBooking.confirmed_at),
+      cancelled_at: formatVietnamTime(updatedBooking.cancelled_at),
+      qr_expires_at: formatVietnamTime(updatedBooking.qr_expires_at),
+      qr_used_at: formatVietnamTime(updatedBooking.qr_used_at),
+      edit_history: updatedBooking.edit_history?.map(h => ({
+        _id: h._id,
+        edited_at: formatVietnamTime(h.edited_at),
+        edited_by: h.edited_by,
+        changes: h.changes,
+        reason: h.reason
+      })) || []
+    };
+    
+    res.status(200).json({
+      success: true,
+      message: '✅ Cập nhật booking thành công',
+      booking: formattedBooking,
+      changes: {
+        old: oldData,
+        new: {
+          start_date: formatVietnamTime(newStartDate),
+          end_date: formatVietnamTime(newEndDate),
+          vehicle: `${selectedVehicle.name} - ${selectedVehicle.license_plate}`,
+          station: newStation.name,
+          total_price: totalPrice,
+          deposit_amount: depositAmount
+        },
+        price_difference: totalPrice - oldData.total_price,
+        note: totalPrice > oldData.total_price 
+          ? `Giá tăng ${(totalPrice - oldData.total_price).toLocaleString()}đ - Bạn sẽ thanh toán thêm khi confirm`
+          : totalPrice < oldData.total_price
+          ? `Giá giảm ${(oldData.total_price - totalPrice).toLocaleString()}đ`
+          : 'Giá không đổi'
+      },
+      edit_info: {
+        edit_count: booking.edit_count,
+        max_edits: 1,
+        remaining_edits: 1 - booking.edit_count,
+        warning: booking.edit_count >= 1 ? '⚠️ Bạn đã sử dụng hết lượt chỉnh sửa. Không thể edit thêm!' : null
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error updating booking:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Lỗi server khi cập nhật booking',
+      error: error.message 
+    });
+  }
+};
+
 module.exports = {
   createBooking,
   createWalkInBooking,
@@ -1596,6 +2257,7 @@ module.exports = {
   getBookingDetails,
   confirmBooking,
   cancelBooking,
+  updateBooking, // ← NEW
   getAllBookings,
   getStationBookings,
   scanQRCode

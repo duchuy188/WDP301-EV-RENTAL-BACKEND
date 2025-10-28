@@ -56,8 +56,9 @@ const paymentSchema = new mongoose.Schema({
   payment_type: { 
     type: String, 
     enum: [
-      'deposit',      // Đặt cọc
-      'rental_fee',   // Phí thuê xe
+      'holding_fee',   // Phí giữ chỗ (Online booking)
+      'deposit',       // Đặt cọc
+      'rental_fee',    // Phí thuê xe
       'additional_fee' // Phí phát sinh
     ],
     required: true 

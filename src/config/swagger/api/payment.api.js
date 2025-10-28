@@ -147,7 +147,7 @@
  *         name: payment_type
  *         schema:
  *           type: string
- *           enum: [deposit, rental_fee, additional_fee]
+ *           enum: [holding_fee, deposit, rental_fee, additional_fee]
  *         description: Lọc theo loại thanh toán
  *         example: deposit
  *       - in: query

@@ -89,6 +89,35 @@ const bookingSchema = new mongoose.Schema({
     min: 0
   },
   
+  // Phí giữ chỗ (Holding Fee) - Chỉ áp dụng cho online booking
+  holding_fee: {
+    amount: {
+      type: Number,
+      default: 50000, // Fixed 50k VND
+      min: 0
+    },
+    status: {
+      type: String,
+      enum: ['unpaid', 'paid'],
+      default: 'unpaid'
+    },
+      payment_method: {
+        type: String,
+        enum: ['vnpay', 'cash', ''],
+        default: ''
+      },
+    paid_at: {
+      type: Date,
+      default: null
+    },
+    payment_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Payment',
+      default: null
+    }
+    // ✅ BỎ refunded_at và refund_reason - KHÔNG CẦN vì KHÔNG BAO GIỜ REFUND
+  },
+  
   // Phí phát sinh
   late_fee: { 
     type: Number, 
@@ -160,6 +189,19 @@ const bookingSchema = new mongoose.Schema({
     type: Date, 
     default: null 
   }, // Thời gian sử dụng QR
+  
+  // Edit tracking (for online bookings)
+  edit_count: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 1 // Only allow 1 edit
+  },
+  edit_reason: {
+    type: String,
+    default: '',
+    trim: true
+  },
   
   // Metadata
   created_by: { 
