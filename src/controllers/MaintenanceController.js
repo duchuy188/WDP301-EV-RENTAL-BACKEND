@@ -12,7 +12,6 @@ exports.getAllMaintenanceReports = async (req, res) => {
             limit = 10, 
             status = 'all', 
             station_id,
-            priority = 'all',
             sort_by = 'createdAt',
             sort_order = 'desc'
         } = req.query;
@@ -26,10 +25,6 @@ exports.getAllMaintenanceReports = async (req, res) => {
         
         if (station_id) {
             filter.station_id = new mongoose.Types.ObjectId(station_id);
-        }
-        
-        if (priority !== 'all') {
-            filter.priority = priority;
         }
 
         // Tạo sort

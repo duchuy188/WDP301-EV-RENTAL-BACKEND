@@ -965,7 +965,7 @@ exports.getVehicleStatistics = async (req, res) => {
 exports.reportMaintenance = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason, priority = 'medium' } = req.body;
+    const { reason } = req.body;
     
     // Lấy images từ req.files (file upload)
     let images = [];
@@ -1002,10 +1002,8 @@ exports.reportMaintenance = async (req, res) => {
       title: `Bảo trì xe ${vehicle.name}`,
       description: reason,
       status: 'reported',
-      priority,
       images,
-      reported_by: req.user._id,
-      created_by: req.user._id
+      reported_by: req.user._id
     });
     
     // Lưu báo cáo

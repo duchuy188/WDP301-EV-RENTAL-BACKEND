@@ -75,10 +75,6 @@ const paymentSchema = new mongoose.Schema({
     type: String, 
     default: '' 
   },
-  payment_gateway: { 
-    type: String, 
-    default: '' 
-  },
   
   // QR Code thông tin
   qr_code_data: { 
