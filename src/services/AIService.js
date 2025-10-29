@@ -303,8 +303,13 @@ QUAN TRỌNG:
 - Dùng SỐ LIỆU THỰC TẾ từ bảng trên
 - Doanh thu = thanh toán thực tế chứ KHÔNG phải giá booking
 - Booking có thể bị hủy, chỉ rentals là chắc chắn
+- **PHÍ GIỮ CHỖ (HOLDING FEE):** 
+  • Mỗi booking online phải thanh toán 50,000 VND phí giữ chỗ trong 15 phút
+  • Phí này KHÔNG hoàn lại nếu hủy booking
+  • Phí được TRỪ VÀO tổng tiền thuê xe khi nhận xe
+  • Booking không thanh toán phí giữ chỗ sẽ tự động hủy
 - Confidence dựa trên variance của data lịch sử
-- TUYỆT ĐỐI KHÔNG DÙNG TỪ TIẾNG ANH (utilization → tỷ lệ sử dụng, revenue → doanh thu, booking → đặt xe, rental → thuê xe)
+- TUYỆT ĐỐI KHÔNG DÙNG TỪ TIẾNG ANH (utilization → tỷ lệ sử dụng, revenue → doanh thu, booking → đặt xe, rental → thuê xe, holding fee → phí giữ chỗ)
 
 Trả về JSON HOÀN TOÀN BẰNG TIẾNG VIỆT (không được có bất kỳ từ tiếng Anh nào):
 {

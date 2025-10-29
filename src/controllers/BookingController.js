@@ -378,21 +378,21 @@ const createBooking = async (req, res) => {
       // 4. Create pending booking
       pendingBooking = await PendingBooking.create({
         temp_id: tempId,
-        user_id,
+      user_id,
         booking_data: {
           model,
           color,
-          station_id,
+      station_id,
           vehicle_id: vehicle._id,
-          start_date: startDate,
-          end_date: endDate,
-          pickup_time,
-          return_time: calculatedReturnTime,
+      start_date: startDate,
+      end_date: endDate,
+      pickup_time,
+      return_time: calculatedReturnTime,
           special_requests: special_requests || '',
           notes: notes || '',
-          price_per_day: pricePerDay,
-          total_days: totalDays,
-          total_price: totalPrice,
+      price_per_day: pricePerDay,
+      total_days: totalDays,
+      total_price: totalPrice,
           deposit_amount: depositAmount
         },
         holding_fee_amount: 50000, // Fixed 50k

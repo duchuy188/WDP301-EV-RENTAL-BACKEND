@@ -1,9 +1,11 @@
-const { Booking, User, Vehicle, Station } = require('../../../models');
+const { Booking, User, Vehicle, Station, PendingBooking } = require('../../../models');
 const BookingExtractor = require('./BookingExtractor');
 const BookingValidator = require('./BookingValidator');
 const BookingFormatter = require('./BookingFormatter');
 const QRCode = require('qrcode');
 const { uploadToCloudinary } = require('../../../config/cloudinary');
+const VNPayService = require('../../VNPayService');
+const { nowVietnam } = require('../../../config/timezone');
 
 class BookingHandler {
   /**
@@ -169,35 +171,38 @@ class BookingHandler {
   }
   
   /**
-   * Confirm và tạo booking
+   * Confirm và tạo PendingBooking + VNPay URL (NEW FLOW với holding fee)
    */
   async confirmBooking(bookingData) {
     try {
-      console.log('✅ Creating booking with data:', bookingData);
+      console.log('✅ Creating PENDING booking with HOLDING FEE:', bookingData);
       
-      // Tạo booking code (đảm bảo unique)
-      const bookingCode = await this.generateBookingCode();
-      
-      // Get vehicle info để lấy price_per_day
-      const { Vehicle } = require('../../../models');
-      const vehicle = await Vehicle.findById(bookingData.vehicleId);
+      // 1. Get vehicle info
+      const vehicle = await Vehicle.findById(bookingData.vehicleId)
+        .populate('station_id', 'name address phone');
       
       if (!vehicle) {
         throw new Error('Vehicle not found');
       }
       
-      // Extract time từ dates hoặc dùng default
+      // 2. Validate vehicle vẫn available
+      if (vehicle.status !== 'available') {
+        return {
+          success: false,
+          message: '❌ Xe đã được đặt bởi người khác. Vui lòng chọn xe khác.',
+          suggestions: ['Tìm xe khác', 'Xem xe available'],
+          actions: ['find_another', 'view_available']
+        };
+      }
+      
+      // 3. Extract pickup/return time
       const startDate = new Date(bookingData.startDate);
-      
-      // Format time từ Date object (HH:MM)
       const pickupTime = startDate.getHours() === 0 && startDate.getMinutes() === 0
-        ? '08:00' // Default nếu user chỉ nói ngày
+        ? '08:00'
         : `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
-      
-      //  Return time = pickup time (cùng giờ với pickup)
       const returnTime = pickupTime;
-    
-      // Validate giờ làm việc của trạm (giống booking thông thường)
+      
+      // 4. Validate station hours
       const stationHoursValidation = await BookingValidator.validateStationHours(
         bookingData.stationId,
         pickupTime,
@@ -208,27 +213,37 @@ class BookingHandler {
         return {
           success: false,
           message: `❌ ${stationHoursValidation.error}`,
-          suggestions: ['Chọn giờ khác trong giờ làm việc', 'Liên hệ hỗ trợ'],
+          suggestions: ['Chọn giờ khác', 'Liên hệ hỗ trợ'],
           actions: ['change_time', 'contact_support']
         };
       }
       
-      // Lấy thông tin user để ghi vào notes
-      const user = await User.findById(bookingData.userId).select('fullname email');
-      const customerName = user ? (user.fullname || user.email) : 'Khách hàng';
+      // 5. Generate temp ID (format: PB + DDMM + 4 random chars)
+      const now = nowVietnam().toDate();
+      const day = String(now.getDate()).padStart(2, '0');
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const randomChars = Math.random().toString(36).substr(2, 4).toUpperCase();
+      const tempId = `PB${day}${month}${randomChars}`;
       
-      //  Generate QR Code (giống booking thông thường)
-      const qrCodeData = await this.generateQRCode(bookingCode);
-      const qrExpiresAt = new Date(bookingData.startDate.getTime() + 24 * 60 * 60 * 1000); // 24 hours after start
+      // 6. Calculate expiry (15 minutes)
+      const expiresAt = nowVietnam().add(15, 'minutes').toDate(); 
       
-      //  Update vehicle status sang 'reserved' (giống booking bình thường)
-      const updatedVehicle = await Vehicle.findOneAndUpdate(
-        { _id: bookingData.vehicleId, status: 'available' },
-        { status: 'reserved' },
+      // 7.  ATOMIC: Reserve vehicle (soft lock)
+      const reservedVehicle = await Vehicle.findOneAndUpdate(
+        {
+          _id: bookingData.vehicleId,
+          status: 'available'
+        },
+        {
+          status: 'reserved',
+          reserved_for: 'holding_fee_payment',
+          reserved_at: nowVietnam().toDate(),
+          reserved_until: expiresAt
+        },
         { new: true }
       );
       
-      if (!updatedVehicle || updatedVehicle.status !== 'reserved') {
+      if (!reservedVehicle) {
         return {
           success: false,
           message: '❌ Xe đã được đặt bởi người khác. Vui lòng chọn xe khác.',
@@ -237,101 +252,148 @@ class BookingHandler {
         };
       }
       
-      // Tạo booking với đầy đủ required fields
-      const booking = await Booking.create({
-        code: bookingCode,
+      console.log(`🔒 Vehicle ${reservedVehicle.license_plate} RESERVED (soft lock) until ${expiresAt.toLocaleString('vi-VN')}`);
+      
+      // 8. Get user info for notes
+      const user = await User.findById(bookingData.userId).select('fullname email');
+      
+      // 9. Tạo PendingBooking với rollback nếu lỗi
+      let pendingBooking = null;
+      let vnpayUrl = null;
+      
+      try {
+        // 9.1. Create PendingBooking
+        pendingBooking = await PendingBooking.create({
+          temp_id: tempId,
         user_id: bookingData.userId,
+          booking_data: {
+            model: vehicle.model,
+            color: vehicle.color,
+            station_id: bookingData.stationId,
         vehicle_id: bookingData.vehicleId,
-        station_id: bookingData.stationId,
         start_date: bookingData.startDate,
         end_date: bookingData.endDate,
         pickup_time: pickupTime,
         return_time: returnTime,
+            special_requests: '',
+            notes: `Booking từ chatbot AI - Khách hàng: ${user?.fullname || 'N/A'}`,
         price_per_day: vehicle.price_per_day,
         total_days: bookingData.totalDays,
         total_price: bookingData.totalPrice,
-        deposit_amount: bookingData.depositAmount,
-        booking_type: 'online',
-        status: 'pending', // Pending chờ staff confirm
-        created_by: bookingData.userId,
-        qr_code: qrCodeData.text,     //  QR code string để nhận xe
-        qr_expires_at: qrExpiresAt,   //  QR hết hạn sau 24h
-        notes: `Booking từ chatbot AI - Khách hàng: ${customerName}`
-      });
-      
-      // Populate để lấy thông tin đầy đủ
-      await booking.populate([
-        { path: 'vehicle_id', select: 'name brand model color license_plate' },
-        { path: 'station_id', select: 'name address phone' }
-      ]);
-      
-      //  Update station stats (giống booking bình thường)
-      try {
-        const station = await Station.findById(bookingData.stationId);
-        if (station) {
-          await station.syncVehicleCount();
-        }
-      } catch (stationError) {
-        console.log('Station sync failed:', stationError.message);
-        // Không fail booking vì station sync lỗi
-      }
-      
-      //  Gửi email xác nhận booking (giống booking thông thường)
-      try {
-        const { sendEmail, getBookingConfirmationTemplate } = require('../../../config/nodemailer');
-        
-        if (!user.fullname) {
-          console.error('❌ user.fullname is undefined');
-          throw new Error('user.fullname is required for email');
-        }
-        
-        // Populate booking để lấy thông tin station và vehicle cho email
-        await booking.populate([
-          { path: 'vehicle_id', select: 'name brand model color license_plate' },
-          { path: 'station_id', select: 'name address phone' }
-        ]);
-        
-        const startDate = new Date(booking.start_date);
-        const endDate = new Date(booking.end_date);
-        
-        await sendEmail({
-          to: user.email,
-          subject: 'Xác nhận đặt xe điện - EV Rental (Chatbot)',
-          html: getBookingConfirmationTemplate(user.fullname, {
-            bookingId: booking._id.toString(),
-            bookingCode: booking.code,
-            carModel: booking.vehicle_id.name,
-            pickupTime: `${booking.pickup_time} - ${startDate.toLocaleDateString('vi-VN')}`,
-            pickupLocation: booking.station_id.name,
-            returnTime: `${booking.return_time} - ${endDate.toLocaleDateString('vi-VN')}`,
-            totalCost: booking.total_price.toLocaleString('vi-VN') + ' VND',
-            qrCode: booking.qr_code,
-            qrCodeImage: qrCodeData.imageUrl,
-            qrExpiresAt: booking.qr_expires_at.toLocaleString('vi-VN')
-          })
+            deposit_amount: bookingData.depositAmount
+          },
+          holding_fee_amount: 50000,
+          expires_at: expiresAt,
+          conversation_id: null,
+          session_id: ''
         });
-        console.log('✅ Email xác nhận booking (chatbot) đã được gửi đến:', user.email);
-      } catch (emailError) {
-        console.error('❌ Lỗi khi gửi email xác nhận:', emailError.message);
-        // Không throw error, chỉ log để không làm fail booking
+        
+        console.log(`📝 PendingBooking created: ${pendingBooking.temp_id}`);
+        
+        // 8.2. Create VNPay payment URL for holding fee
+        const vnpayService = new VNPayService();
+        
+        // Override return URL to holding fee callback
+        const originalReturnUrl = vnpayService.config.vnp_ReturnUrl;
+        vnpayService.config.vnp_ReturnUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/holding-fee/callback`;
+        
+        const paymentData = {
+          payment_code: pendingBooking.temp_id,
+          amount: 50000, // Holding fee
+          payment_type: 'holding_fee'
+        };
+        
+        const vnpayResult = vnpayService.createPaymentUrl(paymentData, '127.0.0.1');
+        vnpayUrl = vnpayResult.paymentUrl;
+        
+        // Restore original return URL
+        vnpayService.config.vnp_ReturnUrl = originalReturnUrl;
+        
+        // 8.3. Save VNPay URL vào PendingBooking
+        pendingBooking.vnpay_url = vnpayUrl;
+        await pendingBooking.save();
+        
+        console.log(`💳 VNPay URL created for holding fee: ${vnpayUrl}`);
+        
+      } catch (error) {
+        // ❌ ROLLBACK: Unreserve vehicle nếu tạo PendingBooking hoặc VNPay URL lỗi
+        console.error('❌ Error creating PendingBooking/VNPay URL:', error);
+        
+        await Vehicle.findByIdAndUpdate(bookingData.vehicleId, {
+          status: 'available',
+          reserved_for: '',
+          reserved_at: null,
+          reserved_until: null
+        });
+        
+        if (pendingBooking) {
+          await PendingBooking.findByIdAndDelete(pendingBooking._id);
+        }
+        
+        throw error;
       }
       
-      console.log('✅ Booking created successfully:', booking.code);
-      
+      // 10. Return success message with payment URL
       return {
         success: true,
-        message: BookingFormatter.formatSuccess(booking),
-        suggestions: ['Xem chi tiết', 'Đặt xe khác', 'Liên hệ trạm'],
-        actions: ['view_booking', 'book_another', 'contact_station'],
-        booking: {
-          id: booking._id,
-          code: booking.code,
-          status: booking.status
+        message: `✅ **ĐẶT XE THÀNH CÔNG!**
+
+📋 **Mã đặt chỗ:** ${tempId}
+🚗 **Xe:** ${vehicle.brand} ${vehicle.model} màu ${vehicle.color} (${vehicle.license_plate})
+📅 **Thời gian:** ${new Date(bookingData.startDate).toLocaleDateString('vi-VN')} - ${new Date(bookingData.endDate).toLocaleDateString('vi-VN')}
+📍 **Trạm:** ${vehicle.station_id.name}
+💰 **Tổng tiền:** ${bookingData.totalPrice.toLocaleString('vi-VN')} VND
+
+🎫 **PHÍ GIỮ CHỖ: 50,000 VND** (không hoàn lại)
+⏰ **Vui lòng thanh toán trong 15 phút**
+
+💡 **Sau khi thanh toán:**
+• Bạn sẽ nhận email xác nhận booking
+• Phí giữ chỗ sẽ được **TRỪ VÀO TỔNG TIỀN** thuê
+• Đến trạm đúng giờ để nhận xe
+
+📱 **Link thanh toán:** ${vnpayUrl}
+
+⚠️ **Lưu ý:**
+• Nếu không thanh toán trong 15 phút, booking sẽ tự động hủy
+• Phí giữ chỗ không được hoàn lại nếu bạn hủy booking
+• Mang theo CCCD gốc khi đến trạm`,
+        suggestions: ['Thanh toán ngay', 'Xem chi tiết', 'Hủy booking'],
+        actions: ['pay_holding_fee', 'view_details', 'cancel_booking'],
+        data: {
+          tempId: pendingBooking.temp_id,
+          paymentUrl: vnpayUrl,
+          expiresAt: expiresAt.toISOString(),
+          holdingFee: 50000,
+          bookingDetails: {
+            code: tempId,
+            vehicle: {
+              brand: vehicle.brand,
+              model: vehicle.model,
+              color: vehicle.color,
+              licensePlate: vehicle.license_plate
+            },
+            station: {
+              name: vehicle.station_id.name,
+              address: vehicle.station_id.address,
+              phone: vehicle.station_id.phone
+            },
+            dates: {
+              startDate: bookingData.startDate,
+              endDate: bookingData.endDate,
+              totalDays: bookingData.totalDays
+            },
+            pricing: {
+              totalPrice: bookingData.totalPrice,
+              depositAmount: bookingData.depositAmount,
+              holdingFee: 50000
+            }
+          }
         }
       };
       
     } catch (error) {
-      console.error('❌ Error creating booking:', error);
+      console.error('❌ Error in confirmBooking (chatbot):', error);
       return {
         success: false,
         message: 'Không thể tạo booking. Vui lòng thử lại sau hoặc liên hệ hỗ trợ.',
@@ -410,7 +472,7 @@ class BookingHandler {
           is_active: true
         };
         
-        // ✅ NẾU user đã chọn trạm cụ thể → CHỈ tìm trong trạm đó
+        //  NẾU user đã chọn trạm cụ thể → CHỈ tìm trong trạm đó
         if (stationId) {
           sameModelQuery.station_id = stationId;
         }
@@ -440,7 +502,7 @@ class BookingHandler {
           is_active: true
         };
         
-        // ✅ NẾU user đã chọn trạm cụ thể → CHỈ tìm trong trạm đó
+        //  NẾU user đã chọn trạm cụ thể → CHỈ tìm trong trạm đó
         if (stationId) {
           sameColorQuery.station_id = stationId;
         }

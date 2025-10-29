@@ -737,28 +737,47 @@ Hiện tại: ${currentTime} | Hoạt động: 24/7
 
 === 📋 QUY TRÌNH THUÊ XE (THAM KHẢO) ===
 **Bước 1: Đặt xe** 
-• Qua ứng dụng chính thức hoặc đến trực tiếp trạm
+• Qua ứng dụng/website chính thức hoặc chatbot AI
 • Chọn xe, trạm, thời gian thuê
-• Hệ thống tạo booking với mã đặt xe
+• Hệ thống tạo booking tạm với mã đặt chỗ
 
-**Bước 2: Xác thực KYC (bắt buộc)**
+**Bước 2: Thanh toán phí giữ chỗ 💳**
+• **PHÍ GIỮ CHỖ: 50,000 VND** (bắt buộc cho booking online)
+• Thanh toán qua VNPay trong vòng **15 phút**
+• Phí này **KHÔNG HOÀN LẠI** nếu bạn hủy booking
+• Phí giữ chỗ sẽ được **TRỪ VÀO TỔNG TIỀN** thuê xe
+• ⏰ Nếu không thanh toán trong 15 phút, booking sẽ tự động hủy
+
+**Bước 3: Xác nhận booking**
+• Sau khi thanh toán phí giữ chỗ thành công
+• Hệ thống tạo booking chính thức với mã booking
+• Nhận email xác nhận chi tiết
+• Staff sẽ xác nhận booking trong vòng 1-2 giờ
+
+**Bước 4: Xác thực KYC (bắt buộc)**
 • Upload: CCCD/CMND + selfie cầm CCCD
 • Thời gian duyệt: 1-2 giờ
 • Chỉ khi KYC approved mới được nhận xe
 
-**Bước 3: Nhận xe tại trạm**
+**Bước 5: Nhận xe tại trạm**
 • Đến đúng giờ hẹn, mang CCCD gốc
 • Nhân viên kiểm tra booking và KYC
-• Ký hợp đồng, thanh toán theo quy định
+• Ký hợp đồng, thanh toán theo quy định:
+  - Thuê <3 ngày: Thanh toán full 100% (đã trừ phí giữ chỗ 50k)
+  - Thuê ≥3 ngày: Cọc 50%, trả 50% khi trả xe (đã trừ phí giữ chỗ 50k)
 • Nhận xe và bắt đầu sử dụng
 
-**Bước 4: Trả xe**
+**Bước 6: Trả xe**
 • Đúng thời hạn tại trạm đã chọn
 • Nhân viên kiểm tra tình trạng xe
 • Thanh toán phần còn lại (nếu có)
 • Nhận lại cọc (trừ phí phát sinh)
 
-⚠️ **LƯU Ý:** Để thực hiện các bước trên, vui lòng sử dụng ứng dụng chính thức hoặc đến trực tiếp trạm.
+⚠️ **LƯU Ý QUAN TRỌNG:**
+• Phí giữ chỗ 50k KHÔNG được hoàn lại nếu hủy booking
+• Chỉ được chỉnh sửa booking 1 lần (sau đó phải hủy và đặt lại)
+• Hủy booking mất phí giữ chỗ 50k đã thanh toán
+• Để thực hiện đặt xe, vui lòng dùng app/web chính thức hoặc chatbot AI
 
 === 🚗 TRẠNG THÁI XE ===
 • 'có sẵn': Sẵn sàng cho thuê
@@ -961,9 +980,11 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ nhân viên trạm (Sta
    - Hỗ trợ khách cài app nếu cần
 
 **Quy trình thu tiền:**
-- Thuê <3 ngày: Thu 100% khi giao xe
-- Thuê ≥3 ngày: Thu cọc 50% khi giao xe, 50% khi trả xe
+- **PHÍ GIỮ CHỖ:** Khách đã thanh toán 50,000 VND online (KHÔNG hoàn lại nếu hủy)
+- Thuê <3 ngày: Thu 100% khi giao xe (ĐÃ TRỪ phí giữ chỗ 50k)
+- Thuê ≥3 ngày: Thu cọc 50% khi giao xe, 50% khi trả xe (ĐÃ TRỪ phí giữ chỗ 50k)
 - Phí phạt: Thu ngay khi trả xe (tiền mặt hoặc VNPay)
+- ⚠️ **LƯU Ý:** Số tiền cần thu ĐÃ ĐƯỢC TRỪ 50k phí giữ chỗ (khách đã thanh toán trước)
 
 === HỢP ĐỒNG VÀ GIẤY TỜ ===
 **Quy trình ký hợp đồng:**
@@ -1128,6 +1149,20 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ Admin.
 - TỔNG: ${totalRevenue.toLocaleString('vi-VN')} VND
 - Tỷ lệ phí phạt: ${totalRevenue > 0 ? ((totalPenaltyRevenue / totalRevenue) * 100).toFixed(1) : 0}%
 
+=== CHÍNH SÁCH BOOKING ===
+**PHÍ GIỮ CHỖ (Holding Fee):**
+- Mức phí: 50,000 VND/booking online (bắt buộc)
+- Thời hạn thanh toán: 15 phút sau khi đặt xe
+- Chính sách: KHÔNG hoàn lại nếu khách hủy booking
+- Xử lý: Phí được TRỪ VÀO tổng tiền thuê xe khi nhận xe
+- Hệ quả: Booking không thanh toán phí giữ chỗ sẽ tự động hủy sau 15 phút
+
+**MỤC ĐÍCH:**
+- Giảm booking ảo (fake bookings)
+- Đảm bảo khách hàng nghiêm túc
+- Tạo commitment từ khách hàng
+- Bảo vệ doanh thu và tài nguyên xe
+
 === THỐNG KÊ XE ĐƯỢC THUÊ ===
 ${vehicleStats?.length > 0 ? 
   vehicleStats.slice(0, 5).map((stat, index) => {
@@ -1227,12 +1262,15 @@ CHÍNH SÁCH THANH TOÁN:
 - Thuê từ 3 ngày trở lên: Cọc 50% khi nhận xe, 50% còn lại khi trả xe
 
 QUY TRÌNH THUÊ XE:
-1. Đặt xe qua app (chọn trạm, xe, thời gian)
-2. Hoàn tất KYC nếu chưa xác thực
-3. Đến trạm nhận xe theo lịch hẹn
-4. Kiểm tra xe và ký hợp đồng
-5. Thanh toán (100% nếu dưới 3 ngày, 50% nếu từ 3 ngày trở lên)
-6. Trả xe đúng hạn tại trạm đã chọn
+1. Đặt xe qua app/web/chatbot (chọn trạm, xe, thời gian)
+2. **Thanh toán phí giữ chỗ 50,000đ qua VNPay trong 15 phút** (KHÔNG hoàn lại nếu hủy)
+3. Nhận email xác nhận booking, phí giữ chỗ sẽ được TRỪ VÀO tổng tiền
+4. Hoàn tất KYC nếu chưa xác thực (CCCD + selfie)
+5. Đến trạm nhận xe theo lịch hẹn, mang CCCD gốc
+6. Kiểm tra xe, ký hợp đồng và thanh toán:
+   - Thuê <3 ngày: Thanh toán full 100% (đã trừ phí giữ chỗ 50k)
+   - Thuê ≥3 ngày: Cọc 50%, trả 50% khi trả xe (đã trừ phí giữ chỗ 50k)
+7. Trả xe đúng hạn tại trạm đã chọn
 
 CÂU HỎI: ${message}
 
