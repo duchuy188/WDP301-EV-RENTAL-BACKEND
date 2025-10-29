@@ -95,11 +95,6 @@ const userStatsSchema = new mongoose.Schema({
   }],
   total_violations: { type: Number, default: 0 },
   last_violation_date: { type: Date, default: null },
-  risk_notes: [{ 
-    note: String, 
-    added_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    added_at: { type: Date, default: Date.now }
-  }],
   
   // Metadata
   last_updated: { 

@@ -18,8 +18,16 @@ const kycSchema = new mongoose.Schema({
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approvedAt: { type: Date },
   verificationMethod: { type: String, enum: ['auto', 'manual', ''], default: '' },
-  autoApproved: { type: Boolean, default: false },
   lastUpdatedAt: { type: Date },
+  
+  
+  validationScore: { type: Number, default: 0 },
+  nameComparison: { type: Object, default: null },
+  validationNotes: { type: String, default: '' },
+  
+
+  uploadedByStaff: { type: Boolean, default: false },
+  staffUploader: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   
   // CMND/CCCD
   identityCard: { 
