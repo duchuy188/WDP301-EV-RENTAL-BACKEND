@@ -26,9 +26,9 @@ class ContractService {
       let exists = true;
       
       while (exists) {
-        // Tạo code ngẫu nhiên: CT + 8 ký tự
-        const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
-        code = `CT${randomPart}`;
+        // Tạo code ngẫu nhiên: EVRC + 6 ký tự
+        const randomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
+        code = `EVRCT${randomPart}`;
         
         const Contract = require('../models/Contract');
         exists = await Contract.findOne({ code });
@@ -49,16 +49,42 @@ class ContractService {
    */
   static async renderContractTemplate(template, data) {
     try {
-      // Compile template với Handlebars
-      const compiledTemplate = handlebars.compile(template);
+      // Register Handlebars helpers
+      handlebars.registerHelper('and', function(a, b) {
+        return a && b;
+      });
       
-      // Render với data
-      const renderedHTML = compiledTemplate(data);
+      // Sanitize data để tránh break HTML
+      const sanitizedData = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (typeof value === 'string') {
+          // Escape các ký tự đặc biệt HTML
+          sanitizedData[key] = value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        } else {
+          sanitizedData[key] = value;
+        }
+      }
+      
+      // Compile template với Handlebars
+      const compiledTemplate = handlebars.compile(template, {
+        noEscape: false, // Enable HTML escaping
+        strict: false     // Allow undefined variables
+      });
+      
+      // Render với sanitized data
+      const renderedHTML = compiledTemplate(sanitizedData);
       
       return renderedHTML;
     } catch (error) {
       console.error('Lỗi khi render template:', error);
-      throw new Error('Không thể render contract template');
+      console.error('Template:', template?.substring(0, 200));
+      console.error('Data keys:', Object.keys(data));
+      throw new Error(`Không thể render contract template: ${error.message}`);
     }
   }
 
@@ -132,7 +158,7 @@ class ContractService {
         pdfData = await page.pdf({
           format: 'A4',
           printBackground: true,
-          preferCSSPageSize: false, // Thay đổi thành false
+          preferCSSPageSize: false,
           displayHeaderFooter: false,
           margin: {
             top: '20mm',
@@ -140,7 +166,11 @@ class ContractService {
             bottom: '20mm',
             left: '15mm'
           },
-          timeout: 60000 // Thêm timeout cho PDF generation
+          timeout: 60000,
+          // Thêm options để Gmail-friendly
+          omitBackground: false,
+          tagged: false, // Disable PDF/UA tagging
+          outline: false // Disable bookmarks
         });
         console.log('PDF generation completed');
       } catch (pdfError) {
@@ -337,79 +367,8 @@ class ContractService {
         </div>
 
         <div class="content">
-            <div class="section">
-                <div class="section-title">Thông tin khách hàng</div>
-                <table class="info-table">
-                    <tr>
-                        <td class="label">Họ và tên:</td>
-                        <td>${contract.user_id.fullname}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Email:</td>
-                        <td>${contract.user_id.email}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Số điện thoại:</td>
-                        <td>${contract.user_id.phone || 'N/A'}</td>
-                    </tr>
-                </table>
-            </div>
-
-            <div class="section">
-                <div class="section-title">Thông tin xe</div>
-                <table class="info-table">
-                    <tr>
-                        <td class="label">Tên xe:</td>
-                        <td>${contract.vehicle_id.name}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Biển số:</td>
-                        <td>${contract.vehicle_id.license_plate}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Model:</td>
-                        <td>${contract.vehicle_id.model}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Màu sắc:</td>
-                        <td>${contract.vehicle_id.color}</td>
-                    </tr>
-                </table>
-            </div>
-
-            <div class="section">
-                <div class="section-title">Thông tin thuê</div>
-                <table class="info-table">
-                    <tr>
-                        <td class="label">Điểm thuê:</td>
-                        <td>${contract.station_id.name}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Địa chỉ:</td>
-                        <td>${contract.station_id.address}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Ngày bắt đầu:</td>
-                        <td>${formatDate(contract.valid_from)}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Ngày kết thúc:</td>
-                        <td>${formatDate(contract.valid_until)}</td>
-                    </tr>
-                </table>
-            </div>
-
-            ${contract.special_conditions ? `
-            <div class="section">
-                <div class="section-title">Điều kiện đặc biệt</div>
-                <p>${contract.special_conditions}</p>
-            </div>
-            ` : ''}
-
-            <div class="section">
-                <div class="section-title">Nội dung hợp đồng</div>
-                <div class="content">${contract.content}</div>
-            </div>
+            <!-- Tất cả content được xử lý trong template -->
+            ${contract.content || ''}
         </div>
 
         <div class="signature-section">
@@ -419,7 +378,7 @@ class ContractService {
                   `<img src="data:image/png;base64,${contract.customer_signature}" style="max-width: 200px; max-height: 100px; border: 1px solid #ddd;" />` : 
                   '<div class="signature-line"></div>'
                 }
-                <div>${contract.user_id.fullname}</div>
+                <div>${contract.user_id?.fullname || 'Khách hàng'}</div>
                 ${contract.customer_signed_at ? `<div>Ký ngày: ${formatDateTime(contract.customer_signed_at)}</div>` : ''}
             </div>
             <div class="signature-box">
@@ -428,7 +387,7 @@ class ContractService {
                   `<img src="data:image/png;base64,${contract.staff_signature}" style="max-width: 200px; max-height: 100px; border: 1px solid #ddd;" />` : 
                   '<div class="signature-line"></div>'
                 }
-                <div>${contract.staff_signed_by ? contract.staff_signed_by.fullname : 'Chưa ký'}</div>
+                <div>${contract.staff_signed_by?.fullname || 'Chưa ký'}</div>
                 ${contract.staff_signed_at ? `<div>Ký ngày: ${formatDateTime(contract.staff_signed_at)}</div>` : ''}
             </div>
         </div>
@@ -582,7 +541,11 @@ class ContractService {
         _id: contract.customer_signed_by._id,
         fullname: contract.customer_signed_by.fullname,
         email: contract.customer_signed_by.email
-      } : null
+      } : null,
+      
+     
+      staff_signature: contract.staff_signature || null,
+      customer_signature: contract.customer_signature || null
     };
   }
 
@@ -595,8 +558,7 @@ class ContractService {
     const statusMap = {
       'pending': 'Chờ ký',
       'signed': 'Đã ký',
-      'cancelled': 'Đã hủy',
-      'expired': 'Hết hạn'
+      'cancelled': 'Đã hủy'
     };
     return statusMap[status] || status;
   }

@@ -19,6 +19,11 @@ const bookingRoutes = require('./routes/booking.routes');
 const paymentRoutes = require('./routes/payment.routes');
 const contractRoutes = require('./routes/contract.routes');
 const rentalRoutes = require('./routes/rental.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
+const maintenanceRoutes = require('./routes/maintenance.routes');
+const feedbackRoutes = require('./routes/feedback.routes');
+const aiRoutes = require('./routes/ai.routes');
+const chatbotRoutes = require('./routes/chatbot.routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000; 
@@ -38,7 +43,8 @@ const allowedOrigins = [
   'http://localhost:5000',
   'http://127.0.0.1:5000',
   'http://localhost:5173',
-  'http://localhost:5174'
+  'http://localhost:5174',
+  'http://localhost:5175' 
 ];
 
 app.use(cors({
@@ -81,6 +87,11 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/contracts', contractRoutes);
 app.use('/api/rentals', rentalRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // Định nghĩa một route cơ bản
 app.get('/', (req, res) => {

@@ -54,7 +54,7 @@
  *     # Status Enums
  *     UserStatus:
  *       type: string
- *       enum: [active, suspended, blocked]
+ *       enum: [active, suspended]
  *       description: Trạng thái tài khoản người dùng
  *       example: "active"
  *
@@ -72,19 +72,19 @@
  *
  *     VehicleStatus:
  *       type: string
- *       enum: [available, rented, maintenance]
+ *       enum: [available, reserved, rented, maintenance]
  *       description: Trạng thái xe
  *       example: "available"
  *
  *     BookingStatus:
  *       type: string
- *       enum: [pending, confirmed, in_progress, completed, cancelled]
+ *       enum: [pending, confirmed, completed, cancelled]
  *       description: Trạng thái đặt xe
  *       example: "confirmed"
  *
  *     RentalStatus:
  *       type: string
- *       enum: [active, in_progress, completed, cancelled]
+ *       enum: [pending_deposit, active, pending_payment, completed]
  *       description: Trạng thái thuê xe
  *       example: "active"
  */

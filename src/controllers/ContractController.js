@@ -15,8 +15,10 @@ const Booking = require('../models/Booking');
 const User = require('../models/User');
 const Vehicle = require('../models/Vehicle');
 const Station = require('../models/Station');
+const Payment = require('../models/Payment');
 const ContractService = require('../services/ContractService');
 const nodemailer = require('../config/nodemailer');
+const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 
 // Gửi email hợp đồng cho customer
 const sendContractEmail = async (contract) => {
@@ -38,7 +40,7 @@ const sendContractEmail = async (contract) => {
 
     // Sử dụng template từ nodemailer
     const emailContent = nodemailer.getContractSignedTemplate({
-      ...contract.toObject(), // ✅ Convert Mongoose document to plain object
+      ...contract.toObject(), //  Convert Mongoose document to plain object
       pdfBuffer: pdfBuffer
     });
 
@@ -54,10 +56,10 @@ const sendContractEmail = async (contract) => {
       }]
     });
 
-    console.log(`✅ Đã gửi email hợp đồng cho ${contract.user_id.email}`);
+    console.log(` Đã gửi email hợp đồng cho ${contract.user_id.email}`);
     
   } catch (error) {
-    console.error('❌ Lỗi khi gửi email hợp đồng:', error);
+    console.error(' Lỗi khi gửi email hợp đồng:', error);
     // Không throw error để không ảnh hưởng đến flow chính
   }
 };
@@ -88,14 +90,36 @@ const createContract = async (req, res) => {
 
     // Tìm rental
     const rental = await Rental.findById(rental_id)
-      .populate('booking_id', 'code start_date end_date user_id vehicle_id station_id')
+      .populate('booking_id', 'code start_date end_date user_id vehicle_id station_id total_price deposit_amount price_per_day total_days')
       .populate('user_id', 'fullname email phone')
       .populate('vehicle_id', 'name license_plate model color')
       .populate('station_id', 'name address');
 
+    // Lấy thông tin payment - Tìm cả rental_id và booking_id
+    const payments = await Payment.find({ 
+      $or: [
+        { rental_id: rental_id },
+        { booking_id: rental.booking_id._id }
+      ],
+      is_active: true 
+    }).sort({ createdAt: -1 });
+
+    // Phân loại payments
+    const depositPayment = payments.find(p => p.payment_type === 'deposit');
+    const rentalFeePayment = payments.find(p => p.payment_type === 'rental_fee');
+    const additionalFeePayments = payments.filter(p => p.payment_type === 'additional_fee');
+
     if (!rental) {
       return res.status(404).json({ 
         message: 'Không tìm thấy rental' 
+      });
+    }
+
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        rental.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền tạo contract cho rental này' 
       });
     }
 
@@ -106,15 +130,27 @@ const createContract = async (req, res) => {
       });
     }
 
-    // Kiểm tra contract đã tồn tại
+    // Kiểm tra contract đã tồn tại (trừ cancelled)
     const existingContract = await Contract.findOne({ 
       rental_id: rental_id,
-      is_active: true 
+      is_active: true,
+      status: { $ne: 'cancelled' }  // 
     });
 
     if (existingContract) {
       return res.status(400).json({ 
-        message: 'Contract đã tồn tại cho rental này' 
+        message: `Contract đã tồn tại cho rental này với trạng thái: ${existingContract.status}` 
+      });
+    }
+
+    // YÊU CẦU: Phải có ít nhất một payment (deposit hoặc rental_fee) đã completed trước khi tạo contract
+    const hasCompletedPayment = payments.some(p => 
+      ['deposit', 'rental_fee'].includes(p.payment_type) && p.status === 'completed'
+    );
+
+    if (!hasCompletedPayment) {
+      return res.status(400).json({
+        message: 'Vui lòng hoàn tất thanh toán (cọc hoặc phí thuê) trước khi tạo hợp đồng'
       });
     }
 
@@ -146,12 +182,67 @@ const createContract = async (req, res) => {
       vehicle_color: rental.vehicle_id.color,
       station_name: rental.station_id.name,
       station_address: rental.station_id.address,
-      start_date: rental.booking_id.start_date,
-      end_date: rental.booking_id.end_date,
+      start_date: formatVietnamTime(rental.booking_id.start_date, 'DD/MM/YYYY'),
+      end_date: formatVietnamTime(rental.booking_id.end_date, 'DD/MM/YYYY'),
+      start_time: rental.booking_id.pickup_time || '08:00',
+      end_time: rental.booking_id.return_time || '18:00',
       contract_code: contractCode,
-      created_date: new Date(),
+      created_date: formatVietnamTime(new Date(), 'DD/MM/YYYY'),
       special_conditions: special_conditions || '',
-      notes: notes || ''
+      notes: notes || '',
+      
+      // Thông tin giá từ booking
+      price_per_day: rental.booking_id.price_per_day?.toLocaleString('vi-VN') || '0',
+      total_days: rental.booking_id.total_days || 0,
+      total_price: rental.booking_id.total_price?.toLocaleString('vi-VN') || '0',
+      deposit_amount: rental.booking_id.deposit_amount?.toLocaleString('vi-VN') || '0',
+      
+      // Thông tin thanh toán - Business logic dựa trên total_days
+      has_deposit: rental.booking_id.total_days >= 3 && rental.booking_id.deposit_amount > 0,
+      remaining_amount: rental.booking_id.total_days >= 3 ? 
+        (rental.booking_id.total_price - rental.booking_id.deposit_amount).toLocaleString('vi-VN') : 
+        '0',
+      
+      // Helper function để convert payment method sang tiếng Việt
+      payment_method_vn: (method) => {
+        const methodMap = {
+          'cash': 'Tiền mặt',
+          'vnpay': 'VNPay',
+      
+        };
+        return methodMap[method] || method;
+      },
+      
+      // Deposit info chỉ hiện khi >= 3 ngày  
+      deposit_paid: rental.booking_id.total_days >= 3 ? 
+        (depositPayment && depositPayment.status === 'completed' ? 'Đã thanh toán' : 'Chưa thanh toán') : 
+        'Không cần cọc',
+      deposit_payment_status: rental.booking_id.total_days >= 3 ? (depositPayment?.status || 'none') : 'none',
+      deposit_payment_method: rental.booking_id.total_days >= 3 ? 
+        (depositPayment?.payment_method ? 
+          (['cash', 'vnpay', 'qr_code', 'bank_transfer'].includes(depositPayment.payment_method) ? 
+            {'cash': 'Tiền mặt', 'vnpay': 'VNPay', 'qr_code': 'QR Code', 'bank_transfer': 'Chuyển khoản'}[depositPayment.payment_method] : 
+            depositPayment.payment_method) : 
+          '') : 
+        '',
+      deposit_payment_date: rental.booking_id.total_days >= 3 ? (depositPayment?.completed_at ? formatVietnamTime(depositPayment.completed_at, 'DD/MM/YYYY HH:mm') : '') : '',
+      
+      // Rental fee info khác nhau theo total_days
+      rental_fee_paid: rental.booking_id.total_days >= 3 ? 
+        (rentalFeePayment && rentalFeePayment.status === 'completed' ? 'Đã thanh toán' : 'Chưa thanh toán') : 
+        'Đã thanh toán', // Thuê < 3 ngày đã trả đầy đủ khi nhận xe
+      rental_fee_payment_status: rental.booking_id.total_days >= 3 ? (rentalFeePayment?.status || 'none') : 'completed',
+      rental_fee_payment_method: rental.booking_id.total_days >= 3 ? 
+        (rentalFeePayment?.payment_method ? 
+          (['cash', 'vnpay', 'qr_code', 'bank_transfer'].includes(rentalFeePayment.payment_method) ? 
+            {'cash': 'Tiền mặt', 'vnpay': 'VNPay', 'qr_code': 'QR Code', 'bank_transfer': 'Chuyển khoản'}[rentalFeePayment.payment_method] : 
+            rentalFeePayment.payment_method) : 
+          '') : 
+        'Tiền mặt',
+      rental_fee_payment_date: rental.booking_id.total_days >= 3 ? (rentalFeePayment?.completed_at ? formatVietnamTime(rentalFeePayment.completed_at, 'DD/MM/YYYY HH:mm') : '') : '',
+      
+      additional_fees_count: additionalFeePayments.length,
+      additional_fees_total: additionalFeePayments.reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString('vi-VN')
     };
 
     const renderedContent = await ContractService.renderContractTemplate(template.content_template, contractData);
@@ -179,6 +270,13 @@ const createContract = async (req, res) => {
     // Populate contract data
     const populatedContract = await Contract.findById(contract._id)
       .populate('rental_id', 'code status')
+      .populate({
+        path: 'rental_id',
+        populate: {
+          path: 'booking_id',
+          select: 'total_price deposit_amount price_per_day total_days'
+        }
+      })
       .populate('user_id', 'fullname email phone')
       .populate('vehicle_id', 'name license_plate model')
       .populate('station_id', 'name address')
@@ -187,8 +285,11 @@ const createContract = async (req, res) => {
       .populate('created_by', 'fullname email');
 
     return res.status(201).json({
+      success: true,
       message: 'Tạo contract thành công',
-      contract: ContractService.formatContractResponse(populatedContract)
+      data: {
+        contract: ContractService.formatContractResponse(populatedContract)
+      }
     });
 
   } catch (error) {
@@ -203,7 +304,14 @@ const getContractDetails = async (req, res) => {
     const { id } = req.params;
 
     const contract = await Contract.findById(id)
-      .populate('rental_id', 'code status')
+      .populate({
+        path: 'rental_id',
+        select: 'code status booking_id',
+        populate: {
+          path: 'booking_id',
+          select: 'code start_date end_date pickup_time return_time total_price deposit_amount price_per_day total_days user_id vehicle_id station_id'
+        }
+      })
       .populate('user_id', 'fullname email phone')
       .populate('vehicle_id', 'name license_plate model color')
       .populate('station_id', 'name address')
@@ -227,9 +335,55 @@ const getContractDetails = async (req, res) => {
       });
     }
 
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền xem contract này' 
+      });
+    }
+
+    const payments = await Payment.find({ 
+      $or: [
+        { rental_id: contract.rental_id._id },
+        { booking_id: contract.rental_id.booking_id?._id }
+      ],
+      is_active: true 
+    }).sort({ createdAt: -1 });
+
+    
+    const contractResponse = ContractService.formatContractResponse(contract);
+    
+    // Bổ sung thông tin booking từ rental
+    if (contract.rental_id && contract.rental_id.booking_id) {
+      contractResponse.rental_details = {
+        rental_code: contract.rental_id.code,
+        rental_status: contract.rental_id.status,
+        booking_code: contract.rental_id.booking_id.code,
+        start_date: contract.rental_id.booking_id.start_date,
+        end_date: contract.rental_id.booking_id.end_date,
+        pickup_time: contract.rental_id.booking_id.pickup_time,
+        return_time: contract.rental_id.booking_id.return_time,
+        total_days: contract.rental_id.booking_id.total_days,
+        price_per_day: contract.rental_id.booking_id.price_per_day,
+        total_price: contract.rental_id.booking_id.total_price,
+        deposit_amount: contract.rental_id.booking_id.deposit_amount
+      };
+    }
+
+    // Bổ sung thông tin payment
+    contractResponse.payment_summary = {
+      deposit_payment: payments.find(p => p.payment_type === 'deposit') || null,
+      rental_fee_payment: payments.find(p => p.payment_type === 'rental_fee') || null,
+      additional_fee_payments: payments.filter(p => p.payment_type === 'additional_fee') || []
+    };
+
     return res.status(200).json({
+      success: true,
       message: 'Lấy chi tiết contract thành công',
-      contract: ContractService.formatContractResponse(contract)
+      data: {
+        contract: contractResponse
+      }
     });
 
   } catch (error) {
@@ -256,7 +410,7 @@ const signContract = async (req, res) => {
       });
     }
 
-    // ✅ CLEAN BASE64 SIGNATURE
+    //  CLEAN BASE64 SIGNATURE
     try {
       // Loại bỏ data:image/png;base64, prefix
       if (signature.includes(',')) {
@@ -289,11 +443,20 @@ const signContract = async (req, res) => {
     }
 
     const contract = await Contract.findById(id)
-      .populate('user_id', 'fullname email');
+      .populate('user_id', 'fullname email')
+      .populate('station_id', 'name address');
 
     if (!contract) {
       return res.status(404).json({ 
         message: 'Không tìm thấy contract' 
+      });
+    }
+
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền ký contract này' 
       });
     }
 
@@ -306,12 +469,19 @@ const signContract = async (req, res) => {
       }
       
       contract.staff_signature = signature;
-      contract.staff_signed_at = new Date();
+      contract.staff_signed_at = nowVietnam().toDate();
       contract.staff_signed_by = req.user._id;
       
     } else if (signature_type === 'customer') {
-    
-      if (req.user.role === 'Customer' && 
+      // Cho phép Station Staff và EV Renter ký customer signature
+      if (req.user.role !== 'Station Staff' && req.user.role !== 'EV Renter') {
+        return res.status(403).json({ 
+          message: 'Chỉ nhân viên station hoặc khách hàng mới có thể ký customer signature' 
+        });
+      }
+      
+      
+      if (req.user.role === 'EV Renter' && 
           contract.user_id._id.toString() !== req.user._id.toString()) {
         return res.status(403).json({ 
           message: 'Bạn không có quyền ký contract này' 
@@ -319,25 +489,29 @@ const signContract = async (req, res) => {
       }
       
       contract.customer_signature = signature;
-      contract.customer_signed_at = new Date();
+      contract.customer_signed_at = nowVietnam().toDate();
       contract.customer_signed_by = req.user._id;
     }
 
+   
+    await contract.save();
+    
     // Cập nhật status
     if (contract.staff_signature && contract.customer_signature) {
       contract.status = 'signed';
+      await contract.save(); // Save lần nữa để update status
       
-      // ✅ AUTO GỬI EMAIL KHI CÓ ĐỦ 2 CHỮ KÝ
-      // Populate contract trước khi gửi email
+     
+      // Populate contract SAU KHI ĐÃ SAVE để có đầy đủ data!
       const populatedContractForEmail = await Contract.findById(contract._id)
         .populate('user_id', 'fullname email phone')
-        .populate('vehicle_id', 'name license_plate model')
-        .populate('station_id', 'name address');
+        .populate('vehicle_id', 'name license_plate model color')
+        .populate('station_id', 'name address')
+        .populate('staff_signed_by', 'fullname email')
+        .populate('customer_signed_by', 'fullname email');
       
       await sendContractEmail(populatedContractForEmail);
     }
-
-    await contract.save();
 
     // Populate contract data
     const populatedContract = await Contract.findById(contract._id)
@@ -351,8 +525,11 @@ const signContract = async (req, res) => {
       .populate('created_by', 'fullname email');
 
     return res.status(200).json({
+      success: true,
       message: 'Ký contract thành công',
-      contract: ContractService.formatContractResponse(populatedContract)
+      data: {
+        contract: ContractService.formatContractResponse(populatedContract)
+      }
     });
 
   } catch (error) {
@@ -368,6 +545,13 @@ const generateContractPDF = async (req, res) => {
 
     const contract = await Contract.findById(id)
       .populate('rental_id', 'code status')
+      .populate({
+        path: 'rental_id',
+        populate: {
+          path: 'booking_id',
+          select: 'total_price deposit_amount price_per_day total_days'
+        }
+      })
       .populate('user_id', 'fullname email phone')
       .populate('vehicle_id', 'name license_plate model color')
       .populate('station_id', 'name address')
@@ -385,6 +569,14 @@ const generateContractPDF = async (req, res) => {
     if (req.user.role !== 'Admin' && 
         req.user.role !== 'Station Staff' && 
         contract.user_id._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền xem contract này' 
+      });
+    }
+
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
       return res.status(403).json({ 
         message: 'Bạn không có quyền xem contract này' 
       });
@@ -414,8 +606,11 @@ const generateContractPDF = async (req, res) => {
       
       // Fallback: return contract data without PDF
       return res.status(200).json({
+        success: false,
         message: 'Contract found, nhưng không thể tạo PDF',
-        contract: ContractService.formatContractResponse(contract),
+        data: {
+          contract: ContractService.formatContractResponse(contract)
+        },
         error: 'PDF generation failed'
       });
     }
@@ -458,8 +653,8 @@ const getContracts = async (req, res) => {
       query.station_id = req.user.stationId;
     }
 
-    // Customer chỉ xem contracts của mình
-    if (req.user.role === 'Customer') {
+    
+    if (req.user.role === 'EV Renter') {
       query.user_id = req.user._id;
     }
 
@@ -490,13 +685,16 @@ const getContracts = async (req, res) => {
     );
 
     return res.status(200).json({
+      success: true,
       message: 'Lấy danh sách contracts thành công',
-      contracts: formattedContracts,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
+      data: {
+        contracts: formattedContracts,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(total / parseInt(limit))
+        }
       }
     });
 
@@ -519,11 +717,20 @@ const cancelContract = async (req, res) => {
       });
     }
 
-    const contract = await Contract.findById(id);
+    const contract = await Contract.findById(id)
+      .populate('station_id', 'name address');
 
     if (!contract) {
       return res.status(404).json({ 
         message: 'Không tìm thấy contract' 
+      });
+    }
+
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền hủy contract này' 
       });
     }
 
@@ -533,13 +740,23 @@ const cancelContract = async (req, res) => {
       });
     }
 
+    // ✅ THÊM CHECK: Không cho cancel contract đã ký
+    if (contract.status === 'signed') {
+      return res.status(400).json({ 
+        message: 'Không thể hủy contract đã được ký' 
+      });
+    }
+
     contract.status = 'cancelled';
     contract.notes = contract.notes + `\nHủy contract: ${reason || 'Không có lý do'}`;
     await contract.save();
 
     return res.status(200).json({
+      success: true,
       message: 'Hủy contract thành công',
-      contract: ContractService.formatContractResponse(contract)
+      data: {
+        contract: ContractService.formatContractResponse(contract)
+      }
     });
 
   } catch (error) {
@@ -573,6 +790,14 @@ const getContractView = async (req, res) => {
     if (req.user.role !== 'Admin' && 
         req.user.role !== 'Station Staff' && 
         contract.user_id._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ 
+        message: 'Bạn không có quyền xem contract này' 
+      });
+    }
+
+    // Kiểm tra station cho Station Staff
+    if (req.user.role === 'Station Staff' && req.user.stationId &&
+        contract.station_id._id.toString() !== req.user.stationId.toString()) {
       return res.status(403).json({ 
         message: 'Bạn không có quyền xem contract này' 
       });

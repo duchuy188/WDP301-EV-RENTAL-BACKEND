@@ -26,6 +26,16 @@ router.get('/status',
   KycController.getMyKycStatus
 );
 
+router.get('/identity-card', 
+  authMiddleware, 
+  KycController.getMyIdentityCard
+);
+
+router.get('/driver-license', 
+  authMiddleware, 
+  KycController.getMyDriverLicense
+);
+
 // Routes cho nhân viên
 router.get('/pending', 
   authMiddleware, 
@@ -37,6 +47,48 @@ router.post('/verify',
   authMiddleware, 
   roleMiddleware(['Station Staff', 'Admin']), 
   KycController.verifyKyc
+);
+
+router.get('/users-not-submitted', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff']), 
+  KycController.getUsersNotSubmittedKyc
+);
+
+// Staff upload KYC cho user
+router.post('/staff/identity-card/front', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']),
+  identityCardUpload.single('image'), 
+  KycController.staffUploadIdentityCardFront
+);
+
+router.post('/staff/identity-card/back', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']),
+  identityCardUpload.single('image'), 
+  KycController.staffUploadIdentityCardBack
+);
+
+router.post('/staff/license/front', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']),
+  licenseUpload.single('image'), 
+  KycController.staffUploadDriverLicenseFront
+);
+
+router.post('/staff/license/back', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']),
+  licenseUpload.single('image'), 
+  KycController.staffUploadDriverLicenseBack
+);
+
+// Lấy danh sách KYC đã completed
+router.get('/completed', 
+  authMiddleware, 
+  roleMiddleware(['Station Staff', 'Admin']), 
+  KycController.getCompletedKycRequests
 );
 
 module.exports = router;

@@ -36,8 +36,6 @@ const paymentSchema = new mongoose.Schema({
     type: String, 
     enum: [
       'cash',           // Tiền mặt
-      'qr_code',        // QR Code thanh toán
-      'bank_transfer',  // Chuyển khoản ngân hàng
       'vnpay'           // VNPay online
     ],
     required: true 
@@ -58,10 +56,10 @@ const paymentSchema = new mongoose.Schema({
   payment_type: { 
     type: String, 
     enum: [
-      'deposit',      // Đặt cọc
-      'rental_fee',   // Phí thuê xe
-      'additional_fee', // Phí phát sinh
-      'refund'        // Hoàn tiền
+      'holding_fee',   // Phí giữ chỗ (Online booking)
+      'deposit',       // Đặt cọc
+      'rental_fee',    // Phí thuê xe
+      'additional_fee' // Phí phát sinh
     ],
     required: true 
   },
@@ -87,10 +85,6 @@ const paymentSchema = new mongoose.Schema({
     type: String, 
     default: '' 
   },
-  qr_code_image: { 
-    type: String, 
-    default: '' 
-  },
   
   // VNPay thông tin
   vnpay_url: { 
@@ -106,24 +100,11 @@ const paymentSchema = new mongoose.Schema({
     default: '' 
   },
   
-  // Thông tin hoàn tiền
-  refund_amount: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  refund_reason: { 
-    type: String, 
-    default: '' 
-  },
-  refunded_at: { 
-    type: Date, 
-    default: null 
-  },
-  refunded_by: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User',
-    default: null 
+  
+  // Phân biệt phí phạt
+  is_penalty_fee: { 
+    type: Boolean, 
+    default: false 
   },
   
   // Ghi chú

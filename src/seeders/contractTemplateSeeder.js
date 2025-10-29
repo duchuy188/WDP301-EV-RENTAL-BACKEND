@@ -33,39 +33,160 @@ const createDefaultContractTemplate = async () => {
       
       content_template: `
         <div class="contract-content">
-          <h2>HỢP ĐỒNG THUÊ XE ĐIỆN</h2>
-          
-          <div class="contract-info">
-            <p><strong>Mã hợp đồng:</strong> {{contract_code}}</p>
-            <p><strong>Ngày tạo:</strong> {{created_date}}</p>
+          <!-- THÔNG TIN KHÁCH HÀNG -->
+          <div class="section">
+            <div class="section-title">THÔNG TIN KHÁCH HÀNG</div>
+            <table class="info-table">
+              <tr>
+                <td class="label">Họ và tên:</td>
+                <td>{{customer_name}}</td>
+              </tr>
+              <tr>
+                <td class="label">Email:</td>
+                <td>{{customer_email}}</td>
+              </tr>
+              <tr>
+                <td class="label">Số điện thoại:</td>
+                <td>{{customer_phone}}</td>
+              </tr>
+            </table>
           </div>
 
-          <div class="parties">
-            <h3>BÊN CHO THUÊ (Bên A):</h3>
-            <p><strong>Công ty:</strong> EV Rental Company</p>
-            <p><strong>Địa chỉ:</strong> {{station_address}}</p>
-            <p><strong>Đại diện:</strong> Nhân viên trạm {{station_name}}</p>
+          <!-- THÔNG TIN XE -->
+          <div class="section">
+            <div class="section-title">THÔNG TIN XE</div>
+            <table class="info-table">
+              <tr>
+                <td class="label">Tên xe:</td>
+                <td>{{vehicle_name}}</td>
+              </tr>
+              <tr>
+                <td class="label">Biển số:</td>
+                <td>{{vehicle_license}}</td>
+              </tr>
+              <tr>
+                <td class="label">Model:</td>
+                <td>{{vehicle_model}}</td>
+              </tr>
+              <tr>
+                <td class="label">Màu sắc:</td>
+                <td>{{vehicle_color}}</td>
+              </tr>
+            </table>
           </div>
 
-          <div class="parties">
-            <h3>BÊN THUÊ (Bên B):</h3>
-            <p><strong>Họ và tên:</strong> {{customer_name}}</p>
-            <p><strong>Email:</strong> {{customer_email}}</p>
-            <p><strong>Số điện thoại:</strong> {{customer_phone}}</p>
+          <!-- THỌNG TIN THUÊ -->
+          <div class="section">
+            <div class="section-title">THÔNG TIN THUÊ</div>
+            <table class="info-table">
+              <tr>
+                <td class="label">Điểm thuê:</td>
+                <td>{{station_name}}</td>
+              </tr>
+              <tr>
+                <td class="label">Địa chỉ:</td>
+                <td>{{station_address}}</td>
+              </tr>
+              <tr>
+                <td class="label">Ngày bắt đầu:</td>
+                <td>{{start_date}} lúc {{start_time}}</td>
+              </tr>
+              <tr>
+                <td class="label">Ngày kết thúc:</td>
+                <td>{{end_date}} lúc {{end_time}}</td>
+              </tr>
+            </table>
           </div>
 
-          <div class="vehicle-info">
-            <h3>THÔNG TIN XE:</h3>
-            <p><strong>Tên xe:</strong> {{vehicle_name}}</p>
-            <p><strong>Biển số:</strong> {{vehicle_license}}</p>
-            <p><strong>Model:</strong> {{vehicle_model}}</p>
-            <p><strong>Màu sắc:</strong> {{vehicle_color}}</p>
+          <!-- THÔNG TIN GIÁ -->
+          <div class="section">
+            <div class="section-title">THÔNG TIN GIÁ</div>
+            <table class="info-table">
+              <tr>
+                <td class="label">Giá/ngày:</td>
+                <td>{{price_per_day}} VND</td>
+              </tr>
+              <tr>
+                <td class="label">Số ngày thuê:</td>
+                <td>{{total_days}} ngày</td>
+              </tr>
+              <tr>
+                <td class="label">Tổng tiền:</td>
+                <td>{{total_price}} VND</td>
+              </tr>
+              <tr>
+                <td class="label">Tiền cọc:</td>
+                <td>{{deposit_amount}} VND</td>
+              </tr>
+            </table>
           </div>
 
-          <div class="rental-period">
-            <h3>THỜI GIAN THUÊ:</h3>
-            <p><strong>Từ ngày:</strong> {{start_date}}</p>
-            <p><strong>Đến ngày:</strong> {{end_date}}</p>
+          <!-- THÔNG TIN THANH TOÁN -->
+          <div class="section">
+            <div class="section-title">THÔNG TIN THANH TOÁN</div>
+            <table class="info-table">
+              {{#if has_deposit}}
+              <!-- Thuê từ 3 ngày trở lên: Hiển thị cả cọc và phí thuê -->
+              <tr>
+                <td class="label">Đặt cọc ({{total_days}} ngày):</td>
+                <td>{{deposit_amount}} VND</td>
+              </tr>
+              <tr>
+                <td class="label">Trạng thái cọc:</td>
+                <td>{{deposit_paid}}</td>
+              </tr>
+              {{#if deposit_payment_method}}
+              <tr>
+                <td class="label">Phương thức cọc:</td>
+                <td>{{deposit_payment_method}}</td>
+              </tr>
+              {{/if}}
+              {{#if deposit_payment_date}}
+              <tr>
+                <td class="label">Ngày thanh toán cọc:</td>
+                <td>{{deposit_payment_date}}</td>
+              </tr>
+              {{/if}}
+              
+              <tr>
+                <td class="label">Phí thuê còn lại:</td>
+                <td>{{remaining_amount}} VND</td>
+              </tr>
+              <tr>
+                <td class="label">Trạng thái phí thuê:</td>
+                <td>{{rental_fee_paid}}</td>
+              </tr>
+              {{else}}
+              <!-- Thuê dưới 3 ngày: Chỉ hiển thị phí thuê (đã thanh toán đầy đủ) -->
+              <tr>
+                <td class="label">Phí thuê xe:</td>
+                <td>{{total_price}} VND (Thanh toán đầy đủ khi nhận xe)</td>
+              </tr>
+              <tr>
+                <td class="label">Trạng thái phí thuê:</td>
+                <td>Đã thanh toán</td>
+              </tr>
+              <tr>
+                <td class="label">Phương thức thanh toán:</td>
+                <td>{{rental_fee_payment_method}}</td>
+              </tr>
+              <tr>
+                <td class="label">Ngày thanh toán:</td>
+                <td>{{start_date}}</td>
+              </tr>
+              {{/if}}
+              
+              {{#if additional_fees_count}}
+              <tr>
+                <td class="label">Phí phát sinh:</td>
+                <td>{{additional_fees_total}} VND</td>
+              </tr>
+              <tr>
+                <td class="label">Số loại phí:</td>
+                <td>{{additional_fees_count}}</td>
+              </tr>
+              {{/if}}
+            </table>
           </div>
 
           <div class="special-conditions">
@@ -300,8 +421,74 @@ const createVipContractTemplate = async () => {
 
           <div class="rental-period">
             <h3>THỜI GIAN THUÊ:</h3>
-            <p><strong>Từ ngày:</strong> {{start_date}}</p>
-            <p><strong>Đến ngày:</strong> {{end_date}}</p>
+            <p><strong>Từ ngày:</strong> {{start_date}} lúc {{start_time}}</p>
+            <p><strong>Đến ngày:</strong> {{end_date}} lúc {{end_time}}</p>
+          </div>
+
+          <div class="price-info">
+            <h3>THÔNG TIN GIÁ VIP:</h3>
+            <table class="price-table vip">
+              <tr>
+                <td><strong>Giá/ngày:</strong></td>
+                <td>{{price_per_day}} VND</td>
+              </tr>
+              <tr>
+                <td><strong>Số ngày thuê:</strong></td>
+                <td>{{total_days}} ngày</td>
+              </tr>
+              <tr>
+                <td><strong>Tổng tiền:</strong></td>
+                <td>{{total_price}} VND</td>
+              </tr>
+              <tr>
+                <td><strong>Tiền cọc:</strong></td>
+                <td>{{deposit_amount}} VND</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="payment-info">
+            <h3>THÔNG TIN THANH TOÁN VIP:</h3>
+            <table class="payment-table vip">
+              <tr>
+                <td><strong>Trạng thái cọc:</strong></td>
+                <td>{{deposit_paid}}</td>
+              </tr>
+              {{#if deposit_payment_method}}
+              <tr>
+                <td><strong>Phương thức cọc:</strong></td>
+                <td>{{deposit_payment_method}}</td>
+              </tr>
+              {{/if}}
+              {{#if deposit_payment_date}}
+              <tr>
+                <td><strong>Ngày thanh toán cọc:</strong></td>
+                <td>{{deposit_payment_date}}</td>
+              </tr>
+              {{/if}}
+              <tr>
+                <td><strong>Trạng thái phí thuê:</strong></td>
+                <td>{{rental_fee_paid}}</td>
+              </tr>
+              {{#if rental_fee_payment_method}}
+              <tr>
+                <td><strong>Phương thức thanh toán:</strong></td>
+                <td>{{rental_fee_payment_method}}</td>
+              </tr>
+              {{/if}}
+              {{#if rental_fee_payment_date}}
+              <tr>
+                <td><strong>Ngày thanh toán:</strong></td>
+                <td>{{rental_fee_payment_date}}</td>
+              </tr>
+              {{/if}}
+              {{#if additional_fees_count}}
+              <tr>
+                <td><strong>Phí phụ trội (giảm 50%):</strong></td>
+                <td>{{additional_fees_count}} khoản - {{additional_fees_total}} VND</td>
+              </tr>
+              {{/if}}
+            </table>
           </div>
 
           <div class="vip-benefits">
@@ -515,6 +702,11 @@ const runContractTemplateSeeder = async () => {
     await mongoose.connection.close();
   }
 };
+
+// Tự động chạy nếu file được gọi trực tiếp
+if (require.main === module) {
+  runContractTemplateSeeder();
+}
 
 module.exports = {
   createDefaultContractTemplate,

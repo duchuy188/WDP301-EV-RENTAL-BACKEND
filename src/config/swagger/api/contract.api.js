@@ -3,7 +3,11 @@
  * /api/contracts:
  *   post:
  *     summary: Tạo contract mới
- *     description: Tạo contract từ rental (Staff/Admin only)
+ *     description: |
+ *       Tạo contract từ rental (Staff)
+ *
+ *       Điều kiện tiên quyết:
+ *       - ĐÃ HOÀN TẤT THANH TOÁN: phải có ít nhất một payment loại `deposit` hoặc `rental_fee` ở trạng thái `completed` cho booking/rental này.
  *     tags: [Contracts]
  *     security:
  *       - bearerAuth: []
@@ -53,11 +57,17 @@
  *             schema:
  *               $ref: '#/components/schemas/ContractResponse'
  *       400:
- *         description: Dữ liệu đầu vào không hợp lệ
+ *         description: Dữ liệu đầu vào không hợp lệ hoặc chưa hoàn tất thanh toán
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               payment_not_completed:
+ *                 summary: Chưa hoàn tất thanh toán
+ *                 value:
+ *                   success: false
+ *                   message: 'Vui lòng hoàn tất thanh toán (cọc hoặc phí thuê) trước khi tạo hợp đồng'
  *       403:
  *         description: Không có quyền truy cập
  *         content:
@@ -105,7 +115,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, signed, cancelled, expired]
+ *           enum: [pending, signed, cancelled]
  *         description: Lọc theo trạng thái contract
  *         example: pending
  *       - in: query

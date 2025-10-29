@@ -7,9 +7,10 @@ const {
   getUserPayments,
   getPaymentDetails,
   getAllPayments,
-  refundPayment,
+  updatePaymentMethod,
   handleVNPayCallback,
-  handleVNPayWebhook
+  handleVNPayWebhook,
+  handleHoldingFeeCallback
 } = require('../controllers/PaymentController');
 
 const authenticateToken = require('../middlewares/authMiddleware');
@@ -30,8 +31,9 @@ router.put('/:id/confirm', authenticateToken, requireRole(['Station Staff', 'Adm
 // Hủy payment (Staff/Admin only)
 router.put('/:id/cancel', authenticateToken, requireRole(['Station Staff', 'Admin']), cancelPayment);
 
-// Hoàn tiền (Staff/Admin only)
-router.post('/:id/refund', authenticateToken, requireRole(['Station Staff', 'Admin']), refundPayment);
+
+// Cập nhật phương thức thanh toán (Staff/Admin only)
+router.put('/:id/update-method', authenticateToken, requireRole(['Station Staff', 'Admin']), updatePaymentMethod);
 
 // Lấy danh sách payments của user hiện tại
 router.get('/my-payments', authenticateToken, getUserPayments);
@@ -45,5 +47,8 @@ router.get('/', authenticateToken, requireRole(['Station Staff', 'Admin']), getA
 // ✅ VNPay Routes (KHÔNG cần authentication)
 router.get('/vnpay/callback', handleVNPayCallback);
 router.post('/vnpay/webhook', handleVNPayWebhook);
+
+// ✅ Holding Fee Callback (Online Booking) - KHÔNG cần authentication
+router.get('/holding-fee/callback', handleHoldingFeeCallback);
 
 module.exports = router;

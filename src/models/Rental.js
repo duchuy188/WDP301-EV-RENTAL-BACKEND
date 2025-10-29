@@ -95,10 +95,12 @@ const rentalSchema = new mongoose.Schema({
   status: { 
     type: String, 
     enum: [
-      'active',       // Đang thuê
-      'completed'     // Đã trả xe
+      'pending_deposit',  // Chờ thanh toán tiền cọc
+      'active',           // Đang thuê (đã thanh toán cọc)
+      'pending_payment',  // Đã trả xe, chờ payment
+      'completed'         // Đã trả xe và thanh toán xong
     ], 
-    default: 'active' 
+    default: 'pending_deposit' 
   },
   
   // Phí phát sinh

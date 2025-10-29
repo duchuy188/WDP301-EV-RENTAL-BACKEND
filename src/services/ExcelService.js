@@ -39,8 +39,16 @@ class ExcelService {
         });
       });
       
-      // Tạo tên file
-      const fileName = `vehicle_template_${color || 'all'}_${uuidv4().substring(0, 8)}.xlsx`;
+      // Tạo tên file - loại bỏ ký tự đặc biệt
+      const sanitizeFileName = (str) => {
+        return str
+          .replace(/[^a-zA-Z0-9]/g, '_') 
+          .replace(/_+/g, '_') 
+          .replace(/^_|_$/g, ''); 
+      };
+
+      const safeColor = color ? sanitizeFileName(color) : 'all';
+      const fileName = `vehicle_template_${safeColor}_${Date.now()}.xlsx`;
       const filePath = path.join(__dirname, '..', '..', 'uploads', fileName);
       
       // Đảm bảo thư mục uploads tồn tại
@@ -99,7 +107,7 @@ class ExcelService {
         }
         
         // Validate format biển số
-        const licensePlateRegex = /^[0-9]{2}[A-Z]-[0-9]{3}\.[0-9]{2}$/;
+        const licensePlateRegex = /^[0-9]{2}[A-Z]{1,2}-[0-9]{3,5}\.[0-9]{2}$/;
         if (!licensePlateRegex.test(licensePlate)) {
           result.errors.push({
             row: i,
@@ -173,7 +181,7 @@ class ExcelService {
       guideSheet.addRow(['HƯỚNG DẪN CẬP NHẬT GIÁ XE']);
       guideSheet.addRow(['1. Nhập giá mới vào cột "Giá Mới"']);
       guideSheet.addRow(['2. Nhập phần trăm cọc mới vào cột "Cọc Mới (%)"']);
-      guideSheet.addRow(['3. Giá phải từ 50,000đ đến 300,000đ']);
+      guideSheet.addRow(['3. Giá phải từ 50,000đ đến 500,000đ']);
       guideSheet.addRow(['4. Phần trăm cọc phải từ 0% đến 100% (0% = không cọc, 100% = cọc full)']);
       guideSheet.addRow(['5. Xe đang được thuê (RENTED) vẫn được update giá mới']);
       guideSheet.addRow(['6. Hợp đồng đang active sẽ giữ nguyên giá cũ']);
@@ -242,17 +250,38 @@ class ExcelService {
           continue;
         }
 
-        // Validate giá
-        if (new_price < 50000 || new_price > 300000) {
+        //  FIX: Convert to number if string và validate data type
+        const priceNum = typeof new_price === 'string' ? parseFloat(new_price) : new_price;
+        const depositNum = typeof new_deposit_percentage === 'string' ? parseFloat(new_deposit_percentage) : new_deposit_percentage;
+
+        // Validate data type
+        if (typeof priceNum !== 'number' || isNaN(priceNum)) {
           result.errors.push({
             row: i,
-            message: 'Giá không hợp lệ (50,000đ - 300,000đ)'
+            message: 'Giá phải là số hợp lệ'
+          });
+          continue;
+        }
+
+        if (typeof depositNum !== 'number' || isNaN(depositNum)) {
+          result.errors.push({
+            row: i,
+            message: 'Phần trăm cọc phải là số hợp lệ'
+          });
+          continue;
+        }
+
+        // Validate giá
+        if (priceNum < 50000 || priceNum > 500000) {
+          result.errors.push({
+            row: i,
+            message: 'Giá không hợp lệ (50,000đ - 500,000đ)'
           });
           continue;
         }
 
         // Validate phần trăm cọc
-        if (new_deposit_percentage < 0 || new_deposit_percentage > 100) {
+        if (depositNum < 0 || depositNum > 100) {
           result.errors.push({
             row: i,
             message: 'Phần trăm cọc không hợp lệ (0% - 100%)'
@@ -263,8 +292,8 @@ class ExcelService {
         // Thêm vào kết quả
         result.data.push({
           vehicle_code,
-          new_price,
-          new_deposit_percentage
+          new_price: priceNum,
+          new_deposit_percentage: depositNum
         });
       }
 

@@ -1,4 +1,4 @@
-const { User, Station } = require('../models');
+const { User, Station, UserStats } = require('../models');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { sendEmail, getStaffAccountEmailTemplate } = require('../config/nodemailer');
@@ -136,6 +136,60 @@ exports.assignStaffToStation = async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi gán staff cho station:', error);
     res.status(500).json({ message: 'Lỗi server khi gán staff' });
+  }
+};
+
+// Hủy gán Staff khỏi Station (chỉ Admin)
+exports.unassignStaffFromStation = async (req, res) => {
+  try {
+  
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Chỉ Admin mới có quyền hủy gán staff' });
+    }
+
+    const { userId } = req.body;
+
+   
+    if (!userId) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp userId' });
+    }
+
+  
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy user' });
+    }
+
+    if (user.role !== 'Station Staff') {
+      return res.status(400).json({ message: 'User này không phải là Staff' });
+    }
+
+   
+    if (!user.stationId) {
+      return res.status(400).json({ message: 'Staff này chưa được gán cho station nào' });
+    }
+
+   
+    const oldStationId = user.stationId;
+
+    
+    user.stationId = null;
+    await user.save();
+
+    res.status(200).json({
+      message: 'Đã hủy gán staff khỏi station thành công',
+      user: {
+        _id: user._id,
+        fullname: user.fullname,
+        email: user.email,
+        stationId: user.stationId, // null
+        previousStationId: oldStationId
+      }
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi hủy gán staff khỏi station:', error);
+    res.status(500).json({ message: 'Lỗi server khi hủy gán staff' });
   }
 };
 
@@ -411,7 +465,7 @@ exports.updateUser = async (req, res) => {
     if (req.user.role === 'Admin') {
       if (status) {
         // Kiểm tra status hợp lệ
-        if (!['active', 'suspended', 'blocked'].includes(status)) {
+        if (!['active', 'suspended'].includes(status)) {
           return res.status(400).json({ message: 'Trạng thái user không hợp lệ' });
         }
         user.status = status;
@@ -462,7 +516,7 @@ exports.toggleUserStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!status || !['active', 'suspended', 'blocked'].includes(status)) {
+    if (!status || !['active', 'suspended'].includes(status)) {
       return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
     }
 
@@ -536,28 +590,102 @@ exports.getRiskyCustomers = async (req, res) => {
       return res.status(403).json({ message: 'Chỉ Admin mới có quyền xem danh sách khách hàng rủi ro' });
     }
 
-    const { page = 1, limit = 10 } = req.query;
+    const { 
+      page = 1, 
+      limit = 10, 
+      minRiskScore, 
+      riskLevel,
+      search 
+    } = req.query;
 
-    // Tìm users có role EV Renter và có nhiều feedback tiêu cực
-    // Hoặc có nhiều lần vi phạm (có thể thêm logic phức tạp hơn)
-    const query = {
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+   
+    const userStatsQuery = {
+      risk_score: { $gt: 0 }
+    };
+    
+   
+    if (minRiskScore !== undefined) {
+      userStatsQuery.risk_score = { $gte: parseInt(minRiskScore) };
+    }
+    
+    if (riskLevel) {
+      userStatsQuery.risk_level = riskLevel;
+    }
+
+    // Tìm UserStats theo filter
+    const userStats = await UserStats.find(userStatsQuery)
+      .sort({ risk_score: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Lấy userIds từ UserStats
+    const userIds = userStats.map(stat => stat.user_id);
+
+    // Tạo query cho User
+    const userQuery = {
+      _id: { $in: userIds },
       role: 'EV Renter',
       status: 'active'
     };
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    // Thêm search nếu có
+    if (search) {
+      userQuery.$and = [
+        {
+          $or: [
+            { fullname: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } },
+            { phone: { $regex: search, $options: 'i' } }
+          ]
+        }
+      ];
+    }
 
-    const riskyCustomers = await User.find(query)
+    // Lấy thông tin users
+    const users = await User.find(userQuery)
       .select('-password -refreshTokens')
-      .populate('kycId', 'status rejection_reason')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+      .populate('kycId', 'status rejection_reason');
 
-    const total = await User.countDocuments(query);
+    // Kết hợp với risk info
+    const customersWithRisk = users.map(customer => {
+      const userStat = userStats.find(stat => 
+        stat.user_id.toString() === customer._id.toString()
+      );
+      return {
+        ...customer.toObject(),
+        riskInfo: userStat ? {
+          risk_score: userStat.risk_score,
+          risk_level: userStat.risk_level,
+          total_violations: userStat.total_violations,
+          last_violation_date: userStat.last_violation_date
+        } : {
+          risk_score: 0,
+          risk_level: 'low',
+          total_violations: 0,
+          last_violation_date: null
+        }
+      };
+    });
+
+    // Tính total với cùng filter
+    const totalQuery = {
+      risk_score: { $gt: 0 }
+    };
+    
+    if (minRiskScore !== undefined) {
+      totalQuery.risk_score = { $gte: parseInt(minRiskScore) };
+    }
+    
+    if (riskLevel) {
+      totalQuery.risk_level = riskLevel;
+    }
+
+    const total = await UserStats.countDocuments(totalQuery);
 
     res.status(200).json({
-      customers: riskyCustomers,
+      customers: customersWithRisk,
       pagination: {
         total,
         page: parseInt(page),
@@ -572,6 +700,167 @@ exports.getRiskyCustomers = async (req, res) => {
   }
 };
 
+// Lấy chi tiết khách hàng rủi ro
+exports.getRiskyCustomerDetail = async (req, res) => {
+  try {
+    // Chỉ Admin mới có quyền
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Chỉ Admin mới có quyền xem chi tiết khách hàng rủi ro' });
+    }
+
+    const { id } = req.params;
+
+    const user = await User.findById(id)
+      .select('-password -refreshTokens')
+      .populate('kycId', 'status rejection_reason')
+      .populate('stationId', 'name code address');
+
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy user' });
+    }
+
+    // Lấy UserStats để xem risk score
+    const userStats = await UserStats.findOne({ user_id: id });
+
+    res.status(200).json({
+      user: user,
+      riskInfo: userStats ? {
+        risk_score: userStats.risk_score,
+        risk_level: userStats.risk_level,
+        total_violations: userStats.total_violations,
+        last_violation_date: userStats.last_violation_date,
+        violations: userStats.violations
+      } : null
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi lấy chi tiết khách hàng rủi ro:', error);
+    res.status(500).json({ message: 'Lỗi server khi lấy chi tiết khách hàng rủi ro' });
+  }
+};
+
+// Kiểm tra risk score của user
+exports.checkRiskScore = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Kiểm tra quyền
+    if (req.user.role !== 'Admin' && req.user.role !== 'Station Staff') {
+      return res.status(403).json({ message: 'Không có quyền kiểm tra risk score' });
+    }
+
+    const userStats = await UserStats.findOne({ user_id: id });
+
+    if (!userStats) {
+      return res.status(404).json({ message: 'Không tìm thấy thống kê user' });
+    }
+
+    res.status(200).json({
+      user_id: id,
+      risk_score: userStats.risk_score,
+      risk_level: userStats.risk_level,
+      total_violations: userStats.total_violations,
+      last_violation_date: userStats.last_violation_date,
+      violations: userStats.violations.filter(v => !v.resolved) // Chỉ lấy violations chưa resolved
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi kiểm tra risk score:', error);
+    res.status(500).json({ message: 'Lỗi server khi kiểm tra risk score' });
+  }
+};
+
+// Reset risk score cho user
+exports.resetRiskScore = async (req, res) => {
+  try {
+    // Chỉ Admin mới có quyền
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Chỉ Admin mới có quyền reset risk score' });
+    }
+
+    const { id } = req.params;
+
+    const userStats = await UserStats.findOne({ user_id: id });
+
+    if (!userStats) {
+      return res.status(404).json({ message: 'Không tìm thấy thống kê user' });
+    }
+
+    // Reset risk score
+    userStats.resetRiskScore();
+    await userStats.save();
+
+    res.status(200).json({
+      message: 'Đã reset risk score thành công',
+      user_id: id,
+      risk_score: userStats.risk_score,
+      risk_level: userStats.risk_level
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi reset risk score:', error);
+    res.status(500).json({ message: 'Lỗi server khi reset risk score' });
+  }
+};
+
+// Thêm vi phạm cho user
+exports.addViolation = async (req, res) => {
+  try {
+    // Kiểm tra quyền
+    if (req.user.role !== 'Admin' && req.user.role !== 'Station Staff') {
+      return res.status(403).json({ message: 'Không có quyền thêm vi phạm' });
+    }
+
+    const { id } = req.params;
+    const { type, description, severity, points } = req.body;
+
+    // Validate required fields
+    if (!type || !description) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp type và description' });
+    }
+
+    // Tìm hoặc tạo UserStats
+    let userStats = await UserStats.findOne({ user_id: id });
+    if (!userStats) {
+      userStats = new UserStats({
+        user_id: id,
+        total_rentals: 0,
+        total_distance: 0,
+        total_spent: 0,
+        total_days: 0,
+        peak_hours: [],
+        peak_days: [],
+        vehicle_preferences: [],
+        station_preferences: [],
+        monthly_stats: [],
+        last_rental_date: null
+      });
+    }
+
+    // Thêm violation
+    const violation = userStats.addViolation({
+      type,
+      description,
+      severity: severity || 'low',
+      points: points || 5
+    });
+
+    await userStats.save();
+
+    res.status(200).json({
+      message: 'Đã thêm vi phạm thành công',
+      user_id: id,
+      violation: violation,
+      risk_score: userStats.risk_score,
+      risk_level: userStats.risk_level
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi thêm vi phạm:', error);
+    res.status(500).json({ message: 'Lỗi server khi thêm vi phạm' });
+  }
+};
+
 // Lấy thống kê users
 exports.getUserStats = async (req, res) => {
   try {
@@ -583,7 +872,6 @@ exports.getUserStats = async (req, res) => {
     const totalUsers = await User.countDocuments();
     const activeUsers = await User.countDocuments({ status: 'active' });
     const suspendedUsers = await User.countDocuments({ status: 'suspended' });
-    const blockedUsers = await User.countDocuments({ status: 'blocked' });
 
     const usersByRole = await User.aggregate([
       { $group: { _id: '$role', count: { $sum: 1 } } }
@@ -597,7 +885,6 @@ exports.getUserStats = async (req, res) => {
       total: totalUsers,
       active: activeUsers,
       suspended: suspendedUsers,
-      blocked: blockedUsers,
       byRole: usersByRole,
       byStatus: usersByStatus
     });
@@ -605,5 +892,124 @@ exports.getUserStats = async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi lấy thống kê users:', error);
     res.status(500).json({ message: 'Lỗi server khi lấy thống kê' });
+  }
+};
+
+// Lấy thống kê cá nhân cho EV Renter
+exports.getUserPersonalStats = async (req, res) => {
+  try {
+    // Chỉ EV Renter mới có quyền xem thống kê cá nhân
+    if (req.user.role !== 'EV Renter') {
+      return res.status(403).json({ message: 'Chỉ EV Renter mới có quyền xem thống kê cá nhân' });
+    }
+
+    // Tìm UserStats của user hiện tại
+    let userStats = await UserStats.findOne({ user_id: req.user._id })
+      .populate('station_preferences.station_id', 'name address');
+
+    // Nếu chưa có UserStats, tạo mới
+    if (!userStats) {
+      userStats = new UserStats({
+        user_id: req.user._id,
+        total_rentals: 0,
+        total_distance: 0,
+        total_spent: 0,
+        total_days: 0,
+        peak_hours: [],
+        peak_days: [],
+        vehicle_preferences: [],
+        station_preferences: [],
+        monthly_stats: [],
+        last_rental_date: null
+      });
+      await userStats.save();
+    }
+
+    // Tính toán thống kê bổ sung
+    const avgSpentPerRental = userStats.total_rentals > 0 ? 
+      Math.round(userStats.total_spent / userStats.total_rentals) : 0;
+    
+    const avgDistancePerRental = userStats.total_rentals > 0 ? 
+      Math.round(userStats.total_distance / userStats.total_rentals) : 0;
+
+    // Sắp xếp peak hours và days
+    const sortedPeakHours = userStats.peak_hours
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const sortedPeakDays = userStats.peak_days
+      .sort((a, b) => b.count - a.count)
+      .map(day => ({
+        ...day,
+        dayName: ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'][day.day]
+      }));
+
+    // Sắp xếp vehicle preferences
+    const sortedVehiclePreferences = userStats.vehicle_preferences
+      .sort((a, b) => b.count - a.count);
+
+    // Sắp xếp station preferences
+    const sortedStationPreferences = userStats.station_preferences
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Sắp xếp monthly stats (6 tháng gần nhất)
+    const sortedMonthlyStats = userStats.monthly_stats
+      .sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      })
+      .slice(0, 6);
+
+    // Tạo insights
+    const insights = [];
+    if (userStats.total_rentals > 0) {
+      insights.push(`Bạn đã thuê xe ${userStats.total_rentals} lần`);
+      insights.push(`Tổng quãng đường: ${userStats.total_distance} km`);
+      insights.push(`Tổng chi phí: ${userStats.total_spent.toLocaleString('vi-VN')} VND`);
+      
+      if (sortedPeakHours.length > 0) {
+        const topHour = sortedPeakHours[0];
+        insights.push(`Giờ thuê nhiều nhất: ${topHour.hour}:00 (${topHour.count} lần)`);
+      }
+      
+      if (sortedPeakDays.length > 0) {
+        const topDay = sortedPeakDays[0];
+        insights.push(`Ngày thuê nhiều nhất: ${topDay.dayName} (${topDay.count} lần)`);
+      }
+    } else {
+      insights.push('Bạn chưa có lịch sử thuê xe nào');
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy thống kê cá nhân thành công',
+      data: {
+        overview: {
+          total_rentals: userStats.total_rentals,
+          total_distance: userStats.total_distance,
+          total_spent: userStats.total_spent,
+          total_days: userStats.total_days,
+          avg_spent_per_rental: avgSpentPerRental,
+          avg_distance_per_rental: avgDistancePerRental,
+          last_rental_date: userStats.last_rental_date
+        },
+        peak_hours: sortedPeakHours,
+        peak_days: sortedPeakDays,
+        vehicle_preferences: sortedVehiclePreferences,
+        station_preferences: sortedStationPreferences,
+        monthly_stats: sortedMonthlyStats,
+        insights: insights,
+        last_updated: userStats.last_updated
+      }
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi lấy thống kê cá nhân:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Lỗi server khi lấy thống kê cá nhân',
+      error: error.message 
+    });
   }
 };

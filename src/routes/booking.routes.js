@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const {
   createBooking,
+  createWalkInBooking,
   getUserBookings,
   getBookingDetails,
   confirmBooking,
   cancelBooking,
+  updateBooking, // ← NEW
   getAllBookings,
   getStationBookings,
   scanQRCode
@@ -18,9 +20,11 @@ const { vehicleImageUpload } = require('../middlewares/vehicleImageUpload');
 router.post('/', authenticateToken, createBooking);
 router.get('/user', authenticateToken, getUserBookings);
 router.get('/:id', authenticateToken, getBookingDetails);
+router.put('/:id', authenticateToken, updateBooking); 
 router.delete('/:id', authenticateToken, cancelBooking);
 
 // Staff routes (Station Staff)
+router.post('/walk-in', authenticateToken, requireRole(['Station Staff', 'Admin']), createWalkInBooking);
 router.put('/:id/confirm', authenticateToken, requireRole(['Station Staff', 'Admin']), vehicleImageUpload.array('files', 5), confirmBooking);
 router.get('/station/list', authenticateToken, requireRole(['Station Staff', 'Admin']), getStationBookings);
 

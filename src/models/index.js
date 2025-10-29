@@ -12,6 +12,9 @@ const Payment = require('./Payment');
 const Contract = require('./Contract');
 const ContractTemplate = require('./ContractTemplate');
 const Maintenance = require('./Maintenance');
+const Feedback = require('./Feedback');
+const UserStats = require('./UserStats');
+const Conversation = require('./Conversation');
                                     
 module.exports = {
     User,
@@ -25,6 +28,8 @@ module.exports = {
     Payment,
     Contract,
     ContractTemplate,
-    Maintenance
-
+    Maintenance,
+    Feedback,
+    UserStats,
+    Conversation
 };

@@ -61,13 +61,20 @@ const vehicleSchema = new mongoose.Schema({
     min: 1
   }, // km
   
-  // Thông tin pin
+  // Thông tin pin và số km
   current_battery: { 
     type: Number, 
     required: true,
     min: 0,
     max: 100
   }, // % (0-100)
+  
+  // Số km hiện tại
+  current_mileage: { 
+    type: Number, 
+    default: 0,
+    min: 0
+  }, // km
   
   // Thông tin thuê
   price_per_day: { 
@@ -92,8 +99,29 @@ const vehicleSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['draft', 'available', 'rented', 'maintenance'], 
-    default: 'draft' // Sửa default từ 'available' thành 'draft'
+    enum: ['draft', 'available', 'reserved', 'rented', 'maintenance'], 
+    default: 'draft'
+  },
+  
+  // ========== RESERVE TRACKING (Holding Fee Flow) ==========
+  // Track soft reserve (pending payment) vs hard reserve (after payment)
+  reserved_for: {
+    type: String,
+    enum: ['', 'holding_fee_payment', 'booking'],
+    default: ''
+    // '': Not reserved
+    // 'holding_fee_payment': Soft reserve - waiting for user to pay holding fee (15 min)
+    // 'booking': Hard reserve - user paid, has real booking (no expiry)
+  },
+  reserved_at: {
+    type: Date,
+    default: null
+  },
+  reserved_until: {
+    type: Date,
+    default: null
+    // Only used for 'holding_fee_payment' - auto unreserve after this time
+    // null for 'booking' (no expiry)
   },
   
   // Thông tin kỹ thuật (Staff quản lý)
@@ -120,6 +148,9 @@ const vehicleSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+
+
+
 // Indexes
 vehicleSchema.index({ station_id: 1 });
 vehicleSchema.index({ status: 1 });
@@ -127,6 +158,10 @@ vehicleSchema.index({ type: 1 });
 vehicleSchema.index({ status: 1, station_id: 1 });
 vehicleSchema.index({ price_per_day: 1 });
 vehicleSchema.index({ technical_status: 1 });
+
+// Compound unique index: model + type phải unique
+// Mỗi model chỉ có thể thuộc về 1 type duy nhất
+vehicleSchema.index({ model: 1, type: 1 }, { unique: true });
 
 const Vehicle = mongoose.model('Vehicle', vehicleSchema);
 

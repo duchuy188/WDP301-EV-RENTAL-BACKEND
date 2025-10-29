@@ -61,6 +61,10 @@
  *           type: number
  *           description: Phần trăm pin hiện tại (0-100)
  *           example: 85
+ *         current_mileage:
+ *           type: number
+ *           description: Số km hiện tại của xe
+ *           example: 1250
  *         price_per_day:
  *           type: number
  *           description: Giá thuê mỗi ngày (VND)
@@ -75,7 +79,7 @@
  *           example: 60d5ec9af682fbd12a0bbaf2
  *         status:
  *           type: string
- *           enum: [draft, available, rented, maintenance]
+ *           enum: [draft, available, reserved, rented, maintenance]
  *           description: Trạng thái xe
  *           example: available
  *         technical_status:
@@ -193,6 +197,10 @@
  *           type: string
  *           description: Màu xe cần phân bổ
  *           example: Đỏ
+ *         model:
+ *           type: string
+ *           description: Model xe cần phân bổ
+ *           example: Klara S
  *         status:
  *           type: string
  *           default: draft
@@ -214,7 +222,7 @@
  *       properties:
  *         status:
  *           type: string
- *           enum: [draft, available, rented, maintenance]
+ *           enum: [draft, available, reserved, rented, maintenance]
  *           description: Trạng thái mới
  *           example: available
  *     

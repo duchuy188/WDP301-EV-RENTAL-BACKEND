@@ -1088,6 +1088,10 @@ const getPaymentSuccessTemplate = (userName, paymentDetails) => {
 
 // Template email hợp đồng đã ký - Green EV Theme
 const getContractSignedTemplate = (contract) => {
+    // Destructure pdfBuffer để tránh lỗi khi render
+    const { pdfBuffer, ...contractData } = contract;
+    const pdfSizeKB = pdfBuffer ? Math.round(pdfBuffer.length / 1024) : 150;
+    
     return `
     <!DOCTYPE html>
     <html lang="vi">
@@ -1112,7 +1116,7 @@ const getContractSignedTemplate = (contract) => {
             </div>
             
             <div class="content">
-                <div class="greeting">Xin chào ${contract.user_id?.fullname || 'Khách hàng'}!</div>
+                <div class="greeting">Xin chào ${contractData.user_id?.fullname || 'Khách hàng'}!</div>
                 
                 <div class="message">
                     🎉 <strong>Chúc mừng! Hợp đồng thuê xe điện của bạn đã được ký thành công!</strong><br><br>
@@ -1123,20 +1127,20 @@ const getContractSignedTemplate = (contract) => {
                 <div class="features">
                     <h3>Thông tin hợp đồng</h3>
                     <ul>
-                        <li><strong>Mã hợp đồng:</strong> <span style="color: #48bb78; font-weight: bold;">${contract.code || 'N/A'}</span></li>
-                        <li><strong>Xe điện:</strong> ${contract.vehicle_id?.name || 'N/A'} - ${contract.vehicle_id?.license_plate || 'N/A'}</li>
-                        <li><strong>Thời gian thuê:</strong> ${contract.valid_from ? new Date(contract.valid_from).toLocaleDateString('vi-VN') : 'N/A'} - ${contract.valid_until ? new Date(contract.valid_until).toLocaleDateString('vi-VN') : 'N/A'}</li>
-                        <li><strong>Điểm thuê:</strong> ${contract.station_id?.name || 'N/A'}</li>
-                        <li><strong>Địa chỉ:</strong> ${contract.station_id?.address || 'N/A'}</li>
+                        <li><strong>Mã hợp đồng:</strong> <span style="color: #48bb78; font-weight: bold;">${contractData.code || 'N/A'}</span></li>
+                        <li><strong>Xe điện:</strong> ${contractData.vehicle_id?.name || 'N/A'} - ${contractData.vehicle_id?.license_plate || 'N/A'}</li>
+                        <li><strong>Thời gian thuê:</strong> ${contractData.valid_from ? new Date(contractData.valid_from).toLocaleDateString('vi-VN') : 'N/A'} - ${contractData.valid_until ? new Date(contractData.valid_until).toLocaleDateString('vi-VN') : 'N/A'}</li>
+                        <li><strong>Điểm thuê:</strong> ${contractData.station_id?.name || 'N/A'}</li>
+                        <li><strong>Địa chỉ:</strong> ${contractData.station_id?.address || 'N/A'}</li>
                         <li><strong>Trạng thái:</strong> <span style="color: #48bb78; font-weight: bold;">Đã ký thành công</span></li>
                     </ul>
                 </div>
 
-                <div class="attachment-box">
+                <div style="background: linear-gradient(135deg, #fefcbf 0%, #f6e05e 100%); padding: 25px; border-radius: 15px; border-left: 5px solid #d69e2e; margin: 25px 0; box-shadow: 0 5px 15px rgba(214, 158, 46, 0.1);">
                     <strong>📎 File đính kèm:</strong><br><br>
-                    • <strong>Hợp đồng PDF:</strong> hop-dong-${contract.code || 'N/A'}.pdf<br>
+                    • <strong>Hợp đồng PDF:</strong> hop-dong-${contractData.code || 'N/A'}.pdf<br>
                     • <strong>Nội dung:</strong> Hợp đồng thuê xe điện đã được ký bởi cả hai bên<br>
-                    • <strong>Kích thước:</strong> ~${contract.pdfBuffer ? Math.round(contract.pdfBuffer.length / 1024) : 150}KB<br>
+                    • <strong>Kích thước:</strong> ~${pdfSizeKB}KB<br>
                     • <strong>Định dạng:</strong> PDF (Portable Document Format)
                 </div>
 
@@ -1160,7 +1164,7 @@ const getContractSignedTemplate = (contract) => {
                 <p>🌿 <strong>Eco Commitment:</strong> 100% renewable energy | Carbon negative footprint</p>
                 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
                     <p style="font-size: 11px; color: #a0aec0;">
-                        Contract Code: ${contract.code || 'N/A'} | Signed: ${new Date().toLocaleDateString('vi-VN')}<br>
+                        Contract Code: ${contractData.code || 'N/A'} | Signed: ${new Date().toLocaleDateString('vi-VN')}<br>
                         🔋 Powered by 100% renewable energy | Carbon negative operation
                     </p>
                 </div>
@@ -1171,7 +1175,115 @@ const getContractSignedTemplate = (contract) => {
     `;
 };
 
-// Template email checkout receipt
+// Template email walk-in customer - Green EV Theme
+const getWalkInCustomerEmailTemplate = (customerName, email, password) => {
+    return `
+    <!DOCTYPE html>
+    <html lang="vi">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Tài Khoản Walk-in - EV Rental</title>
+        ${getCommonStyles()}
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                <div class="logo-container">
+                    <div class="logo-icon">
+                        <img src="https://res.cloudinary.com/dcrbmfhbo/image/upload/v1758043354/Gemini_Generated_Image_c89jtfc89jtfc89j_z5gt9t.png" alt="EV Rental Logo" style="width: 64px; height: 64px; object-fit: contain;" />
+                    </div>
+                    <div class="logo">EV Rental</div>
+                </div>
+                <div class="subtitle">Chào mừng khách hàng walk-in!</div>
+                <div class="eco-badge">Walk-in Customer</div>
+                <div class="eco-badge">Instant Access</div>
+            </div>
+            
+            <div class="content">
+                <div class="greeting">Xin chào ${customerName}!</div>
+                
+                <div class="message">
+                    🎉 <strong>Chúc mừng! Tài khoản EV Rental của bạn đã được tạo thành công!</strong><br><br>
+                    Cảm ơn bạn đã chọn dịch vụ thuê xe điện của chúng tôi. Tài khoản đã được tạo 
+                    để bạn có thể quản lý và theo dõi các chuyến thuê xe trong tương lai! 🌱⚡
+                </div>
+
+                <div class="features">
+                    <h3>Thông tin đăng nhập</h3>
+                    <ul style="background: white; padding: 20px; border-radius: 10px; border: 2px solid #48bb78;">
+                        <li><strong>📧 Email:</strong> <span style="color: #48bb78; font-weight: bold;">${email}</span></li>
+                        <li><strong>🔐 Mật khẩu tạm thời:</strong> <span style="color: #48bb78; font-weight: bold; font-size: 18px; background: #f0fff4; padding: 5px 10px; border-radius: 5px;">${password}</span></li>
+                        <li><strong>👤 Vai trò:</strong> EV Renter</li>
+                        <li><strong>📱 Hệ thống:</strong> EV Rental Mobile App & Website</li>
+                    </ul>
+                </div>
+
+                <div class="cta-container">
+                    <a href="#" class="cta-button">
+                        🚗⚡ Đăng Nhập Ngay
+                    </a>
+                </div>
+
+                <div class="warning-box">
+                    <strong>⚠️ Lưu ý bảo mật quan trọng:</strong><br><br>
+                    • <strong>Đổi mật khẩu ngay</strong> sau lần đăng nhập đầu tiên<br>
+                    • <strong>Không chia sẻ</strong> thông tin đăng nhập với ai khác<br>
+                    • <strong>Hoàn thiện KYC</strong> để sử dụng đầy đủ tính năng<br>
+                    • <strong>Báo cáo ngay</strong> nếu phát hiện hoạt động bất thường
+                </div>
+
+                <div style="background: linear-gradient(135deg, #f0fff4, #e6fffa); padding: 25px; border-radius: 15px; margin: 25px 0; border: 2px solid #48bb78;">
+                    <h3 style="color: #2d3748; margin-bottom: 20px; text-align: center; display: flex; align-items: center; justify-content: center;">
+                        🌱 <span style="margin: 0 10px;">Tính năng dành cho bạn</span> 🌱
+                    </h3>
+                    <div style="color: #4a5568; line-height: 1.8;">
+                        <p><strong>📱 EV Mobile App:</strong> Tải app để quản lý thuê xe mọi lúc mọi nơi</p>
+                        <p><strong>🔋 Charging Map:</strong> Tìm trạm sạc gần nhất với AI navigation</p>
+                        <p><strong>📊 Eco Dashboard:</strong> Theo dõi carbon footprint và điểm xanh</p>
+                        <p><strong>💚 Green Rewards:</strong> Tích lũy eco-points cho mỗi chuyến đi</p>
+                        <p><strong>📋 Booking History:</strong> Xem lịch sử thuê xe chi tiết</p>
+                    </div>
+                </div>
+
+                <div class="message" style="margin-top: 30px; background: linear-gradient(135deg, #f0fff4, #e6fffa); padding: 20px; border-radius: 12px; border-left: 4px solid #48bb78;">
+                    <strong>🚗💚 Cần hỗ trợ?</strong><br>
+                    Đội ngũ EV Support luôn sẵn sàng hỗ trợ bạn 24/7! Liên hệ qua:<br>
+                    📱 Hotline: 1900-EVGREEN (1900-384733)<br>
+                    📧 Email: evstationrental@gmail.com<br>
+                    💬 Live Chat trong app
+                </div>
+
+                <div class="message" style="text-align: center; margin-top: 40px; font-size: 18px; color: #2d3748;">
+                    <strong>🌟 Chào mừng bạn đến với cộng đồng EV Rental! 🌟</strong><br>
+                    <span style="color: #48bb78; font-weight: 600;">Ride Electric. Ride Future. Ride Green! 🏍️💚⚡</span>
+                </div>
+            </div>
+
+            <div class="footer">
+                <div class="social-links">
+                    <a href="#">🌱 EV Community</a>
+                    <a href="#">📱 Download App</a>
+                    <a href="#">🔋 Charging Map</a>
+                    <a href="#">💚 Green Support</a>
+                </div>
+                <p><strong>© ${new Date().getFullYear()} EV Rental</strong> - Your Green Journey Partner 🌍</p>
+                <p>🏢 Green HQ: 123 Đường Xanh, Eco Park, Q7, HCMC | 📞 1900-EVGREEN</p>
+                <p>🌿 <strong>Eco Commitment:</strong> 100% renewable energy | Carbon negative footprint</p>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                    <p style="font-size: 11px; color: #a0aec0;">
+                        Email này được gửi tự động khi tạo tài khoản walk-in<br>
+                        🌱 Mỗi email này được gửi bằng năng lượng tái tạo 100%
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+};
+
+// Template email checkout receipt - Green EV Theme
 const getCheckoutReceiptTemplate = (data) => {
     const {
         customer_name,
@@ -1188,7 +1300,8 @@ const getCheckoutReceiptTemplate = (data) => {
         total_fees,
         staff_notes,
         has_payment,
-        payment_status
+        total_paid,
+        payment_count
     } = data;
 
     const formatDateTime = (date) => {
@@ -1213,152 +1326,315 @@ const getCheckoutReceiptTemplate = (data) => {
     };
 
     return `
-        <!DOCTYPE html>
-        <html lang="vi">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Biên lai trả xe - ${rental_code}</title>
-            ${getCommonStyles()}
-        </head>
-        <body>
-            <div class="email-container">
-                <div class="email-header">
-                    <div class="logo-section">
-                        <div class="logo-icon">🚗⚡</div>
-                        <h1>EV Rental System</h1>
-                        <p class="tagline">Hệ thống thuê xe điện thông minh</p>
+    <!DOCTYPE html>
+    <html lang="vi">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Biên Lai Trả Xe - ${rental_code} | EV Rental</title>
+        ${getCommonStyles()}
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                <div class="logo-container">
+                    <div class="logo-icon">
+                        <img src="https://res.cloudinary.com/dcrbmfhbo/image/upload/v1758043354/Gemini_Generated_Image_c89jtfc89jtfc89j_z5gt9t.png" alt="EV Rental Logo" style="width: 64px; height: 64px; object-fit: contain;" />
+                    </div>
+                    <div class="logo">EV Rental</div>
+                </div>
+                <div class="subtitle">Biên lai trả xe điện thành công</div>
+                <div class="eco-badge">Checkout Completed</div>
+                <div class="eco-badge">Green Journey Ended</div>
+            </div>
+            
+            <div class="content">
+                <div class="greeting">Cảm ơn ${customer_name}!</div>
+                
+                <div class="message">
+                    🎉 <strong>Chúc mừng! Bạn đã hoàn thành chuyến đi xanh thành công!</strong><br><br>
+                    Cảm ơn bạn đã tin tưởng và sử dụng dịch vụ thuê xe điện của chúng tôi. 
+                    Hành trình xanh của bạn đã kết thúc an toàn và thân thiện với môi trường! 🌱⚡
+                </div>
+
+                <div class="features">
+                    <h3>Chi tiết giao dịch trả xe</h3>
+                    <ul style="background: white; padding: 20px; border-radius: 10px; border: 2px solid #48bb78;">
+                        <li><strong>🎫 Mã thuê xe:</strong> <span style="color: #48bb78; font-weight: bold;">${rental_code}</span></li>
+                        <li><strong>🚗 Xe điện:</strong> ${vehicle_name} - ${license_plate}</li>
+                        <li><strong>📍 Trạm trả xe:</strong> ${station_name}</li>
+                        <li><strong>⏰ Thời gian nhận xe:</strong> ${formatDateTime(actual_start_time)}</li>
+                        <li><strong>⏰ Thời gian trả xe:</strong> ${formatDateTime(actual_end_time)}</li>
+                        <li><strong>🌱 Carbon saved:</strong> <span style="color: #48bb78; font-weight: bold;">~8.5kg CO₂</span></li>
+                        <li><strong>💚 Eco-Points earned:</strong> <span style="color: #48bb78; font-weight: bold;">+150 points</span></li>
+                    </ul>
+                </div>
+
+                ${total_fees > 0 ? `
+                <div class="features">
+                    <h3>Chi phí phát sinh</h3>
+                    <ul style="background: white; padding: 20px; border-radius: 10px; border: 2px solid #48bb78;">
+                        ${late_fee > 0 ? `<li><strong>⏰ Phí trễ:</strong> <span style="color: #48bb78; font-weight: bold;">${formatCurrency(late_fee)}</span></li>` : ''}
+                        ${damage_fee > 0 ? `<li><strong>🔧 Phí hư hỏng:</strong> <span style="color: #48bb78; font-weight: bold;">${formatCurrency(damage_fee)}</span></li>` : ''}
+                        ${other_fees > 0 ? `<li><strong>📋 Phí khác:</strong> <span style="color: #48bb78; font-weight: bold;">${formatCurrency(other_fees)}</span></li>` : ''}
+                        <li><strong>💰 Tổng phí phát sinh:</strong> <span style="color: #48bb78; font-weight: bold; font-size: 18px;">${formatCurrency(total_fees)}</span></li>
+                    </ul>
+                </div>
+                ` : ''}
+
+                ${has_payment ? `
+                <div class="features">
+                    <h3>Thông tin thanh toán</h3>
+                    <ul style="background: white; padding: 20px; border-radius: 10px; border: 2px solid #48bb78;">
+                        <li><strong>💳 Số giao dịch:</strong> <span style="color: #48bb78; font-weight: bold;">${payment_count} payment(s)</span></li>
+                        <li><strong>💰 Tổng thanh toán:</strong> <span style="color: #48bb78; font-weight: bold; font-size: 18px;">${formatCurrency(total_paid)}</span></li>
+                        <li><strong>📊 Trạng thái:</strong> <span style="color: #48bb78; font-weight: bold;">Chờ thanh toán</span></li>
+                    </ul>
+                </div>
+                ` : ''}
+
+                ${staff_notes ? `
+                <div class="warning-box">
+                    <strong>📝 Ghi chú từ nhân viên:</strong><br><br>
+                    ${staff_notes}
+                </div>
+                ` : ''}
+
+                <div class="cta-container">
+                    <a href="#" class="cta-button" style="margin: 5px;">
+                        📱 Mở EV App
+                    </a>
+                    <a href="#" class="cta-button" style="margin: 5px; background: linear-gradient(135deg, #2f855a, #276749);">
+                        📋 Lịch Sử Thuê Xe
+                    </a>
+                </div>
+
+                <div style="background: linear-gradient(135deg, #f0fff4, #e6fffa); padding: 25px; border-radius: 15px; margin: 25px 0; border: 2px solid #48bb78;">
+                    <h3 style="color: #2d3748; margin-bottom: 20px; text-align: center; display: flex; align-items: center; justify-content: center;">
+                        🌱 <span style="margin: 0 10px;">Tác động môi trường tích cực</span> 🌱
+                    </h3>
+                    <div style="color: #4a5568; line-height: 1.8;">
+                        <p><strong>🌍 Carbon Footprint:</strong> Chuyến đi này giúp giảm 8.5kg CO₂ so với xe xăng</p>
+                        <p><strong>🔋 Clean Energy:</strong> 100% năng lượng tái tạo được sử dụng</p>
+                        <p><strong>🌱 Green Impact:</strong> Góp phần vào mục tiêu Net Zero 2030</p>
+                        <p><strong>💚 Community:</strong> Tham gia cộng đồng 10,000+ Green Drivers</p>
                     </div>
                 </div>
 
-                <div class="email-content">
-                    <div class="success-banner">
-                        <div class="success-icon">✅</div>
-                        <h2>Trả xe thành công!</h2>
-                        <p>Cảm ơn bạn đã sử dụng dịch vụ thuê xe điện của chúng tôi</p>
-                    </div>
-
-                    <div class="info-section">
-                        <h3>📋 Thông tin giao dịch</h3>
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <span class="label">Mã thuê xe:</span>
-                                <span class="value">${rental_code}</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="label">Khách hàng:</span>
-                                <span class="value">${customer_name}</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="label">Email:</span>
-                                <span class="value">${customer_email}</span>
-                            </div>
+                <div class="message" style="margin-top: 30px; padding: 20px; background: rgba(72, 187, 120, 0.05); border-radius: 12px; border: 1px solid rgba(72, 187, 120, 0.2);">
+                    <strong>🚨 Cần hỗ trợ?</strong><br><br>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <strong>💳 Payment Support:</strong><br>
+                            📞 1900-EVPAY (1900-387729)<br>
+                            💬 Live chat trong EV App
                         </div>
-                    </div>
-
-                    <div class="info-section">
-                        <h3>🚗 Thông tin xe</h3>
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <span class="label">Tên xe:</span>
-                                <span class="value">${vehicle_name}</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="label">Biển số:</span>
-                                <span class="value">${license_plate}</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="label">Trạm trả xe:</span>
-                                <span class="value">${station_name}</span>
-                            </div>
+                        <div>
+                            <strong>📋 Booking Support:</strong><br>
+                            📞 1900-EVBOOK (1900-387262)<br>
+                            📧 Email: booking@evrental.com
                         </div>
-                    </div>
-
-                    <div class="info-section">
-                        <h3>⏰ Thời gian thuê</h3>
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <span class="label">Thời gian nhận xe:</span>
-                                <span class="value">${formatDateTime(actual_start_time)}</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="label">Thời gian trả xe:</span>
-                                <span class="value">${formatDateTime(actual_end_time)}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    ${total_fees > 0 ? `
-                    <div class="info-section">
-                        <h3>💰 Chi phí phát sinh</h3>
-                        <div class="fee-breakdown">
-                            ${late_fee > 0 ? `
-                            <div class="fee-item">
-                                <span class="fee-label">Phí trễ:</span>
-                                <span class="fee-amount">${formatCurrency(late_fee)}</span>
-                            </div>
-                            ` : ''}
-                            ${damage_fee > 0 ? `
-                            <div class="fee-item">
-                                <span class="fee-label">Phí hư hỏng:</span>
-                                <span class="fee-amount">${formatCurrency(damage_fee)}</span>
-                            </div>
-                            ` : ''}
-                            ${other_fees > 0 ? `
-                            <div class="fee-item">
-                                <span class="fee-label">Phí khác:</span>
-                                <span class="fee-amount">${formatCurrency(other_fees)}</span>
-                            </div>
-                            ` : ''}
-                            <div class="fee-total">
-                                <span class="fee-label">Tổng phí:</span>
-                                <span class="fee-amount">${formatCurrency(total_fees)}</span>
-                            </div>
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    ${staff_notes ? `
-                    <div class="info-section">
-                        <h3>📝 Ghi chú từ nhân viên</h3>
-                        <div class="notes-box">
-                            <p>${staff_notes}</p>
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    ${has_payment ? `
-                    <div class="info-section">
-                        <h3>💳 Thông tin thanh toán</h3>
-                        <div class="payment-info">
-                            <div class="info-item">
-                                <span class="label">Trạng thái:</span>
-                                <span class="value status-${payment_status}">${payment_status === 'completed' ? 'Đã thanh toán' : 'Chờ thanh toán'}</span>
-                            </div>
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    <div class="info-section">
-                        <h3>📞 Hỗ trợ khách hàng</h3>
-                        <div class="support-info">
-                            <p>Nếu bạn có bất kỳ thắc mắc nào về giao dịch này, vui lòng liên hệ:</p>
-                            <div class="contact-info">
-                                <p>📧 Email: support@evrental.com</p>
-                                <p>📞 Hotline: 1900-1234</p>
-                                <p>🕒 Giờ làm việc: 8:00 - 22:00 (T2-T7)</p>
-                            </div>
+                        <div>
+                            <strong>🔧 Technical Support:</strong><br>
+                            📞 1900-EVTECH (1900-388324)<br>
+                            📧 Email: support@evrental.com
                         </div>
                     </div>
                 </div>
 
-                <div class="email-footer">
-                    <p>© 2025 EV Rental System. Tất cả quyền được bảo lưu.</p>
-                    <p>Email này được gửi tự động từ hệ thống, vui lòng không trả lời.</p>
+                <div class="message" style="text-align: center; margin-top: 40px; font-size: 18px; color: #2d3748;">
+                    <strong>🌟 Cảm ơn bạn đã góp phần tạo nên tương lai xanh! 🌟</strong><br>
+                    <span style="color: #48bb78; font-weight: 600;">Every Journey Matters. Every Choice Counts. 🏍️💚⚡</span>
                 </div>
             </div>
-        </body>
-        </html>
+
+            <div class="footer">
+                <div class="social-links">
+                    <a href="#">🌱 EV Community</a>
+                    <a href="#">📱 Mobile App</a>
+                    <a href="#">🔋 Charging Map</a>
+                    <a href="#">💚 Green Support</a>
+                    <a href="#">📋 My Bookings</a>
+                </div>
+                <p><strong>© ${new Date().getFullYear()} EV Rental</strong> - Your Green Journey Partner 🌍</p>
+                <p>🏢 Green HQ: 123 Đường Xanh, Eco Park, Q7, HCMC | 📞 1900-EVGREEN</p>
+                <p>🌱 <strong>Impact Report:</strong> Cùng khách hàng đã tiết kiệm 1,250 tấn CO₂ trong năm 2024!</p>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                    <p style="font-size: 11px; color: #a0aec0;">
+                        Rental Code: ${rental_code} | Checkout: ${new Date().toLocaleDateString('vi-VN')}<br>
+                        🔋 Powered by 100% renewable energy | Carbon negative operation
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+};
+
+// Template email cập nhật booking - Green EV Theme
+const getBookingUpdateTemplate = (userName, bookingCode, oldData, newData, reason) => {
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat('vi-VN', {
+            style: 'currency',
+            currency: 'VND'
+        }).format(amount);
+    };
+
+    return `
+    <!DOCTYPE html>
+    <html lang="vi">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cập Nhật Booking - EV Rental</title>
+        ${getCommonStyles()}
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                <div class="logo-container">
+                    <div class="logo-icon">
+                        <img src="https://res.cloudinary.com/dcrbmfhbo/image/upload/v1758043354/Gemini_Generated_Image_c89jtfc89jtfc89j_z5gt9t.png" alt="EV Rental Logo" style="width: 64px; height: 64px; object-fit: contain;" />
+                    </div>
+                    <div class="logo">EV Rental</div>
+                </div>
+                <div class="subtitle">Booking đã được cập nhật thành công</div>
+                <div class="eco-badge">Booking Updated</div>
+                <div class="eco-badge">Green Journey Modified</div>
+            </div>
+            
+            <div class="content">
+                <div class="greeting">Xin chào ${userName}!</div>
+                
+                <div class="message">
+                     <strong>Booking của bạn đã được cập nhật thành công!</strong><br><br>
+                    Chúng tôi xác nhận đã cập nhật thông tin đặt xe theo yêu cầu của bạn. 
+                    Chiếc xe điện mới đã được chuẩn bị sẵn sàng cho hành trình xanh của bạn! 🌱⚡
+                </div>
+
+                ${reason ? `
+                <div style="background: linear-gradient(135deg, #f0fff4, #e6fffa); padding: 20px; border-radius: 12px; margin: 25px 0; border-left: 4px solid #48bb78;">
+                    <strong>📝 Lý do thay đổi:</strong><br>
+                    <p style="margin: 10px 0; color: #4a5568;">${reason}</p>
+                </div>
+                ` : ''}
+
+                <div class="features">
+                    <h3>🔄 Thông tin cũ</h3>
+                    <ul style="background: #fff5f5; padding: 20px; border-radius: 10px; border: 2px solid #fc8181;">
+                        <li><strong>🎫 Booking Code:</strong> <span style="color: #e53e3e; font-weight: bold;">${bookingCode}</span></li>
+                        <li><strong>📅 Ngày:</strong> ${oldData.start_date} → ${oldData.end_date}</li>
+                        <li><strong>🚗 Xe:</strong> ${oldData.vehicle}</li>
+                        <li><strong>📍 Trạm:</strong> ${oldData.station}</li>
+                        <li><strong>💰 Tổng giá:</strong> ${formatCurrency(oldData.total_price)}</li>
+                        <li><strong>💵 Cọc:</strong> ${formatCurrency(oldData.deposit_amount)}</li>
+                    </ul>
+                </div>
+
+                <div style="text-align: center; margin: 20px 0;">
+                    <div style="display: inline-block; background: linear-gradient(135deg, #48bb78, #38a169); color: white; padding: 10px 20px; border-radius: 25px; font-size: 20px; font-weight: bold;">
+                        🔽 CẬP NHẬT 🔽
+                    </div>
+                </div>
+
+                <div class="features">
+                    <h3>✨ Thông tin mới</h3>
+                    <ul style="background: white; padding: 20px; border-radius: 10px; border: 2px solid #48bb78;">
+                        <li><strong>🎫 Booking Code:</strong> <span style="color: #48bb78; font-weight: bold;">${bookingCode}</span></li>
+                        <li><strong>📅 Ngày:</strong> ${newData.start_date} → ${newData.end_date}</li>
+                        <li><strong>🚗 Xe:</strong> ${newData.vehicle}</li>
+                        <li><strong>📍 Trạm:</strong> ${newData.station}</li>
+                        <li><strong>💰 Tổng giá:</strong> <span style="color: #48bb78; font-weight: bold;">${formatCurrency(newData.total_price)}</span></li>
+                        <li><strong>💵 Cọc:</strong> <span style="color: #48bb78; font-weight: bold;">${formatCurrency(newData.deposit_amount)}</span></li>
+                        <li><strong>🔋 Phí giữ chỗ:</strong> 50,000đ (đã thanh toán) </li>
+                    </ul>
+                </div>
+
+                ${newData.total_price !== oldData.total_price ? `
+                <div class="${newData.total_price > oldData.total_price ? 'warning-box' : 'features'}" style="${newData.total_price < oldData.total_price ? 'background: linear-gradient(135deg, #f0fff4, #e6fffa); border: 2px solid #48bb78;' : ''}">
+                    <strong>${newData.total_price > oldData.total_price ? '💡' : '🎉'} Thay đổi giá:</strong><br><br>
+                    ${newData.total_price > oldData.total_price 
+                        ? `• Giá tăng: <strong>${formatCurrency(newData.total_price - oldData.total_price)}</strong><br>• Bạn sẽ thanh toán thêm khi confirm booking`
+                        : `• Giá giảm: <strong>${formatCurrency(oldData.total_price - newData.total_price)}</strong><br>• Số tiền này sẽ được điều chỉnh khi thanh toán`}
+                </div>
+                ` : ''}
+
+                <div class="warning-box">
+                    <strong>⚠️ Lưu ý quan trọng:</strong><br><br>
+                    • Bạn <strong>chỉ được chỉnh sửa 1 lần duy nhất</strong><br>
+                    • Phí giữ chỗ 50,000đ đã thanh toán <strong>vẫn được giữ nguyên</strong><br>
+                    • Nếu cần thay đổi thêm, vui lòng <strong>hủy booking</strong> (mất phí giữ chỗ) và đặt lại
+                </div>
+
+                <div class="cta-container">
+                    <a href="#" class="cta-button" style="margin: 5px;">
+                        📱 Mở EV App
+                    </a>
+                    <a href="#" class="cta-button" style="margin: 5px; background: linear-gradient(135deg, #2f855a, #276749);">
+                        📋 Xem Booking
+                    </a>
+                </div>
+
+                <div style="background: linear-gradient(135deg, #f0fff4, #e6fffa); padding: 25px; border-radius: 15px; margin: 25px 0; border: 2px solid #48bb78;">
+                    <h3 style="color: #2d3748; margin-bottom: 20px; text-align: center; display: flex; align-items: center; justify-content: center;">
+                        🌱 <span style="margin: 0 10px;">Chuẩn bị cho chuyến đi</span> 🌱
+                    </h3>
+                    <div style="color: #4a5568; line-height: 1.8;">
+                        <p><strong>📄 Giấy tờ:</strong> CMND/CCCD + Bằng lái hạng A/A1</p>
+                        <p><strong>⏰ Có mặt:</strong> Sớm 15 phút so với giờ hẹn</p>
+                        <p><strong>📱 Chuẩn bị:</strong> Tải EV Rental App trước</p>
+                        <p><strong>🔋 Xe điện:</strong> Đã sạc đầy 100%, sẵn sàng 400km</p>
+                    </div>
+                </div>
+
+                <div class="message" style="margin-top: 30px; padding: 20px; background: rgba(72, 187, 120, 0.05); border-radius: 12px; border: 1px solid rgba(72, 187, 120, 0.2);">
+                    <strong>🚨 Cần hỗ trợ?</strong><br><br>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <strong>📱 Booking Support:</strong><br>
+                            📞 1900-EVBOOK (1900-387262)<br>
+                            📧 booking@evrental.com
+                        </div>
+                        <div>
+                            <strong>💬 Live Chat:</strong><br>
+                            Trong EV App 24/7<br>
+                            Phản hồi trong 5 phút
+                        </div>
+                        <div>
+                            <strong>🔧 Emergency:</strong><br>
+                            📞 1900-EVSOS (1900-387767)<br>
+                            Support 24/7
+                        </div>
+                    </div>
+                </div>
+
+                <div class="message" style="text-align: center; margin-top: 40px; font-size: 18px; color: #2d3748;">
+                    <strong>🌟 Chúc bạn có chuyến đi xanh tuyệt vời! 🌟</strong><br>
+                    <span style="color: #48bb78; font-weight: 600;">Ride Electric. Ride Future. Ride Green! 🏍️💚⚡</span>
+                </div>
+            </div>
+
+            <div class="footer">
+                <div class="social-links">
+                    <a href="#">🔄 View Booking</a>
+                    <a href="#">📱 EV App</a>
+                    <a href="#">🗺️ Charging Map</a>
+                    <a href="#">💬 Live Support</a>
+                </div>
+                <p><strong>© ${new Date().getFullYear()} EV Rental</strong> - Your Green Journey Partner 🌍</p>
+                <p>🏢 Green HQ: 123 Đường Xanh, Eco Park, Q7, HCMC | 📞 1900-EVGREEN</p>
+                <p>🌱 <strong>Impact:</strong> Cùng khách hàng tiết kiệm 1,250 tấn CO₂/năm!</p>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                    <p style="font-size: 11px; color: #a0aec0;">
+                        Booking Code: ${bookingCode} | Updated: ${new Date().toLocaleDateString('vi-VN')}<br>
+                        🔋 Powered by 100% renewable energy | Carbon negative
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
     `;
 };
 
@@ -1371,5 +1647,7 @@ module.exports = {
     getBookingCancellationTemplate,
     getPaymentSuccessTemplate,
     getContractSignedTemplate,
-    getCheckoutReceiptTemplate
+    getCheckoutReceiptTemplate,
+    getWalkInCustomerEmailTemplate,
+    getBookingUpdateTemplate // ← NEW
 };

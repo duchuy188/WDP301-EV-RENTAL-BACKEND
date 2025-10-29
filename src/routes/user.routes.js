@@ -18,6 +18,13 @@ router.post('/staff/assign',
   UserController.assignStaffToStation
 );
 
+// Hủy gán Staff khỏi Station (chỉ Admin)
+router.post('/staff/unassign', 
+  authMiddleware, 
+  roleMiddleware(['Admin']), 
+  UserController.unassignStaffFromStation
+);
+
 // Lấy danh sách users (chỉ Admin)
 router.get('/', 
   authMiddleware, 
@@ -46,11 +53,46 @@ router.get('/risky-customers',
   UserController.getRiskyCustomers
 );
 
+// Lấy chi tiết khách hàng rủi ro (chỉ Admin) - PHẢI ĐẶT TRƯỚC /:id
+router.get('/risky-customers/:id', 
+  authMiddleware, 
+  roleMiddleware(['Admin']), 
+  UserController.getRiskyCustomerDetail
+);
+
+// Kiểm tra risk score của user (Admin và Station Staff)
+router.get('/:id/risk-score', 
+  authMiddleware, 
+  roleMiddleware(['Admin', 'Station Staff']), 
+  UserController.checkRiskScore
+);
+
+// Reset risk score cho user (chỉ Admin)
+router.post('/:id/reset-risk-score', 
+  authMiddleware, 
+  roleMiddleware(['Admin']), 
+  UserController.resetRiskScore
+);
+
+// Thêm vi phạm cho user (Admin và Station Staff)
+router.post('/:id/violations', 
+  authMiddleware, 
+  roleMiddleware(['Admin', 'Station Staff']), 
+  UserController.addViolation
+);
+
 // Lấy thống kê users (chỉ Admin) - PHẢI ĐẶT TRƯỚC /:id
 router.get('/stats/overview', 
   authMiddleware, 
   roleMiddleware(['Admin']), 
   UserController.getUserStats
+);
+
+// Lấy thống kê cá nhân (chỉ EV Renter) - PHẢI ĐẶT TRƯỚC /:id
+router.get('/personal-analytics', 
+  authMiddleware, 
+  roleMiddleware(['EV Renter']), 
+  UserController.getUserPersonalStats
 );
 
 // Lấy chi tiết user - PHẢI ĐẶT CUỐI CÙNG
