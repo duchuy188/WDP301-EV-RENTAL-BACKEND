@@ -1,4 +1,5 @@
 const { Vehicle, Station } = require('../../../models');
+const { nowVietnam } = require('../../../config/timezone');
 
 class BookingExtractor {
   /**
@@ -56,7 +57,7 @@ class BookingExtractor {
     const fromToMatch = message.match(fromToPattern);
     if (fromToMatch) {
       const [_, startDay, startMonth, endDay, endMonth] = fromToMatch;
-      const year = new Date().getFullYear();
+      const year = nowVietnam().year(); 
       result.startDate = new Date(year, parseInt(startMonth) - 1, parseInt(startDay));
       result.endDate = new Date(year, parseInt(endMonth) - 1, parseInt(endDay));
       
@@ -74,7 +75,7 @@ class BookingExtractor {
     const rangeMatch = message.match(rangePattern);
     if (rangeMatch) {
       const [_, startDay, endDay, month] = rangeMatch;
-      const year = new Date().getFullYear();
+      const year = nowVietnam().year(); //  Năm theo timezone VN
       result.startDate = new Date(year, parseInt(month) - 1, parseInt(startDay));
       result.endDate = new Date(year, parseInt(month) - 1, parseInt(endDay));
       
@@ -93,8 +94,7 @@ class BookingExtractor {
     const durationMatch = message.match(durationPattern);
     if (durationMatch) {
       result.duration = parseInt(durationMatch[1]);
-      result.startDate = new Date();
-      result.startDate.setHours(0, 0, 0, 0);
+      result.startDate = nowVietnam().startOf('day').toDate(); 
       result.endDate = new Date(result.startDate);
       result.endDate.setDate(result.endDate.getDate() + result.duration);
       

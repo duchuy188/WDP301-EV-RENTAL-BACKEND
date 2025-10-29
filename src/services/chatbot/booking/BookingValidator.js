@@ -1,4 +1,5 @@
 const { User, Vehicle, Station, Booking } = require('../../../models');
+const { nowVietnam } = require('../../../config/timezone');
 
 class BookingValidator {
   /**
@@ -86,17 +87,44 @@ class BookingValidator {
       };
     }
     
-   
+    //  Check số lượng booking active (giống booking bình thường)
+    const { PendingBooking } = require('../../../models');
+    
+    // 1. Check PendingBooking - CHỈ CHO PHÉP 1
+    const activePendingBookings = await PendingBooking.countDocuments({
+      user_id: userId,
+      status: 'pending_payment'
+    });
+    
+    const MAX_PENDING_BOOKINGS = 1;
+    if (activePendingBookings >= MAX_PENDING_BOOKINGS) {
+      return {
+        valid: false,
+        error: `Bạn đang có ${activePendingBookings} booking chưa thanh toán. Vui lòng thanh toán hoặc đợi hết hạn (15 phút) trước khi đặt xe khác.`
+      };
+    }
+    
+    // 2. Check Booking thật - CHỈ CHO PHÉP TỐI ĐA 2 (để dành 1 chỗ cho PendingBooking)
     const activeBookings = await Booking.countDocuments({
       user_id: userId,
       status: { $in: ['pending', 'confirmed'] }
     });
     
-    const MAX_ACTIVE_BOOKINGS = 3;
-    if (activeBookings >= MAX_ACTIVE_BOOKINGS) {
+    const MAX_REAL_BOOKINGS = 2;
+    if (activeBookings >= MAX_REAL_BOOKINGS) {
       return {
         valid: false,
-        error: `Bạn chỉ có thể có tối đa ${MAX_ACTIVE_BOOKINGS} đặt xe hoạt động cùng lúc`
+        error: `Bạn đã có ${activeBookings} booking. Vui lòng hoàn thành trước khi đặt thêm.`
+      };
+    }
+    
+    // 3. Defense in depth: Check tổng (KHÔNG BAO GIỜ XẢY RA nếu logic 1+2 đúng)
+    const totalActiveBookings = activeBookings + activePendingBookings;
+    const MAX_ACTIVE_BOOKINGS = 3;
+    if (totalActiveBookings >= MAX_ACTIVE_BOOKINGS) {
+      return {
+        valid: false,
+        error: `Bạn chỉ có thể có tối đa ${MAX_ACTIVE_BOOKINGS} đặt xe hoạt động cùng lúc (bao gồm cả booking chưa thanh toán)`
       };
     }
     
@@ -116,8 +144,7 @@ class BookingValidator {
       };
     }
     
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    const now = nowVietnam().startOf('day').toDate(); 
     
     if (dates.startDate < now) {
       return {
@@ -128,7 +155,7 @@ class BookingValidator {
     
     //  Check giới hạn đặt trước tối đa 30 ngày (giống booking thông thường)
     const MAX_ADVANCE_DAYS = 30;
-    const maxAdvanceDate = new Date(now);
+    const maxAdvanceDate = nowVietnam().toDate();
     maxAdvanceDate.setDate(maxAdvanceDate.getDate() + MAX_ADVANCE_DAYS);
     
     if (dates.startDate > maxAdvanceDate) {
@@ -187,9 +214,10 @@ class BookingValidator {
   }
   
   /**
-   * Validate user không có booking trùng thời gian (giống booking bình thường)
+   * Validate user không có booking trùng thời gian (bao gồm cả PendingBooking)
    */
   async validateUserAvailability(userId, startDate, endDate) {
+    // Check Booking thật
     const userConflictingBooking = await Booking.findOne({
       user_id: userId,
       status: { $in: ['pending', 'confirmed'] },
@@ -214,6 +242,35 @@ class BookingValidator {
       return {
         valid: false,
         error: `Bạn đã có booking ${bookingTypeText} trong khoảng thời gian từ ${userConflictingBooking.start_date.toLocaleDateString('vi-VN')} đến ${userConflictingBooking.end_date.toLocaleDateString('vi-VN')}. Một người chỉ có thể đặt một xe trong cùng thời gian.`
+      };
+    }
+
+    //  Check PendingBooking (chưa thanh toán)
+    const { PendingBooking } = require('../../../models');
+    
+    const userConflictingPending = await PendingBooking.findOne({
+      user_id: userId,
+      status: 'pending_payment',
+      $or: [
+        {
+          'booking_data.start_date': { $lte: startDate },
+          'booking_data.end_date': { $gt: startDate }
+        },
+        {
+          'booking_data.start_date': { $lt: endDate },
+          'booking_data.end_date': { $gte: endDate }
+        },
+        {
+          'booking_data.start_date': { $gte: startDate },
+          'booking_data.end_date': { $lte: endDate }
+        }
+      ]
+    });
+
+    if (userConflictingPending) {
+      return {
+        valid: false,
+        error: `Bạn đã có booking chưa thanh toán (${userConflictingPending.temp_id}) trong khoảng thời gian từ ${new Date(userConflictingPending.booking_data.start_date).toLocaleDateString('vi-VN')} đến ${new Date(userConflictingPending.booking_data.end_date).toLocaleDateString('vi-VN')}. Vui lòng thanh toán hoặc đợi hết hạn trước khi đặt lại.`
       };
     }
 

@@ -1030,27 +1030,50 @@ const handleHoldingFeeCallback = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&message=${encodeURIComponent(callbackResult.message)}`);
     }
     
-    // Extract timestamp from VNPay txnRef
-    // VNPay strip ký tự: "PENDING_1761660920669_amo02tz8n" → "1761660920669028" (giữ cả số từ random)
-    // Timestamp luôn 13 số (Date.now()), lấy 13 số đầu
-    const vnpayTxnRef = callbackResult.orderId; // Chỉ có số
-    const timestamp = vnpayTxnRef.substring(0, 13); // Lấy 13 số đầu = timestamp
-    console.log(`🔑 VNPay txnRef: ${vnpayTxnRef} → Timestamp: ${timestamp}`);
+    // Extract payment_code from VNPay OrderInfo
+    // OrderInfo format: "Thanh toan holding_fee PB2910ABCD"
+    const orderInfo = callbackResult.params.vnp_OrderInfo || '';
+    const tempIdMatch = orderInfo.match(/PB\d{4}[A-Z0-9]{4}/);
+    const tempId = tempIdMatch ? tempIdMatch[0] : null;
     
-    // Find pending booking bằng timestamp
+    console.log(`🔑 VNPay OrderInfo: ${orderInfo}`);
+    console.log(`📝 Extracted temp_id: ${tempId}`);
+    
+    if (!tempId) {
+      console.error('❌ Cannot extract temp_id from OrderInfo');
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=invalid_order`);
+    }
+    
+    // Find pending booking bằng temp_id
     const PendingBooking = require('../models/PendingBooking');
     const pendingBooking = await PendingBooking.findOne({ 
-      temp_id: { $regex: `^PENDING_${timestamp}_` }, // Match "PENDING_<13số>_<bất kỳ>"
+      temp_id: tempId,
       status: 'pending_payment'
     }).populate('user_id');
     
     if (!pendingBooking) {
-      console.error(`❌ Pending booking not found or expired for timestamp: ${timestamp}`);
+      console.error(`❌ Pending booking not found or expired for temp_id: ${tempId}`);
       return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=expired`);
     }
     
     console.log(`✅ Found pending booking: ${pendingBooking.temp_id} (${pendingBooking._id})`);
     console.log(`👤 User: ${pendingBooking.user_id.fullname} (${pendingBooking.user_id.email})`);
+    
+    //  DUPLICATE PAYMENT PREVENTION: Check if already paid
+    if (pendingBooking.status === 'paid' || pendingBooking.status === 'completed') {
+      console.log(`⚠️ PendingBooking already paid - Redirecting to success page`);
+      // Tìm booking đã tạo
+      const Booking = require('../models/Booking');
+      const existingBooking = await Booking.findOne({
+        user_id: pendingBooking.user_id._id,
+        'holding_fee.payment_id': { $exists: true }
+      }).sort({ createdAt: -1 }).limit(1);
+      
+      if (existingBooking) {
+        return res.redirect(`${process.env.FRONTEND_URL}/booking-success?code=${existingBooking.code}&duplicate=true`);
+      }
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-success?duplicate=true`);
+    }
     
     // Check payment status
     if (callbackResult.responseCode !== '00') {
@@ -1243,6 +1266,15 @@ const handleHoldingFeeCallback = async (req, res) => {
       await station.syncVehicleCount();
     } catch (stationError) {
       console.log('Station sync failed:', stationError.message);
+    }
+    
+   
+    try {
+      pendingBooking.status = 'paid';
+      await pendingBooking.save();
+      console.log(`✅ Marked PendingBooking ${pendingBooking.temp_id} as paid`);
+    } catch (pendingError) {
+      console.error('❌ Failed to mark PendingBooking as paid:', pendingError.message);
     }
     
     console.log('🔚 ========== END HOLDING FEE CALLBACK ==========\n');
