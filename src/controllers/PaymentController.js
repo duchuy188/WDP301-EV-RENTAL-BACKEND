@@ -1030,10 +1030,9 @@ const handleHoldingFeeCallback = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&message=${encodeURIComponent(callbackResult.message)}`);
     }
     
-    // Extract payment_code from VNPay OrderInfo
-    // OrderInfo format: "Thanh toan holding_fee PB2910ABCD"
+   
     const orderInfo = callbackResult.params.vnp_OrderInfo || '';
-    const tempIdMatch = orderInfo.match(/PB\d{4}[A-Z0-9]{4}/);
+    const tempIdMatch = orderInfo.match(/PENDING_\d+_[a-z0-9]+/);
     const tempId = tempIdMatch ? tempIdMatch[0] : null;
     
     console.log(`🔑 VNPay OrderInfo: ${orderInfo}`);
