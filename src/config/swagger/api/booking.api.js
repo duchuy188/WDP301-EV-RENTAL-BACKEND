@@ -262,7 +262,7 @@
  *                       example: "673f1234567890abcdef1234"
  *                     temp_id:
  *                       type: string
- *                       example: "PENDING_1730123456_abc123"
+ *                       example: "PB3010SMEQ"
  *                     vehicle:
  *                       type: object
  *                       properties:

@@ -461,6 +461,12 @@ class ChatbotService {
         }
       }
       
+      //  HANDLE CHECK BOOKING STATUS
+      if (intent === 'check_booking' && userRole === 'EV Renter') {
+        console.log('🔍 Handling check booking status request');
+        return await BookingHandler.checkBookingStatus(userId);
+      }
+      
       // Lấy context dựa trên role và intent
       const context = await this.getUserContext(userRole, userId, intent);
       
@@ -2513,6 +2519,9 @@ Trả về JSON format:
     if (messageText.match(/xe.*nhiều nhất|xe.*phổ biến|xe.*được thuê|thống kê xe|xe nào|top xe|xe được yêu thích/i)) return 'vehicle_stats';
     if (messageText.match(/doanh thu.*xe|xe.*doanh thu|revenue.*vehicle|xe kiếm được/i)) return 'vehicle_revenue';
     if (messageText.match(/thống kê|báo cáo|report|analytics|phân tích/i)) return 'analytics';
+    
+    // 🆕 CHECK BOOKING STATUS - CHECK TRƯỚC CANCELLATION (vì có thể overlap)
+    if (messageText.match(/check\s*booking|xem\s*(?:booking|đặt\s*xe)|trạng\s*thái\s*(?:booking|đặt\s*xe)|(?:booking|đặt\s*xe)\s*của\s*tôi|đã\s*thanh\s*toán\s*chưa|thanh\s*toán\s*(?:thành\s*công|xong)\s*chưa|xe\s*tôi\s*đặt|booking\s*tôi|my\s*booking/i)) return 'check_booking';
     
     // 🆕 CANCELLATION - CHECK TRƯỚC BOOKING (vì "hủy booking" có cả 2 từ)
     // Support cả 2 dấu: hủy (dấu hỏi) và huỷ (dấu nặng)

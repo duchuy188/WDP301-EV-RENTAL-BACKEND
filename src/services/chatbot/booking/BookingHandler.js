@@ -683,6 +683,113 @@ class BookingHandler {
     
     return code;
   }
+
+  /**
+   * Check booking status của user
+   */
+  async checkBookingStatus(userId) {
+    try {
+      const { Booking, PendingBooking } = require('../../models');
+      
+      // 1. Check pending bookings (chưa thanh toán)
+      const pendingBookings = await PendingBooking.find({
+        user_id: userId,
+        status: 'pending_payment',
+        expires_at: { $gte: new Date() }
+      }).sort({ created_at: -1 }).limit(1);
+      
+      if (pendingBookings.length > 0) {
+        const pending = pendingBookings[0];
+        const expiresIn = Math.ceil((new Date(pending.expires_at) - new Date()) / 60000);
+        
+        return {
+          success: true,
+          message: `⏳ **BOOKING ĐANG CHỜ THANH TOÁN**
+
+📋 **Mã đặt chỗ:** ${pending.temp_id}
+🚗 **Xe:** ${pending.booking_data.model} ${pending.booking_data.color}
+💰 **Tổng tiền:** ${pending.booking_data.total_price.toLocaleString('vi-VN')} VND
+💵 **Phí giữ chỗ:** 50,000 VND
+
+⏰ **Còn ${expiresIn} phút** để thanh toán
+
+📱 **Link thanh toán:** ${pending.vnpay_url}
+
+⚠️ Nếu không thanh toán trong ${expiresIn} phút, booking sẽ tự động hủy!`,
+          suggestions: ['Thanh toán ngay', 'Hủy booking'],
+          actions: ['pay_now', 'cancel_booking'],
+          data: {
+            temp_id: pending.temp_id,
+            payment_url: pending.vnpay_url
+          }
+        };
+      }
+      
+      // 2. Check confirmed bookings (đã thanh toán)
+      const confirmedBookings = await Booking.find({
+        user_id: userId,
+        status: { $in: ['confirmed', 'active'] }
+      })
+      .populate('vehicle_id', 'brand model color license_plate')
+      .populate('station_id', 'name address phone')
+      .sort({ created_at: -1 })
+      .limit(3);
+      
+      if (confirmedBookings.length > 0) {
+        let message = '✅ **BOOKING CỦA BẠN:**\n\n';
+        
+        confirmedBookings.forEach((booking, index) => {
+          const statusEmoji = booking.status === 'active' ? '🚗' : '📅';
+          const statusText = booking.status === 'active' ? 'Đang thuê' : 'Sắp tới';
+          
+          message += `${statusEmoji} **${index + 1}. ${statusText}**
+📋 Mã: ${booking.code}
+🚗 Xe: ${booking.vehicle_id?.brand} ${booking.vehicle_id?.model} ${booking.vehicle_id?.color}
+📅 Từ: ${booking.start_date.toLocaleDateString('vi-VN')} lúc ${booking.pickup_time}
+📅 Đến: ${booking.end_date.toLocaleDateString('vi-VN')} lúc ${booking.return_time}
+📍 Trạm: ${booking.station_id?.name}
+💰 Tổng tiền: ${booking.total_price.toLocaleString('vi-VN')} VND
+📞 Hotline: ${booking.station_id?.phone || 'Liên hệ hotline'}
+
+`;
+        });
+        
+        message += `💡 Cần hỗ trợ gì thêm không bạn?`;
+        
+        return {
+          success: true,
+          message,
+          suggestions: ['Đặt xe mới', 'Hủy booking', 'Liên hệ hỗ trợ'],
+          actions: ['new_booking', 'cancel_booking', 'support']
+        };
+      }
+      
+      // 3. Không có booking nào
+      return {
+        success: true,
+        message: `📭 **CHƯA CÓ BOOKING NÀO**
+
+Bạn chưa có booking nào đang hoạt động.
+
+🚗 Muốn đặt xe không? Mình có thể giúp bạn tìm xe phù hợp!
+
+💡 Hãy cho mình biết:
+• Bạn muốn thuê xe khi nào?
+• Loại xe nào? (VinFast VF5, VF8, VF9...)
+• Thuê bao lâu?`,
+        suggestions: ['Đặt xe ngay', 'Xem các dòng xe', 'Giá thuê'],
+        actions: ['start_booking', 'view_vehicles', 'view_pricing']
+      };
+      
+    } catch (error) {
+      console.error('Error checking booking status:', error);
+      return {
+        success: false,
+        message: '❌ Xin lỗi, có lỗi khi kiểm tra booking. Vui lòng thử lại sau!',
+        suggestions: ['Thử lại', 'Liên hệ hỗ trợ']
+      };
+    }
+  }
 }
 
 module.exports = new BookingHandler();
