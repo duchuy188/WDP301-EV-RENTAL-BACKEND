@@ -13,10 +13,11 @@ const findOrCreateKyc = async (userId) => {
 };
 
 
-const checkDuplicateIdentity = async (identityCard) => {
+const checkDuplicateIdentity = async (identityCard, currentUserId) => {
   if (!identityCard) return false;
   const existing = await KYC.findOne({ 
     identityCard: identityCard,
+    userId: { $ne: currentUserId } 
   });
   return !!existing;
 };
@@ -25,7 +26,7 @@ const checkDuplicateLicense = async (licenseNumber, currentUserId) => {
   if (!licenseNumber) return false;
   const existing = await KYC.findOne({ 
     licenseNumber: licenseNumber,
-    userId: { $ne: currentUserId } // Loại trừ user hiện tại
+    userId: { $ne: currentUserId } 
   });
   return !!existing;
 };
@@ -77,7 +78,7 @@ exports.uploadIdentityCardFront = async (req, res) => {
     
     // Thêm check duplicate
     if (kyc.identityCard) {
-      const isDuplicate = await checkDuplicateIdentity(kyc.identityCard);
+      const isDuplicate = await checkDuplicateIdentity(kyc.identityCard, req.user.id);
       if (isDuplicate) {
         return res.status(400).json({ 
           message: 'Số CMND/CCCD đã được sử dụng bởi tài khoản khác' 
@@ -789,7 +790,7 @@ exports.staffUploadIdentityCardFront = async (req, res) => {
     
     // Kiểm tra duplicate
     if (kyc.identityCard) {
-      const isDuplicate = await checkDuplicateIdentity(kyc.identityCard);
+      const isDuplicate = await checkDuplicateIdentity(kyc.identityCard, userId);
       if (isDuplicate) {
         return res.status(400).json({ 
           message: 'Số CMND/CCCD đã được sử dụng bởi tài khoản khác' 
