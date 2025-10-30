@@ -336,8 +336,12 @@ const createBooking = async (req, res) => {
     
     // ========== NEW FLOW: RESERVE VEHICLE + CREATE PENDING BOOKING ==========
     
-    // 1. Generate unique temp ID
-    const tempId = 'PENDING_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const randomChars = Math.random().toString(36).substr(2, 4).toUpperCase();
+    const tempId = `PB${day}${month}${randomChars}`;
     console.log(`🔑 Temp ID: ${tempId}`);
     
     // 2. Expires in 15 minutes
