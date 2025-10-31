@@ -779,10 +779,10 @@ Hiện tại: ${currentTime} | Hoạt động: 24/7
 • Thanh toán phần còn lại (nếu có)
 • Nhận lại cọc (trừ phí phát sinh)
 
-⚠️ **LƯU Ý QUAN TRỌNG:**
-• Phí giữ chỗ 50k KHÔNG được hoàn lại nếu hủy booking
+⚠️ **LƯU Ý QUAN TRỌNG VỀ PHÍ GIỮ CHỖ:**
+• **Bạn tự hủy:** Phí giữ chỗ 50k KHÔNG được hoàn lại
+• **Nhân viên hủy** (lỗi hệ thống/xe hỏng): Được hoàn lại 50k tiền mặt tại trạm
 • Chỉ được chỉnh sửa booking 1 lần (sau đó phải hủy và đặt lại)
-• Hủy booking mất phí giữ chỗ 50k đã thanh toán
 • Để thực hiện đặt xe, vui lòng dùng app/web chính thức hoặc chatbot AI
 
 === 🚗 TRẠNG THÁI XE ===
@@ -986,11 +986,24 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ nhân viên trạm (Sta
    - Hỗ trợ khách cài app nếu cần
 
 **Quy trình thu tiền:**
-- **PHÍ GIỮ CHỖ:** Khách đã thanh toán 50,000 VND online (KHÔNG hoàn lại nếu hủy)
+- **PHÍ GIỮ CHỖ:** Khách đã thanh toán 50,000 VND online
 - Thuê <3 ngày: Thu 100% khi giao xe (ĐÃ TRỪ phí giữ chỗ 50k)
 - Thuê ≥3 ngày: Thu cọc 50% khi giao xe, 50% khi trả xe (ĐÃ TRỪ phí giữ chỗ 50k)
 - Phí phạt: Thu ngay khi trả xe (tiền mặt hoặc VNPay)
 - ⚠️ **LƯU Ý:** Số tiền cần thu ĐÃ ĐƯỢC TRỪ 50k phí giữ chỗ (khách đã thanh toán trước)
+
+**CHÍNH SÁCH REFUND PHÍ GIỮ CHỖ (50,000đ):**
+⚠️ **Nếu STAFF CANCEL** (lỗi hệ thống, xe hỏng, v.v.):
+• Bạn có thể chọn **REFUND tiền mặt** cho khách
+• Cách thực hiện:
+  1. Khi cancel booking, tick vào "Refund to customer"
+  2. Hệ thống tự động tạo Payment refund (status: completed)
+  3. Mở ngăn kéo → Đưa khách 50,000đ tiền mặt
+  4. Ghi rõ lý do refund (VD: "Xe hỏng", "Lỗi hệ thống")
+• Phương thức: CHỈ tiền mặt (không qua VNPay)
+• Admin có thể xem lịch sử refund để tracking
+
+✅ **Nếu KHÁCH TỰ HỦY:** KHÔNG được refund (theo chính sách)
 
 === HỢP ĐỒNG VÀ GIẤY TỜ ===
 **Quy trình ký hợp đồng:**
@@ -1159,15 +1172,25 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ Admin.
 **PHÍ GIỮ CHỖ (Holding Fee):**
 - Mức phí: 50,000 VND/booking online (bắt buộc)
 - Thời hạn thanh toán: 15 phút sau khi đặt xe
-- Chính sách: KHÔNG hoàn lại nếu khách hủy booking
+- Chính sách refund:
+  • **Khách tự hủy:** KHÔNG hoàn lại
+  • **Staff hủy** (lỗi hệ thống/xe hỏng): CÓ THỂ hoàn lại 50k tiền mặt
 - Xử lý: Phí được TRỪ VÀO tổng tiền thuê xe khi nhận xe
 - Hệ quả: Booking không thanh toán phí giữ chỗ sẽ tự động hủy sau 15 phút
 
-**MỤC ĐÍCH:**
+**TRACKING REFUND:**
+- Tất cả refund được lưu trong Payment collection
+- payment_type: 'refund', status: 'completed'
+- Có field related_payment_id link về payment gốc
+- Admin có thể xem báo cáo refund để kiểm soát
+- Refund chỉ bằng tiền mặt, staff xử lý tại quầy
+
+**MỤC ĐÍCH PHÍ GIỮ CHỖ:**
 - Giảm booking ảo (fake bookings)
 - Đảm bảo khách hàng nghiêm túc
 - Tạo commitment từ khách hàng
 - Bảo vệ doanh thu và tài nguyên xe
+- Refund khi staff cancel để giữ uy tín và trải nghiệm khách hàng
 
 === THỐNG KÊ XE ĐƯỢC THUÊ ===
 ${vehicleStats?.length > 0 ? 

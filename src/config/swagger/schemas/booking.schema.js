@@ -318,6 +318,11 @@
  *           type: string
  *           description: Cancellation reason
  *           example: "Thay đổi kế hoạch"
+ *         refund_to_customer:
+ *           type: boolean
+ *           description: Staff chọn có hoàn lại phí giữ chỗ cho khách không (chỉ áp dụng khi Staff/Admin cancel)
+ *           default: false
+ *           example: true
  *     
  *     BookingResponse:
  *       type: object
