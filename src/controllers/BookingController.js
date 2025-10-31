@@ -919,12 +919,14 @@ const confirmBooking = async (req, res) => {
 const cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const { reason, refund_to_customer = false } = req.body; // ← THÊM refund_to_customer
     const user_id = req.user.id;
     
     console.log('\n🚫 ========== CANCEL BOOKING REQUEST ==========');
     console.log(`📝 Booking ID: ${id}`);
     console.log(`👤 User ID: ${user_id}`);
+    console.log(`🔑 User Role: ${req.user.role}`);
+    console.log(`💰 Refund to customer: ${refund_to_customer}`);
     
     // Find booking
     const booking = await Booking.findById(id)
@@ -956,29 +958,83 @@ const cancelBooking = async (req, res) => {
     }
     
     // ========== HOLDING FEE REFUND POLICY ==========
-    // Online bookings: Holding fee KHÔNG được hoàn lại
+    // Staff cancel: Có option refund (tùy trường hợp)
+    // User cancel: KHÔNG được hoàn lại
     // Walk-in bookings: Không có holding fee
     
     let refundInfo = null;
+    const isStaffCancel = (req.user.role === 'Station Staff' || req.user.role === 'Admin');
     
     if (booking.booking_type === 'online' && booking.holding_fee?.status === 'paid') {
-      // HOLDING FEE KHÔNG ĐƯỢC HOÀN LẠI - NON-REFUNDABLE
-      console.log('⚠️ HOLDING FEE FORFEITED - Phí giữ chỗ KHÔNG được hoàn lại');
       
-      refundInfo = {
-        holding_fee_paid: booking.holding_fee.amount,
-        holding_fee_refunded: 0,
-        policy: 'NON-REFUNDABLE - Phí giữ chỗ 50,000đ KHÔNG được hoàn lại khi hủy booking',
-        message: '❌ Bạn sẽ MẤT phí giữ chỗ 50,000đ đã thanh toán (KHÔNG HOÀN LẠI)'
-      };
-      
-      // Giữ nguyên holding_fee.status = 'paid' (KHÔNG có 'refunded' status)
+      // ========== STAFF CANCEL + REFUND OPTION ==========
+      if (isStaffCancel && refund_to_customer) {
+        // ✅ STAFF CHỌN REFUND - Tạo payment refund
+        console.log('✅ STAFF REFUND - Phí giữ chỗ sẽ được hoàn lại bằng tiền mặt');
+        
+        const Payment = require('../models/Payment');
+        
+        try {
+          const refundPayment = await Payment.create({
+            code: `REF${Date.now()}`,
+            user_id: booking.user_id._id,
+            booking_id: booking._id,
+            rental_id: booking.rental_id || null,
+            
+            amount: booking.holding_fee.amount,
+            payment_method: 'cash',
+            payment_type: 'refund',
+            status: 'completed',
+            
+            reason: `Hoàn phí giữ chỗ - ${reason || 'Nhân viên hủy booking'}`,
+            related_payment_id: booking.holding_fee.payment_id,
+            processed_by: user_id,
+            completed_at: nowVietnam().toDate(),
+            completed_by: user_id,
+            
+            notes: `Đã hoàn tiền mặt tại trạm bởi ${req.user.fullname || 'Nhân viên'}`
+          });
+          
+          console.log(`💵 Refund payment created: ${refundPayment.code}`);
+          
+          refundInfo = {
+            holding_fee_paid: booking.holding_fee.amount,
+            holding_fee_refundable: booking.holding_fee.amount,
+            refund_payment_id: refundPayment._id,
+            refund_payment_code: refundPayment.code,
+            policy: 'REFUNDABLE - Staff cancelled with refund option',
+            message: `✅ Đã hoàn ${booking.holding_fee.amount.toLocaleString('vi-VN')}đ tiền mặt cho khách tại quầy`
+          };
+          
+        } catch (paymentError) {
+          console.error('❌ Error creating refund payment:', paymentError);
+          refundInfo = {
+            holding_fee_paid: booking.holding_fee.amount,
+            holding_fee_refundable: 0,
+            policy: 'ERROR - Failed to create refund payment',
+            message: '❌ Lỗi khi tạo phiếu hoàn tiền. Vui lòng thử lại.'
+          };
+        }
+        
+      } else {
+        // ❌ USER CANCEL hoặc STAFF KHÔNG CHỌN REFUND
+        console.log('⚠️ HOLDING FEE FORFEITED - Phí giữ chỗ KHÔNG được hoàn lại');
+        
+        refundInfo = {
+          holding_fee_paid: booking.holding_fee.amount,
+          holding_fee_refundable: 0,
+          policy: isStaffCancel 
+            ? 'NON-REFUNDABLE - Staff cancelled without refund (customer violation)'
+            : 'NON-REFUNDABLE - User cancelled',
+          message: `❌ Phí giữ chỗ ${booking.holding_fee.amount.toLocaleString('vi-VN')}đ KHÔNG được hoàn lại`
+        };
+      }
       
     } else if (booking.booking_type === 'walk_in') {
       console.log('✅ Walk-in booking - No holding fee');
       refundInfo = {
         holding_fee_paid: 0,
-        holding_fee_refunded: 0,
+        holding_fee_refundable: 0,
         policy: 'Walk-in booking không có phí giữ chỗ',
         message: 'Không có phí giữ chỗ'
       };
@@ -986,7 +1042,7 @@ const cancelBooking = async (req, res) => {
       console.log('ℹ️ No holding fee paid yet');
       refundInfo = {
         holding_fee_paid: 0,
-        holding_fee_refunded: 0,
+        holding_fee_refundable: 0,
         policy: 'Chưa thanh toán phí giữ chỗ',
         message: 'Không có phí giữ chỗ cần hoàn lại'
       };
@@ -1020,7 +1076,7 @@ const cancelBooking = async (req, res) => {
       await sendEmail({
         to: booking.user_id.email,
         subject: 'Hủy đặt xe - EV Rental',
-        html: getBookingCancellationTemplate(booking.user_id.fullname, booking)
+        html: getBookingCancellationTemplate(booking.user_id.fullname, booking, refundInfo)
       });
       console.log('✅ Email hủy booking đã được gửi đến:', booking.user_id.email);
     } catch (emailError) {

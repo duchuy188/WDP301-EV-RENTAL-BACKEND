@@ -158,7 +158,7 @@
  *           example: "2025-01-25T18:00:00.000Z"
  *         payments:
  *           type: array
- *           description: "Tất cả payments liên quan (holding_fee, deposit, rental_fee, additional_fee)"
+ *           description: "Tất cả payments liên quan (holding_fee, deposit, rental_fee, additional_fee, refund)"
  *           items:
  *             type: object
  *             properties:
@@ -167,7 +167,7 @@
  *                 example: "PAYYPIXB38I"
  *               payment_type:
  *                 type: string
- *                 enum: [holding_fee, deposit, rental_fee, additional_fee]
+ *                 enum: [holding_fee, deposit, rental_fee, additional_fee, refund]
  *                 example: "holding_fee"
  *               amount:
  *                 type: number

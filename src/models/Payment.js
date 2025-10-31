@@ -59,9 +59,17 @@ const paymentSchema = new mongoose.Schema({
       'holding_fee',   // Phí giữ chỗ (Online booking)
       'deposit',       // Đặt cọc
       'rental_fee',    // Phí thuê xe
-      'additional_fee' // Phí phát sinh
+      'additional_fee', // Phí phát sinh
+      'refund'         // Hoàn tiền (Staff refund holding fee)
     ],
     required: true 
+  },
+  
+  // Liên kết đến payment gốc (cho refund)
+  related_payment_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Payment',
+    default: null
   },
   
   // Lý do phí phát sinh (tự nhập)
@@ -115,6 +123,18 @@ const paymentSchema = new mongoose.Schema({
     ref: 'User',
     required: true 
   },
+  
+  // Thông tin hoàn thành (cho refund hoặc cash payment)
+  completed_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  completed_at: {
+    type: Date,
+    default: null
+  },
+  
   is_active: { 
     type: Boolean, 
     default: true 
