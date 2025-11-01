@@ -7,6 +7,7 @@ const KYC = require('./KYC');
 const Station = require('./Station');
 const Vehicle = require('./Vehicle');
 const Booking = require('./Booking');
+const PendingBooking = require('./PendingBooking');
 const Rental = require('./Rental');
 const Payment = require('./Payment');
 const Contract = require('./Contract');
@@ -24,6 +25,7 @@ module.exports = {
     Station,
     Vehicle,
     Booking,
+    PendingBooking,
     Rental,
     Payment,
     Contract,

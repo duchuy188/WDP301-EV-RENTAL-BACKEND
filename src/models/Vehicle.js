@@ -103,15 +103,13 @@ const vehicleSchema = new mongoose.Schema({
     default: 'draft'
   },
   
-  // ========== RESERVE TRACKING (Holding Fee Flow) ==========
+ 
   // Track soft reserve (pending payment) vs hard reserve (after payment)
   reserved_for: {
     type: String,
     enum: ['', 'holding_fee_payment', 'booking'],
     default: ''
-    // '': Not reserved
-    // 'holding_fee_payment': Soft reserve - waiting for user to pay holding fee (15 min)
-    // 'booking': Hard reserve - user paid, has real booking (no expiry)
+    
   },
   reserved_at: {
     type: Date,
@@ -120,8 +118,7 @@ const vehicleSchema = new mongoose.Schema({
   reserved_until: {
     type: Date,
     default: null
-    // Only used for 'holding_fee_payment' - auto unreserve after this time
-    // null for 'booking' (no expiry)
+   
   },
   
   // Thông tin kỹ thuật (Staff quản lý)

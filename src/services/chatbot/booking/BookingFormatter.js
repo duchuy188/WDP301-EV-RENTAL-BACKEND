@@ -27,13 +27,18 @@ class BookingFormatter {
 📅 **Trả xe:** ${endDate} lúc ${returnTime}
 ⏱️ **Thời gian thuê:** ${duration} ngày
 📍 **Trạm:** ${vehicle.station_id?.name || 'Chưa chọn'}
-💰 **Giá thuê:** ${pricing.totalPrice.toLocaleString('vi-VN')} VND
-💵 **Cọc:** ${pricing.depositAmount.toLocaleString('vi-VN')} VND
+💰 **Tổng tiền:** ${pricing.totalPrice.toLocaleString('vi-VN')} VND
+💵 **Tiền cọc:** ${pricing.depositAmount.toLocaleString('vi-VN')} VND
+
+🎫 **PHÍ GIỮ CHỖ: 50,000 VND**
+• Thanh toán online qua VNPay
+• Không hoàn lại nếu hủy booking
+• Được **TRỪ VÀO** tổng tiền thuê
 
 ⚠️ **Lưu ý quan trọng:**
-• KYC sẽ được kiểm tra tại trạm
-• Thanh toán tại quầy (tiền mặt/VNPay)
+• Sau khi xác nhận, bạn có 15 phút để thanh toán
 • Mang theo CCCD gốc khi đến trạm
+• KYC sẽ được kiểm tra tại trạm
 
 Bạn xác nhận đặt xe này không?`;
   }

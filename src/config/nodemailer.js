@@ -872,7 +872,7 @@ const getStaffAccountEmailTemplate = (staffName, email, password) => {
 };
 
 // Template email hủy booking - Green EV Theme
-const getBookingCancellationTemplate = (userName, booking) => {
+const getBookingCancellationTemplate = (userName, booking, refundInfo) => {
     return `
     <!DOCTYPE html>
     <html lang="vi">
@@ -918,8 +918,25 @@ const getBookingCancellationTemplate = (userName, booking) => {
                     <strong>💡 Thông tin quan trọng:</strong><br><br>
                     • Booking đã được hủy thành công<br>
                     • Xe đã được trả về trạng thái available<br>
-                    • Không có phí hủy cho booking này<br>
-                    • Bạn có thể đặt xe mới bất cứ lúc nào
+                    
+                    ${refundInfo ? `
+                    <br><strong>💰 Thông tin hoàn tiền:</strong><br>
+                    ${refundInfo.holding_fee_refundable > 0 ? `
+                    <div style="background: linear-gradient(135deg, #f0fff4, #c6f6d5); padding: 15px; border-radius: 10px; margin-top: 10px; border-left: 4px solid #48bb78;">
+                         <strong style="color: #2f855a; font-size: 16px;">Đã hoàn ${refundInfo.holding_fee_refundable.toLocaleString('vi-VN')}đ tiền mặt tại trạm</strong><br>
+                        📝 Mã giao dịch: <code style="background: white; padding: 3px 8px; border-radius: 5px; color: #2f855a; font-weight: bold;">${refundInfo.refund_payment_code}</code><br>
+                        💵 Phương thức: Tiền mặt tại quầy<br>
+                        📌 ${refundInfo.message}
+                    </div>
+                    ` : `
+                    <div style="background: linear-gradient(135deg, #fff5f5, #fed7d7); padding: 15px; border-radius: 10px; margin-top: 10px; border-left: 4px solid #e53e3e;">
+                        ❌ <strong style="color: #c53030; font-size: 16px;">Phí giữ chỗ 50,000đ KHÔNG được hoàn lại</strong><br>
+                        📌 ${refundInfo.message}
+                    </div>
+                    `}
+                    ` : ''}
+                    
+                    <br>• Bạn có thể đặt xe mới bất cứ lúc nào
                 </div>
                 
                 <div class="cta-container">

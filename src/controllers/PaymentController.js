@@ -33,7 +33,7 @@ const sendPaymentSuccessEmail = async (payment, user) => {
     console.log(`📧 Payment success email sent to ${user.email} for payment ${payment.code}`);
   } catch (error) {
     console.error('❌ Error sending payment success email:', error);
-    // Không throw error để không ảnh hưởng đến flow chính
+  
   }
 };
 
@@ -1030,27 +1030,49 @@ const handleHoldingFeeCallback = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&message=${encodeURIComponent(callbackResult.message)}`);
     }
     
-    // Extract timestamp from VNPay txnRef
-    // VNPay strip ký tự: "PENDING_1761660920669_amo02tz8n" → "1761660920669028" (giữ cả số từ random)
-    // Timestamp luôn 13 số (Date.now()), lấy 13 số đầu
-    const vnpayTxnRef = callbackResult.orderId; // Chỉ có số
-    const timestamp = vnpayTxnRef.substring(0, 13); // Lấy 13 số đầu = timestamp
-    console.log(`🔑 VNPay txnRef: ${vnpayTxnRef} → Timestamp: ${timestamp}`);
+   
+    const orderInfo = callbackResult.params.vnp_OrderInfo || '';
+    const tempIdMatch = orderInfo.match(/PB\d{4}[A-Z0-9]{4}/i);
+    const tempId = tempIdMatch ? tempIdMatch[0] : null;
     
-    // Find pending booking bằng timestamp
+    console.log(`🔑 VNPay OrderInfo: ${orderInfo}`);
+    console.log(`📝 Extracted temp_id: ${tempId}`);
+    
+    if (!tempId) {
+      console.error('❌ Cannot extract temp_id from OrderInfo');
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=invalid_order`);
+    }
+    
+    // Find pending booking bằng temp_id
     const PendingBooking = require('../models/PendingBooking');
     const pendingBooking = await PendingBooking.findOne({ 
-      temp_id: { $regex: `^PENDING_${timestamp}_` }, // Match "PENDING_<13số>_<bất kỳ>"
+      temp_id: tempId,
       status: 'pending_payment'
     }).populate('user_id');
     
     if (!pendingBooking) {
-      console.error(`❌ Pending booking not found or expired for timestamp: ${timestamp}`);
+      console.error(`❌ Pending booking not found or expired for temp_id: ${tempId}`);
       return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=expired`);
     }
     
     console.log(`✅ Found pending booking: ${pendingBooking.temp_id} (${pendingBooking._id})`);
     console.log(`👤 User: ${pendingBooking.user_id.fullname} (${pendingBooking.user_id.email})`);
+    
+    //  DUPLICATE PAYMENT PREVENTION: Check if already paid
+    if (pendingBooking.status === 'paid' || pendingBooking.status === 'completed') {
+      console.log(`⚠️ PendingBooking already paid - Redirecting to success page`);
+      // Tìm booking đã tạo
+      const Booking = require('../models/Booking');
+      const existingBooking = await Booking.findOne({
+        user_id: pendingBooking.user_id._id,
+        'holding_fee.payment_id': { $exists: true }
+      }).sort({ createdAt: -1 }).limit(1);
+      
+      if (existingBooking) {
+        return res.redirect(`${process.env.FRONTEND_URL}/booking-success?code=${existingBooking.code}&duplicate=true`);
+      }
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-success?duplicate=true`);
+    }
     
     // Check payment status
     if (callbackResult.responseCode !== '00') {
@@ -1245,6 +1267,72 @@ const handleHoldingFeeCallback = async (req, res) => {
       console.log('Station sync failed:', stationError.message);
     }
     
+   
+    try {
+      pendingBooking.status = 'paid';
+      await pendingBooking.save();
+      console.log(`✅ Marked PendingBooking ${pendingBooking.temp_id} as paid`);
+    } catch (pendingError) {
+      console.error('❌ Failed to mark PendingBooking as paid:', pendingError.message);
+    }
+    
+   
+    // Tự động gửi thông báo vào chatbot conversation
+    try {
+      const Conversation = require('../models/Conversation');
+      
+      // Fetch vehicle and station info for chatbot message
+      const Vehicle = require('../models/Vehicle');
+      const Station = require('../models/Station');
+      const vehicle_info = await Vehicle.findById(booking.vehicle_id);
+      const station_info = await Station.findById(booking.station_id);
+      
+      // Tìm conversation gần nhất của user (active session)
+      const conversation = await Conversation.findOne({ 
+        user_id: pendingBooking.user_id._id,
+        status: 'active'
+      }).sort({ last_activity: -1 });
+      
+      if (conversation && vehicle_info && station_info) {
+        const successMessage = `✅ **THANH TOÁN THÀNH CÔNG!**
+
+📋 **Mã booking:** ${booking.code}
+🚗 **Xe:** ${vehicle_info.brand} ${vehicle_info.model} ${vehicle_info.color} (${vehicle_info.license_plate})
+📅 **Nhận xe:** ${booking.start_date.toLocaleDateString('vi-VN')} lúc ${booking.pickup_time}
+📍 **Trạm:** ${station_info.name}
+💰 **Tổng tiền:** ${booking.total_price.toLocaleString('vi-VN')} VND
+💵 **Đã trả phí giữ chỗ:** 50,000 VND
+
+✅ **Email xác nhận đã gửi đến:** ${pendingBooking.user_id.email}
+
+🏢 **BƯỚC TIẾP THEO:**
+1️⃣ Đến trạm đúng giờ với **CCCD gốc**
+2️⃣ Staff xác minh KYC + ký hợp đồng  
+3️⃣ Thanh toán số tiền còn lại: **${(booking.total_price - 50000).toLocaleString('vi-VN')} VND**
+4️⃣ Nhận xe và khởi hành
+
+📞 **Liên hệ trạm:** ${station_info.phone || 'Hotline hỗ trợ'}
+
+💡 Bạn có thể hỏi mình "**check booking**" bất cứ lúc nào để xem chi tiết!
+
+Chúc bạn có chuyến đi vui vẻ! 🎉`;
+
+        await conversation.addMessage('assistant', successMessage, {
+          booking_code: booking.code,
+          payment_status: 'success',
+          temp_id: pendingBooking.temp_id
+        });
+        
+        console.log(`💬 Success notification sent to chatbot conversation ${conversation.session_id}`);
+      } else {
+        console.log(`⚠️ No active chatbot conversation found for user ${pendingBooking.user_id._id}`);
+      }
+    } catch (notifyError) {
+      console.error('❌ Failed to notify chatbot:', notifyError.message);
+      // Không throw error để không ảnh hưởng flow chính
+    }
+
+    
     console.log('🔚 ========== END HOLDING FEE CALLBACK ==========\n');
     
     // Redirect to success page
@@ -1266,5 +1354,5 @@ module.exports = {
   updatePaymentMethod,
   handleVNPayCallback,
   handleVNPayWebhook,
-  handleHoldingFeeCallback // NEW
+  handleHoldingFeeCallback 
 };

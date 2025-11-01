@@ -262,7 +262,7 @@
  *                       example: "673f1234567890abcdef1234"
  *                     temp_id:
  *                       type: string
- *                       example: "PENDING_1730123456_abc123"
+ *                       example: "PB3010SMEQ"
  *                     vehicle:
  *                       type: object
  *                       properties:
@@ -608,16 +608,22 @@
  *                       type: number
  *                       example: 50000
  *                       description: "Số tiền phí giữ chỗ đã thanh toán"
- *                     holding_fee_refunded:
+ *                     holding_fee_refundable:
  *                       type: number
- *                       example: 0
- *                       description: "Số tiền được hoàn lại (luôn = 0 vì NON-REFUNDABLE)"
+ *                       example: 50000
+ *                       description: "Số tiền được hoàn lại (0 = không hoàn, 50000 = có hoàn)"
+ *                     refund_payment_code:
+ *                       type: string
+ *                       example: "REF1730361234567"
+ *                       description: "Mã payment refund (chỉ có khi Staff chọn refund)"
  *                     policy:
  *                       type: string
- *                       example: "NON-REFUNDABLE - Phí giữ chỗ 50,000đ KHÔNG được hoàn lại khi hủy booking"
+ *                       example: "REFUNDABLE - Staff cancelled with refund option"
+ *                       description: "Chính sách hoàn tiền"
  *                     message:
  *                       type: string
- *                       example: "❌ Bạn sẽ MẤT phí giữ chỗ 50,000đ đã thanh toán (KHÔNG HOÀN LẠI)"
+ *                       example: "✅ Đã hoàn 50,000đ tiền mặt cho khách tại quầy"
+ *                       description: "Thông báo cho user"
  *       400:
  *         description: Không thể hủy đặt xe (đã xác nhận hoặc quá gần thời gian bắt đầu)
  *       403:

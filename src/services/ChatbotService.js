@@ -461,6 +461,12 @@ class ChatbotService {
         }
       }
       
+      //  HANDLE CHECK BOOKING STATUS
+      if (intent === 'check_booking' && userRole === 'EV Renter') {
+        console.log('🔍 Handling check booking status request');
+        return await BookingHandler.checkBookingStatus(userId);
+      }
+      
       // Lấy context dựa trên role và intent
       const context = await this.getUserContext(userRole, userId, intent);
       
@@ -737,28 +743,47 @@ Hiện tại: ${currentTime} | Hoạt động: 24/7
 
 === 📋 QUY TRÌNH THUÊ XE (THAM KHẢO) ===
 **Bước 1: Đặt xe** 
-• Qua ứng dụng chính thức hoặc đến trực tiếp trạm
+• Qua ứng dụng/website chính thức hoặc chatbot AI
 • Chọn xe, trạm, thời gian thuê
-• Hệ thống tạo booking với mã đặt xe
+• Hệ thống tạo booking tạm với mã đặt chỗ
 
-**Bước 2: Xác thực KYC (bắt buộc)**
+**Bước 2: Thanh toán phí giữ chỗ 💳**
+• **PHÍ GIỮ CHỖ: 50,000 VND** (bắt buộc cho booking online)
+• Thanh toán qua VNPay trong vòng **15 phút**
+• Phí này **KHÔNG HOÀN LẠI** nếu bạn hủy booking
+• Phí giữ chỗ sẽ được **TRỪ VÀO TỔNG TIỀN** thuê xe
+• ⏰ Nếu không thanh toán trong 15 phút, booking sẽ tự động hủy
+
+**Bước 3: Xác nhận booking**
+• Sau khi thanh toán phí giữ chỗ thành công
+• Hệ thống tạo booking chính thức với mã booking
+• Nhận email xác nhận chi tiết
+• Staff sẽ xác nhận booking trong vòng 1-2 giờ
+
+**Bước 4: Xác thực KYC (bắt buộc)**
 • Upload: CCCD/CMND + selfie cầm CCCD
 • Thời gian duyệt: 1-2 giờ
 • Chỉ khi KYC approved mới được nhận xe
 
-**Bước 3: Nhận xe tại trạm**
+**Bước 5: Nhận xe tại trạm**
 • Đến đúng giờ hẹn, mang CCCD gốc
 • Nhân viên kiểm tra booking và KYC
-• Ký hợp đồng, thanh toán theo quy định
+• Ký hợp đồng, thanh toán theo quy định:
+  - Thuê <3 ngày: Thanh toán full 100% (đã trừ phí giữ chỗ 50k)
+  - Thuê ≥3 ngày: Cọc 50%, trả 50% khi trả xe (đã trừ phí giữ chỗ 50k)
 • Nhận xe và bắt đầu sử dụng
 
-**Bước 4: Trả xe**
+**Bước 6: Trả xe**
 • Đúng thời hạn tại trạm đã chọn
 • Nhân viên kiểm tra tình trạng xe
 • Thanh toán phần còn lại (nếu có)
 • Nhận lại cọc (trừ phí phát sinh)
 
-⚠️ **LƯU Ý:** Để thực hiện các bước trên, vui lòng sử dụng ứng dụng chính thức hoặc đến trực tiếp trạm.
+⚠️ **LƯU Ý QUAN TRỌNG VỀ PHÍ GIỮ CHỖ:**
+• **Bạn tự hủy:** Phí giữ chỗ 50k KHÔNG được hoàn lại
+• **Nhân viên hủy** (lỗi hệ thống/xe hỏng): Được hoàn lại 50k tiền mặt tại trạm
+• Chỉ được chỉnh sửa booking 1 lần (sau đó phải hủy và đặt lại)
+• Để thực hiện đặt xe, vui lòng dùng app/web chính thức hoặc chatbot AI
 
 === 🚗 TRẠNG THÁI XE ===
 • 'có sẵn': Sẵn sàng cho thuê
@@ -961,9 +986,24 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ nhân viên trạm (Sta
    - Hỗ trợ khách cài app nếu cần
 
 **Quy trình thu tiền:**
-- Thuê <3 ngày: Thu 100% khi giao xe
-- Thuê ≥3 ngày: Thu cọc 50% khi giao xe, 50% khi trả xe
+- **PHÍ GIỮ CHỖ:** Khách đã thanh toán 50,000 VND online
+- Thuê <3 ngày: Thu 100% khi giao xe (ĐÃ TRỪ phí giữ chỗ 50k)
+- Thuê ≥3 ngày: Thu cọc 50% khi giao xe, 50% khi trả xe (ĐÃ TRỪ phí giữ chỗ 50k)
 - Phí phạt: Thu ngay khi trả xe (tiền mặt hoặc VNPay)
+- ⚠️ **LƯU Ý:** Số tiền cần thu ĐÃ ĐƯỢC TRỪ 50k phí giữ chỗ (khách đã thanh toán trước)
+
+**CHÍNH SÁCH REFUND PHÍ GIỮ CHỖ (50,000đ):**
+⚠️ **Nếu STAFF CANCEL** (lỗi hệ thống, xe hỏng, v.v.):
+• Bạn có thể chọn **REFUND tiền mặt** cho khách
+• Cách thực hiện:
+  1. Khi cancel booking, tick vào "Refund to customer"
+  2. Hệ thống tự động tạo Payment refund (status: completed)
+  3. Mở ngăn kéo → Đưa khách 50,000đ tiền mặt
+  4. Ghi rõ lý do refund (VD: "Xe hỏng", "Lỗi hệ thống")
+• Phương thức: CHỈ tiền mặt (không qua VNPay)
+• Admin có thể xem lịch sử refund để tracking
+
+✅ **Nếu KHÁCH TỰ HỦY:** KHÔNG được refund (theo chính sách)
 
 === HỢP ĐỒNG VÀ GIẤY TỜ ===
 **Quy trình ký hợp đồng:**
@@ -1128,6 +1168,30 @@ Bạn là trợ lý AI của EV Rental System hỗ trợ Admin.
 - TỔNG: ${totalRevenue.toLocaleString('vi-VN')} VND
 - Tỷ lệ phí phạt: ${totalRevenue > 0 ? ((totalPenaltyRevenue / totalRevenue) * 100).toFixed(1) : 0}%
 
+=== CHÍNH SÁCH BOOKING ===
+**PHÍ GIỮ CHỖ (Holding Fee):**
+- Mức phí: 50,000 VND/booking online (bắt buộc)
+- Thời hạn thanh toán: 15 phút sau khi đặt xe
+- Chính sách refund:
+  • **Khách tự hủy:** KHÔNG hoàn lại
+  • **Staff hủy** (lỗi hệ thống/xe hỏng): CÓ THỂ hoàn lại 50k tiền mặt
+- Xử lý: Phí được TRỪ VÀO tổng tiền thuê xe khi nhận xe
+- Hệ quả: Booking không thanh toán phí giữ chỗ sẽ tự động hủy sau 15 phút
+
+**TRACKING REFUND:**
+- Tất cả refund được lưu trong Payment collection
+- payment_type: 'refund', status: 'completed'
+- Có field related_payment_id link về payment gốc
+- Admin có thể xem báo cáo refund để kiểm soát
+- Refund chỉ bằng tiền mặt, staff xử lý tại quầy
+
+**MỤC ĐÍCH PHÍ GIỮ CHỖ:**
+- Giảm booking ảo (fake bookings)
+- Đảm bảo khách hàng nghiêm túc
+- Tạo commitment từ khách hàng
+- Bảo vệ doanh thu và tài nguyên xe
+- Refund khi staff cancel để giữ uy tín và trải nghiệm khách hàng
+
 === THỐNG KÊ XE ĐƯỢC THUÊ ===
 ${vehicleStats?.length > 0 ? 
   vehicleStats.slice(0, 5).map((stat, index) => {
@@ -1227,12 +1291,15 @@ CHÍNH SÁCH THANH TOÁN:
 - Thuê từ 3 ngày trở lên: Cọc 50% khi nhận xe, 50% còn lại khi trả xe
 
 QUY TRÌNH THUÊ XE:
-1. Đặt xe qua app (chọn trạm, xe, thời gian)
-2. Hoàn tất KYC nếu chưa xác thực
-3. Đến trạm nhận xe theo lịch hẹn
-4. Kiểm tra xe và ký hợp đồng
-5. Thanh toán (100% nếu dưới 3 ngày, 50% nếu từ 3 ngày trở lên)
-6. Trả xe đúng hạn tại trạm đã chọn
+1. Đặt xe qua app/web/chatbot (chọn trạm, xe, thời gian)
+2. **Thanh toán phí giữ chỗ 50,000đ qua VNPay trong 15 phút** (KHÔNG hoàn lại nếu hủy)
+3. Nhận email xác nhận booking, phí giữ chỗ sẽ được TRỪ VÀO tổng tiền
+4. Hoàn tất KYC nếu chưa xác thực (CCCD + selfie)
+5. Đến trạm nhận xe theo lịch hẹn, mang CCCD gốc
+6. Kiểm tra xe, ký hợp đồng và thanh toán:
+   - Thuê <3 ngày: Thanh toán full 100% (đã trừ phí giữ chỗ 50k)
+   - Thuê ≥3 ngày: Cọc 50%, trả 50% khi trả xe (đã trừ phí giữ chỗ 50k)
+7. Trả xe đúng hạn tại trạm đã chọn
 
 CÂU HỎI: ${message}
 
@@ -2475,6 +2542,9 @@ Trả về JSON format:
     if (messageText.match(/xe.*nhiều nhất|xe.*phổ biến|xe.*được thuê|thống kê xe|xe nào|top xe|xe được yêu thích/i)) return 'vehicle_stats';
     if (messageText.match(/doanh thu.*xe|xe.*doanh thu|revenue.*vehicle|xe kiếm được/i)) return 'vehicle_revenue';
     if (messageText.match(/thống kê|báo cáo|report|analytics|phân tích/i)) return 'analytics';
+    
+    // 🆕 CHECK BOOKING STATUS - CHECK TRƯỚC CANCELLATION (vì có thể overlap)
+    if (messageText.match(/check\s*booking|xem\s*(?:booking|đặt\s*xe)|trạng\s*thái\s*(?:booking|đặt\s*xe)|(?:booking|đặt\s*xe)\s*của\s*tôi|đã\s*thanh\s*toán\s*chưa|thanh\s*toán\s*(?:thành\s*công|xong)\s*chưa|xe\s*tôi\s*đặt|booking\s*tôi|my\s*booking/i)) return 'check_booking';
     
     // 🆕 CANCELLATION - CHECK TRƯỚC BOOKING (vì "hủy booking" có cả 2 từ)
     // Support cả 2 dấu: hủy (dấu hỏi) và huỷ (dấu nặng)

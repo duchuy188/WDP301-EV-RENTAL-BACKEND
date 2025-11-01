@@ -1,5 +1,6 @@
 const { Booking, Vehicle, Station } = require('../../../models');
 const { sendEmail, getBookingCancellationTemplate } = require('../../../config/nodemailer');
+const { nowVietnam, formatVietnamTime } = require('../../../config/timezone');
 
 class CancelHandler {
   /**
@@ -81,9 +82,8 @@ class CancelHandler {
       const suggestions = [];
       
       cancellableBookings.forEach((booking, index) => {
-        const startDate = new Date(booking.start_date);
-        const dateStr = `${startDate.getDate()}/${startDate.getMonth() + 1}/${startDate.getFullYear()}`;
-        const timeStr = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
+        const dateStr = formatVietnamTime(booking.start_date, 'DD/MM/YYYY'); 
+        const timeStr = formatVietnamTime(booking.start_date, 'HH:mm'); 
         
         message += `${index + 1}. **${booking.code}**\n`;
         message += `   🚗 ${booking.vehicle_id.brand} ${booking.vehicle_id.model} ${booking.vehicle_id.color}\n`;
@@ -161,13 +161,16 @@ class CancelHandler {
       // Update booking status
       booking.status = 'cancelled';
       booking.cancellation_reason = reason;
-      booking.cancelled_at = new Date();
+      booking.cancelled_at = nowVietnam().toDate(); 
       booking.cancelled_by = userId;
       await booking.save();
       
-      // Update vehicle status back to available
+      // Update vehicle status back to available - FULLY UNRESERVE
       await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
-        status: 'available'
+        status: 'available',
+        reserved_for: '',
+        reserved_at: null,
+        reserved_until: null
       });
       
       // Update station stats
@@ -187,9 +190,14 @@ class CancelHandler {
       }
       
       // Format success message
-      const startDate = new Date(booking.start_date);
-      const dateStr = `${startDate.getDate()}/${startDate.getMonth() + 1}/${startDate.getFullYear()}`;
-      const timeStr = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
+      const dateStr = formatVietnamTime(booking.start_date, 'DD/MM/YYYY');
+      const timeStr = formatVietnamTime(booking.start_date, 'HH:mm'); 
+      
+      // Check holding fee
+      let holdingFeeNote = '';
+      if (booking.booking_type === 'online' && booking.holding_fee?.status === 'paid') {
+        holdingFeeNote = `\n⚠️ **LƯU Ý:** Phí giữ chỗ 50,000 VND đã thanh toán sẽ KHÔNG được hoàn lại.`;
+      }
       
       const message = `✅ **ĐÃ HỦY BOOKING THÀNH CÔNG**
 
@@ -197,7 +205,7 @@ class CancelHandler {
 🚗 **Xe:** ${booking.vehicle_id.brand} ${booking.vehicle_id.model} ${booking.vehicle_id.color}
 📅 **Thời gian:** ${dateStr} lúc ${timeStr}
 📍 **Trạm:** ${booking.station_id.name}
-💰 **Số tiền:** ${booking.total_price.toLocaleString('vi-VN')} VND
+💰 **Số tiền:** ${booking.total_price.toLocaleString('vi-VN')} VND${holdingFeeNote}
 
 📧 Email xác nhận đã được gửi đến: ${booking.user_id.email}
 
@@ -224,7 +232,7 @@ Cảm ơn bạn đã sử dụng dịch vụ!`;
       return false;
     }
     
-    const now = new Date();
+    const now = nowVietnam().toDate(); 
     const bookingStart = new Date(booking.start_date);
     const timeDiff = bookingStart.getTime() - now.getTime();
     const hoursDiff = timeDiff / (1000 * 3600);
