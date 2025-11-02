@@ -246,16 +246,39 @@ const createBooking = async (req, res) => {
       });
     }
     
-    // Kiểm tra user đã có booking active
+   
+    const PendingBooking = require('../models/PendingBooking');
+    
+  
+    const activePendingBookings = await PendingBooking.countDocuments({
+      user_id: user_id,
+      status: 'pending_payment',
+      expires_at: { $gte: new Date() }
+    });
+    
+    const MAX_PENDING_BOOKINGS = 1;
+    if (activePendingBookings >= MAX_PENDING_BOOKINGS) {
+      return res.status(400).json({ 
+        success: false,
+        message: `Bạn có ${activePendingBookings} booking chưa thanh toán. Vui lòng hoàn tất trước khi đặt xe mới.`,
+        code: 'MAX_PENDING_BOOKINGS_REACHED'
+      });
+    }
+    
+    // Check active bookings (confirmed/pending)
     const activeBookings = await Booking.countDocuments({
       user_id,
       status: { $in: ['pending', 'confirmed'] }
     });
     
-    const MAX_ACTIVE_BOOKINGS = 3;
-    if (activeBookings >= MAX_ACTIVE_BOOKINGS) {
-      return res.status(400).json({ 
-        message: `Bạn chỉ có thể có tối đa ${MAX_ACTIVE_BOOKINGS} đặt xe hoạt động cùng lúc` 
+    // Check total bookings (pending bookings + confirmed bookings)
+    const totalActiveBookings = activeBookings + activePendingBookings;
+    const MAX_TOTAL_BOOKINGS = 3;
+    if (totalActiveBookings >= MAX_TOTAL_BOOKINGS) {
+      return res.status(400).json({
+        success: false,
+        message: `Bạn đã đạt giới hạn tối đa ${MAX_TOTAL_BOOKINGS} booking (${activePendingBookings} chưa thanh toán + ${activeBookings} đã xác nhận). Vui lòng hoàn thành hoặc hủy booking trước khi đặt thêm.`,
+        code: 'MAX_TOTAL_BOOKINGS_REACHED'
       });
     }
 
@@ -1678,16 +1701,39 @@ const createWalkInBooking = async (req, res) => {
     });
 
     if (customer) {
-      //  Kiểm tra số lượng booking active của user
+     
+      const PendingBooking = require('../models/PendingBooking');
+      
+
+      const activePendingBookings = await PendingBooking.countDocuments({
+        user_id: customer._id,
+        status: 'pending_payment',
+        expires_at: { $gte: new Date() } 
+      });
+      
+      const MAX_PENDING_BOOKINGS = 1;
+      if (activePendingBookings >= MAX_PENDING_BOOKINGS) {
+        return res.status(400).json({ 
+          success: false,
+          message: `Khách hàng có ${activePendingBookings} booking chưa thanh toán. Vui lòng hoàn tất trước khi đặt xe mới.`,
+          code: 'MAX_PENDING_BOOKINGS_REACHED'
+        });
+      }
+      
+      // Check active bookings (confirmed/pending)
       const activeBookings = await Booking.countDocuments({
         user_id: customer._id,
         status: { $in: ['pending', 'confirmed'] }
       });
       
-      const MAX_ACTIVE_BOOKINGS = 3;
-      if (activeBookings >= MAX_ACTIVE_BOOKINGS) {
-        return res.status(400).json({ 
-          message: `Khách hàng chỉ có thể có tối đa ${MAX_ACTIVE_BOOKINGS} đặt xe hoạt động cùng lúc` 
+      // Check total bookings (pending bookings + confirmed bookings)
+      const totalActiveBookings = activeBookings + activePendingBookings;
+      const MAX_TOTAL_BOOKINGS = 3;
+      if (totalActiveBookings >= MAX_TOTAL_BOOKINGS) {
+        return res.status(400).json({
+          success: false,
+          message: `Khách hàng đã đạt giới hạn tối đa ${MAX_TOTAL_BOOKINGS} booking (${activePendingBookings} chưa thanh toán + ${activeBookings} đã xác nhận). Vui lòng hoàn thành trước khi đặt thêm.`,
+          code: 'MAX_TOTAL_BOOKINGS_REACHED'
         });
       }
 
@@ -2310,6 +2356,160 @@ const updateBooking = async (req, res) => {
   }
 };
 
+
+const getMyPendingBookings = async (req, res) => {
+  try {
+    const user_id = req.user.id;
+    
+    const PendingBooking = require('../models/PendingBooking');
+    
+   
+    const pendingBookings = await PendingBooking.find({
+      user_id: user_id,
+      status: 'pending_payment',
+      expires_at: { $gte: new Date() }
+    })
+    .populate('booking_data.vehicle_id', 'name brand model color license_plate price_per_day image')
+    .populate('booking_data.station_id', 'name address phone')
+    .sort({ createdAt: -1 });
+    
+   
+    const formattedPendingBookings = pendingBookings.map(pb => {
+      const now = new Date();
+      const expiresAt = new Date(pb.expires_at);
+      const timeLeftMs = expiresAt - now;
+      const totalSeconds = Math.ceil(timeLeftMs / 1000);
+      const minutesLeft = Math.floor(totalSeconds / 60);
+      const remainingSeconds = totalSeconds % 60;
+      
+      return {
+        temp_id: pb.temp_id,
+        booking_data: {
+          vehicle: pb.booking_data.vehicle_id,
+          station: pb.booking_data.station_id,
+          start_date: pb.booking_data.start_date,
+          end_date: pb.booking_data.end_date,
+          pickup_time: pb.booking_data.pickup_time,
+          return_time: pb.booking_data.return_time,
+          total_days: pb.booking_data.total_days,
+          total_price: pb.booking_data.total_price,
+          price_per_day: pb.booking_data.price_per_day
+        },
+        holding_fee_amount: pb.holding_fee_amount,
+        vnpay_url: pb.vnpay_url,
+        status: pb.status,
+        created_at: pb.createdAt,
+        expires_at: pb.expires_at,
+        time_left: {
+          total_seconds: totalSeconds,
+          minutes: minutesLeft,
+          seconds: remainingSeconds,
+          formatted: `${minutesLeft} phút ${remainingSeconds} giây`,
+          is_urgent: minutesLeft < 5
+        }
+      };
+    });
+    
+    return res.status(200).json({
+      success: true,
+      count: pendingBookings.length,
+      pending_bookings: formattedPendingBookings,
+      message: pendingBookings.length > 0 
+        ? `Bạn có ${pendingBookings.length} booking chưa thanh toán`
+        : 'Không có pending booking nào'
+    });
+    
+  } catch (error) {
+    console.error('Error getting pending bookings:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Lỗi server',
+      error: error.message 
+    });
+  }
+};
+
+
+const cancelPendingBooking = async (req, res) => {
+  try {
+    const { temp_id } = req.params;
+    const user_id = req.user.id;
+    
+    const PendingBooking = require('../models/PendingBooking');
+    const Vehicle = require('../models/Vehicle');
+    
+   
+    const pendingBooking = await PendingBooking.findOne({ 
+      temp_id,
+      user_id
+    });
+    
+    if (!pendingBooking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy pending booking'
+      });
+    }
+    
+    
+    if (pendingBooking.status !== 'pending_payment') {
+      return res.status(400).json({
+        success: false,
+        message: `Không thể hủy pending booking với status: ${pendingBooking.status}`
+      });
+    }
+    
+   
+    const now = new Date();
+    if (pendingBooking.expires_at < now) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pending booking đã hết hạn, không thể hủy'
+      });
+    }
+    
+  
+    pendingBooking.status = 'cancelled';
+    await pendingBooking.save();
+    
+ 
+    const vehicle = await Vehicle.findById(pendingBooking.booking_data.vehicle_id);
+    if (vehicle) {
+     
+      if (vehicle.status === 'reserved' && vehicle.reserved_for === 'holding_fee_payment') {
+        // Unreserve vehicle
+        vehicle.status = 'available';
+        vehicle.reserved_for = undefined;
+        vehicle.reserved_at = undefined;
+        vehicle.reserved_until = undefined;
+        await vehicle.save();
+        
+        console.log(`✅ Unreserved vehicle ${vehicle.name} (${vehicle.license_plate}) - Status changed to available`);
+      } else {
+        console.log(`⚠️ Vehicle ${vehicle.name} is not in reserved state for holding fee (current: ${vehicle.status})`);
+      }
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Đã hủy pending booking thành công',
+      data: {
+        temp_id: pendingBooking.temp_id,
+        status: 'cancelled',
+        cancelled_at: now
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error cancelling pending booking:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createBooking,
   createWalkInBooking,
@@ -2317,9 +2517,11 @@ module.exports = {
   getBookingDetails,
   confirmBooking,
   cancelBooking,
-  updateBooking, // ← NEW
+  updateBooking,
   getAllBookings,
   getStationBookings,
-  scanQRCode
+  scanQRCode,
+  getMyPendingBookings,
+  cancelPendingBooking
 };
 
