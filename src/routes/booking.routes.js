@@ -7,10 +7,12 @@ const {
   getBookingDetails,
   confirmBooking,
   cancelBooking,
-  updateBooking, // ← NEW
+  updateBooking, 
   getAllBookings,
   getStationBookings,
-  scanQRCode
+  scanQRCode,
+  getMyPendingBookings,
+  cancelPendingBooking
 } = require('../controllers/BookingController');
 const authenticateToken = require('../middlewares/authMiddleware');
 const requireRole = require('../middlewares/roleMiddleware');
@@ -19,6 +21,8 @@ const { vehicleImageUpload } = require('../middlewares/vehicleImageUpload');
 // User routes (EV Renter)
 router.post('/', authenticateToken, createBooking);
 router.get('/user', authenticateToken, getUserBookings);
+router.get('/my-pending', authenticateToken, getMyPendingBookings); 
+router.post('/my-pending/:temp_id/cancel', authenticateToken, cancelPendingBooking); 
 router.get('/:id', authenticateToken, getBookingDetails);
 router.put('/:id', authenticateToken, updateBooking); 
 router.delete('/:id', authenticateToken, cancelBooking);

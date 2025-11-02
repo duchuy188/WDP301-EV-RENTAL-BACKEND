@@ -1011,3 +1011,215 @@
  *       500:
  *         description: Lỗi server
  */
+
+/**
+ * @swagger
+ * /api/bookings/my-pending:
+ *   get:
+ *     summary: Lấy danh sách pending bookings của user
+ *     description: |
+ *       User xem danh sách pending bookings đang chờ thanh toán (chưa hết hạn 15 phút)
+ *       
+ *       **Response bao gồm:**
+ *       - Thông tin xe, trạm
+ *       - Countdown timer (còn bao lâu hết hạn)
+ *       - Link VNPay để thanh toán
+ *       - Warning nếu còn dưới 5 phút
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lấy danh sách thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 count:
+ *                   type: number
+ *                   example: 1
+ *                 pending_bookings:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       temp_id:
+ *                         type: string
+ *                         example: "PB0211ABCD"
+ *                       booking_data:
+ *                         type: object
+ *                         properties:
+ *                           vehicle:
+ *                             type: object
+ *                             properties:
+ *                               _id:
+ *                                 type: string
+ *                               name:
+ *                                 type: string
+ *                                 example: "VinFast Klara S"
+ *                               brand:
+ *                                 type: string
+ *                                 example: "VinFast"
+ *                               model:
+ *                                 type: string
+ *                                 example: "Klara S"
+ *                               color:
+ *                                 type: string
+ *                                 example: "Trắng"
+ *                               license_plate:
+ *                                 type: string
+ *                                 example: "29A-12345"
+ *                               price_per_day:
+ *                                 type: number
+ *                                 example: 110000
+ *                               image:
+ *                                 type: array
+ *                                 items:
+ *                                   type: string
+ *                           station:
+ *                             type: object
+ *                             properties:
+ *                               _id:
+ *                                 type: string
+ *                               name:
+ *                                 type: string
+ *                                 example: "Trạm Quận 1"
+ *                               address:
+ *                                 type: string
+ *                               phone:
+ *                                 type: string
+ *                           start_date:
+ *                             type: string
+ *                             format: date-time
+ *                           end_date:
+ *                             type: string
+ *                             format: date-time
+ *                           pickup_time:
+ *                             type: string
+ *                             example: "09:00"
+ *                           return_time:
+ *                             type: string
+ *                             example: "18:00"
+ *                           total_days:
+ *                             type: number
+ *                             example: 2
+ *                           total_price:
+ *                             type: number
+ *                             example: 220000
+ *                           price_per_day:
+ *                             type: number
+ *                             example: 110000
+ *                       holding_fee_amount:
+ *                         type: number
+ *                         example: 50000
+ *                       vnpay_url:
+ *                         type: string
+ *                         example: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?..."
+ *                       status:
+ *                         type: string
+ *                         example: "pending_payment"
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       expires_at:
+ *                         type: string
+ *                         format: date-time
+ *                       time_left:
+ *                         type: object
+ *                         properties:
+ *                           minutes:
+ *                             type: number
+ *                             example: 12
+ *                           seconds:
+ *                             type: number
+ *                             example: 735
+ *                           formatted:
+ *                             type: string
+ *                             example: "12 phút 15 giây"
+ *                           is_urgent:
+ *                             type: boolean
+ *                             example: false
+ *                             description: "true nếu còn dưới 5 phút"
+ *                 message:
+ *                   type: string
+ *                   example: "Bạn có 1 booking chưa thanh toán"
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
+ * /api/bookings/my-pending/{temp_id}/cancel:
+ *   post:
+ *     summary: Hủy pending booking (trước khi thanh toán)
+ *     description: |
+ *       User chủ động hủy pending booking trước khi thanh toán
+ *       
+ *       **Khi cancel:**
+ *       - Xe sẽ được unreserve ngay lập tức
+ *       - Status chuyển thành 'cancelled'
+ *       - Người khác có thể book xe ngay
+ *       
+ *       **Điều kiện:**
+ *       - Chỉ user tạo mới được cancel
+ *       - Status phải là 'pending_payment'
+ *       - Chưa hết hạn 15 phút
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: temp_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Temp ID của pending booking
+ *         example: "PB0211ABCD"
+ *     responses:
+ *       200:
+ *         description: Hủy thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Đã hủy pending booking thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     temp_id:
+ *                       type: string
+ *                       example: "PB0211ABCD"
+ *                     status:
+ *                       type: string
+ *                       example: "cancelled"
+ *                     cancelled_at:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Không thể hủy (status không hợp lệ hoặc đã hết hạn)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Pending booking đã hết hạn, không thể hủy"
+ *       404:
+ *         description: Không tìm thấy pending booking
+ *       500:
+ *         description: Lỗi server
+ */
