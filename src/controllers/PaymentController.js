@@ -1032,7 +1032,8 @@ const handleHoldingFeeCallback = async (req, res) => {
     
    
     const orderInfo = callbackResult.params.vnp_OrderInfo || '';
-    const tempIdMatch = orderInfo.match(/PB\d{4}[A-Z0-9]{4}/i);
+    
+    const tempIdMatch = orderInfo.match(/PB\d{4}\d{6}[A-Z0-9]{2,}/i);
     const tempId = tempIdMatch ? tempIdMatch[0] : null;
     
     console.log(`🔑 VNPay OrderInfo: ${orderInfo}`);
