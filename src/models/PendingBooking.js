@@ -89,6 +89,19 @@ pendingBookingSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
 pendingBookingSchema.index({ user_id: 1, status: 1 });
 pendingBookingSchema.index({ temp_id: 1, status: 1 });
 
+
+pendingBookingSchema.index(
+  { user_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: 'pending_payment',
+      expires_at: { $gte: new Date() }
+    },
+    name: 'unique_active_pending_per_user'
+  }
+);
+
 const PendingBooking = mongoose.model('PendingBooking', pendingBookingSchema);
 
 module.exports = PendingBooking;

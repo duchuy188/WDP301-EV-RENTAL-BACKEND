@@ -275,7 +275,7 @@ const createBooking = async (req, res) => {
     const totalActiveBookings = activeBookings + activePendingBookings;
     const MAX_TOTAL_BOOKINGS = 3;
     if (totalActiveBookings >= MAX_TOTAL_BOOKINGS) {
-      return res.status(400).json({
+      return res.status(400).json({ 
         success: false,
         message: `Bạn đã đạt giới hạn tối đa ${MAX_TOTAL_BOOKINGS} booking (${activePendingBookings} chưa thanh toán + ${activeBookings} đã xác nhận). Vui lòng hoàn thành hoặc hủy booking trước khi đặt thêm.`,
         code: 'MAX_TOTAL_BOOKINGS_REACHED'
@@ -363,14 +363,15 @@ const createBooking = async (req, res) => {
     const now = new Date();
     const day = String(now.getDate()).padStart(2, '0');
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const randomChars = Math.random().toString(36).substr(2, 4).toUpperCase();
-    const tempId = `PB${day}${month}${randomChars}`;
+    const timestamp = Date.now().toString().slice(-6); 
+    const randomChars = Math.random().toString(36).substr(2, 2).toUpperCase(); 
+    const tempId = `PB${day}${month}${timestamp}${randomChars}`;
     console.log(`🔑 Temp ID: ${tempId}`);
     
     // 2. Expires in 15 minutes
     const expiresAt = moment().add(15, 'minutes').toDate();
     
-    // 3. ✅ RESERVE VEHICLE IMMEDIATELY (Soft lock - holding fee payment)
+    // 3.  RESERVE VEHICLE IMMEDIATELY (Soft lock - holding fee payment)
     const reservedVehicle = await Vehicle.findOneAndUpdate(
       {
         _id: vehicle._id,
@@ -457,7 +458,28 @@ const createBooking = async (req, res) => {
       console.log(`⏰ Payment expires at: ${moment(expiresAt).format('HH:mm:ss DD/MM/YYYY')}`);
       
     } catch (createError) {
-      // ❌ ROLLBACK: Unreserve vehicle if pending booking or VNPay creation fails
+      //  Handle duplicate key error (race condition: user already has active pending booking)
+      if (createError.code === 11000 || createError.name === 'MongoServerError') {
+        console.error('⚠️ Duplicate pending booking detected (race condition prevented by DB)');
+        
+        // Cleanup: Unreserve vehicle
+        await Vehicle.findByIdAndUpdate(vehicle._id, {
+          status: 'available',
+          reserved_for: null,
+          reserved_at: null,
+          reserved_until: null
+        });
+        
+        console.log('✅ Vehicle unreserved due to duplicate booking');
+        
+        return res.status(400).json({
+          success: false,
+          message: 'Bạn đã có booking chưa thanh toán. Vui lòng hoàn tất trước khi đặt xe mới.',
+          code: 'MAX_PENDING_BOOKINGS_REACHED'
+        });
+      }
+      
+      //  ROLLBACK: Unreserve vehicle if pending booking or VNPay creation fails
       console.error('❌ ERROR creating pending booking/VNPay URL:', createError);
       console.log('🔄 ROLLBACK: Unreserving vehicle...');
       
@@ -1019,9 +1041,9 @@ const cancelBooking = async (req, res) => {
           });
           
           console.log(`💵 Refund payment created: ${refundPayment.code}`);
-          
-          refundInfo = {
-            holding_fee_paid: booking.holding_fee.amount,
+      
+      refundInfo = {
+        holding_fee_paid: booking.holding_fee.amount,
             holding_fee_refundable: booking.holding_fee.amount,
             refund_payment_id: refundPayment._id,
             refund_payment_code: refundPayment.code,
@@ -1730,7 +1752,7 @@ const createWalkInBooking = async (req, res) => {
       const totalActiveBookings = activeBookings + activePendingBookings;
       const MAX_TOTAL_BOOKINGS = 3;
       if (totalActiveBookings >= MAX_TOTAL_BOOKINGS) {
-        return res.status(400).json({
+        return res.status(400).json({ 
           success: false,
           message: `Khách hàng đã đạt giới hạn tối đa ${MAX_TOTAL_BOOKINGS} booking (${activePendingBookings} chưa thanh toán + ${activeBookings} đã xác nhận). Vui lòng hoàn thành trước khi đặt thêm.`,
           code: 'MAX_TOTAL_BOOKINGS_REACHED'
@@ -2505,7 +2527,7 @@ const cancelPendingBooking = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi server',
-      error: error.message
+      error: error.message 
     });
   }
 };
