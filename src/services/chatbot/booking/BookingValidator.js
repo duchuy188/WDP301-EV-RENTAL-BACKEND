@@ -87,44 +87,37 @@ class BookingValidator {
       };
     }
     
-    //  Check số lượng booking active (giống booking bình thường)
+
     const { PendingBooking } = require('../../../models');
     
     // 1. Check PendingBooking - CHỈ CHO PHÉP 1
     const activePendingBookings = await PendingBooking.countDocuments({
       user_id: userId,
-      status: 'pending_payment'
+      status: 'pending_payment',
+      expires_at: { $gte: new Date() }
     });
     
     const MAX_PENDING_BOOKINGS = 1;
     if (activePendingBookings >= MAX_PENDING_BOOKINGS) {
       return {
         valid: false,
-        error: `Bạn đang có ${activePendingBookings} booking chưa thanh toán. Vui lòng thanh toán hoặc đợi hết hạn (15 phút) trước khi đặt xe khác.`
+        error: `Bạn có ${activePendingBookings} booking chưa thanh toán. Vui lòng hoàn tất trước khi đặt xe mới.`
       };
     }
     
-    // 2. Check Booking thật - CHỈ CHO PHÉP TỐI ĐA 2 (để dành 1 chỗ cho PendingBooking)
+    // 2. Check active bookings (confirmed/pending)
     const activeBookings = await Booking.countDocuments({
       user_id: userId,
       status: { $in: ['pending', 'confirmed'] }
     });
     
-    const MAX_REAL_BOOKINGS = 2;
-    if (activeBookings >= MAX_REAL_BOOKINGS) {
-      return {
-        valid: false,
-        error: `Bạn đã có ${activeBookings} booking. Vui lòng hoàn thành trước khi đặt thêm.`
-      };
-    }
-    
-    // 3. Defense in depth: Check tổng (KHÔNG BAO GIỜ XẢY RA nếu logic 1+2 đúng)
+    // 3. Check tổng booking (pending + confirmed)
     const totalActiveBookings = activeBookings + activePendingBookings;
-    const MAX_ACTIVE_BOOKINGS = 3;
-    if (totalActiveBookings >= MAX_ACTIVE_BOOKINGS) {
+    const MAX_TOTAL_BOOKINGS = 3;
+    if (totalActiveBookings >= MAX_TOTAL_BOOKINGS) {
       return {
         valid: false,
-        error: `Bạn chỉ có thể có tối đa ${MAX_ACTIVE_BOOKINGS} đặt xe hoạt động cùng lúc (bao gồm cả booking chưa thanh toán)`
+        error: `Bạn đã đạt giới hạn tối đa ${MAX_TOTAL_BOOKINGS} booking (${activePendingBookings} chưa thanh toán + ${activeBookings} đã xác nhận). Vui lòng hoàn thành hoặc hủy booking trước khi đặt thêm.`
       };
     }
     
