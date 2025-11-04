@@ -2,7 +2,7 @@ const Booking = require("../models/Booking");
 const PendingBooking = require("../models/PendingBooking");
 const Vehicle = require("../models/Vehicle");
 const User = require("../models/User");
-const { sendEmail } = require("../config/nodemailer");
+const { sendEmail } = require("../config/emailService");
 const { nowVietnam } = require("../config/timezone");
 
 /**

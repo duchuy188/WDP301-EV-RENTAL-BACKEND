@@ -4,7 +4,7 @@ const BlacklistToken = require('../models/BlacklistToken');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { cloudinary } = require('../config/cloudinary');
-const { sendEmail, getResetPasswordEmailTemplate, getWelcomeEmailTemplate } = require('../config/nodemailer');
+const { sendEmail, getResetPasswordEmailTemplate, getWelcomeEmailTemplate } = require('../config/emailService');
 // const cryptoRandomString = require('crypto-random-string');
 
 // Register a new user

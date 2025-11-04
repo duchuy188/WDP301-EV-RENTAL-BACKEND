@@ -2,7 +2,7 @@ const { Payment, Booking, Rental, User } = require('../models');
 const PaymentService = require('../services/PaymentService');
 const VNPayService = require('../services/VNPayService');
 const { formatVietnamTime, nowVietnam } = require('../config/timezone');
-const { sendEmail, getPaymentSuccessTemplate } = require('../config/nodemailer');
+const { sendEmail, getPaymentSuccessTemplate } = require('../config/emailService');
 
 // Gửi email notification khi payment thành công
 const sendPaymentSuccessEmail = async (payment, user) => {
@@ -1094,7 +1094,7 @@ const handleHoldingFeeCallback = async (req, res) => {
     const Station = require('../models/Station');
     const QRCode = require('qrcode');
     const { uploadToCloudinary } = require('../config/cloudinary');
-    const { sendEmail, getBookingConfirmationTemplate } = require('../config/nodemailer');
+    const { sendEmail, getBookingConfirmationTemplate } = require('../config/emailService');
     
     // Generate booking code
     const generateBookingCode = async () => {

@@ -1,5 +1,5 @@
 const { Booking, Vehicle, Station } = require('../../../models');
-const { sendEmail, getBookingCancellationTemplate } = require('../../../config/nodemailer');
+const { sendEmail, getBookingCancellationTemplate } = require('../../../config/emailService');
 const { nowVietnam, formatVietnamTime } = require('../../../config/timezone');
 
 class CancelHandler {

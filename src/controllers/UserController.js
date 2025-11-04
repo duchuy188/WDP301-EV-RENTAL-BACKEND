@@ -1,7 +1,7 @@
 const { User, Station, UserStats } = require('../models');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { sendEmail, getStaffAccountEmailTemplate } = require('../config/nodemailer');
+const { sendEmail, getStaffAccountEmailTemplate } = require('../config/emailService');
 const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 
 // Tạo tài khoản Staff (chỉ Admin) - KHÔNG gán station

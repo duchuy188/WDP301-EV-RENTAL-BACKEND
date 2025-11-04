@@ -9,7 +9,7 @@ const PaymentService = require('../services/PaymentService');
 const VNPayService = require('../services/VNPayService');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { nowVietnam } = require('../config/timezone');
-const { sendEmail, getCheckoutReceiptTemplate } = require('../config/nodemailer');
+const { sendEmail, getCheckoutReceiptTemplate } = require('../config/emailService');
 
 class RentalController {
   // GET /api/rentals/:id/checkout-info
