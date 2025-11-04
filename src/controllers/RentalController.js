@@ -987,7 +987,7 @@ class RentalController {
 
       const rental = await Rental.findById(id)
         .populate('user_id', 'fullname email phone')
-        .populate('vehicle_id', 'name license_plate model battery_capacity')
+        .populate('vehicle_id', 'name license_plate model battery_capacity current_mileage current_battery type status')
         .populate('station_id', 'name address')
         .populate('pickup_staff_id', 'fullname')
         .populate('return_staff_id', 'fullname')

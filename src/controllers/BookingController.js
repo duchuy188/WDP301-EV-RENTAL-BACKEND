@@ -713,7 +713,7 @@ const confirmBooking = async (req, res) => {
     // Find booking
     const booking = await Booking.findById(id)
       .populate('user_id', 'fullname email kycStatus')
-      .populate('vehicle_id', 'name license_plate current_battery')
+      .populate('vehicle_id', 'name license_plate current_battery current_mileage')
       .populate('station_id', 'name');
     
     if (!booking) {
@@ -811,7 +811,7 @@ const confirmBooking = async (req, res) => {
         actual_start_time: nowVietnam().toDate(),
         pickup_staff_id: staff_id,
         vehicle_condition_before: {
-          mileage: vehicle_condition_before?.mileage || 0,
+          mileage: vehicle_condition_before?.mileage || booking.vehicle_id.current_mileage || 0,
           battery_level: vehicle_condition_before?.battery_level || booking.vehicle_id.current_battery || 100,
           exterior_condition: vehicle_condition_before?.exterior_condition || 'good',
           interior_condition: vehicle_condition_before?.interior_condition || 'good',
@@ -824,11 +824,12 @@ const confirmBooking = async (req, res) => {
       });
       
       // Cập nhật current_mileage của xe khi bắt đầu rental
-      if (vehicle_condition_before?.mileage) {
+      const actualMileage = vehicle_condition_before?.mileage || booking.vehicle_id.current_mileage || 0;
+      if (actualMileage > 0) {
         await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
-          current_mileage: vehicle_condition_before.mileage
+          current_mileage: actualMileage
         });
-        console.log(`✅ Vehicle ${booking.vehicle_id._id} mileage updated to ${vehicle_condition_before.mileage} km`);
+        console.log(`✅ Vehicle ${booking.vehicle_id._id} mileage updated to ${actualMileage} km`);
       }
       
       // 2. Chuẩn bị thông tin payment
