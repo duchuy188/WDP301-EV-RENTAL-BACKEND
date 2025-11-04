@@ -76,8 +76,8 @@ const pendingBookingSchema = new mongoose.Schema({
   // Expiration (15 minutes from creation)
   expires_at: {
     type: Date,
-    required: true,
-    index: true
+    required: true
+   
   }
   
 }, { timestamps: true });
