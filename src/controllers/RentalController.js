@@ -180,6 +180,17 @@ class RentalController {
         });
       }
 
+     
+      const mileageBefore = rental.vehicle_condition_before.mileage;
+      const mileageAfter = vehicle_condition_after.mileage;
+
+      if (mileageAfter < mileageBefore) {
+        return res.status(400).json({
+          success: false,
+          message: `Số km khi trả xe (${mileageAfter} km) không thể nhỏ hơn số km khi nhận xe (${mileageBefore} km). Vui lòng kiểm tra lại.`
+        });
+      }
+
       // CHECKOUT BÌNH THƯỜNG - TẤT CẢ PHÍ = 0
       const total_fees = 0;
 
@@ -495,6 +506,17 @@ class RentalController {
         return res.status(400).json({
           success: false,
           message: 'Thiếu thông tin tình trạng xe'
+        });
+      }
+
+      
+      const mileageBefore = rental.vehicle_condition_before.mileage;
+      const mileageAfter = vehicle_condition_after.mileage;
+
+      if (mileageAfter < mileageBefore) {
+        return res.status(400).json({
+          success: false,
+          message: `Số km khi trả xe (${mileageAfter} km) không thể nhỏ hơn số km khi nhận xe (${mileageBefore} km). Vui lòng kiểm tra lại.`
         });
       }
 
