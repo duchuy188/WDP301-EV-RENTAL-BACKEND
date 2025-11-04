@@ -233,7 +233,7 @@ class RentalController {
         // Tính toán dữ liệu rental
         const distance = vehicle_condition_after.mileage - rental.vehicle_condition_before.mileage;
         const days = (rental.actual_end_time - rental.actual_start_time) / (1000 * 60 * 60 * 24);
-        const spent = rental.total_price + total_fees;
+        const spent = rental.booking_id.total_price + total_fees;
         
         // Lấy thông tin vehicle và station
         const vehicle = await Vehicle.findById(rental.vehicle_id._id);
@@ -615,7 +615,7 @@ class RentalController {
         // Tính toán dữ liệu rental
         const distance = vehicle_condition_after.mileage - rental.vehicle_condition_before.mileage;
         const days = (rental.actual_end_time - rental.actual_start_time) / (1000 * 60 * 60 * 24);
-        const spent = rental.total_price + total_fees;
+        const spent = rental.booking_id.total_price + total_fees;
         
         // Lấy thông tin vehicle và station
         const vehicle = await Vehicle.findById(rental.vehicle_id._id);

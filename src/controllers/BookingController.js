@@ -1026,7 +1026,7 @@ const cancelBooking = async (req, res) => {
             booking_id: booking._id,
             rental_id: booking.rental_id || null,
             
-            amount: booking.holding_fee.amount,
+            amount: -booking.holding_fee.amount, // ÂM để trừ vào revenue
             payment_method: 'cash',
             payment_type: 'refund',
             status: 'completed',

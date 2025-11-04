@@ -110,7 +110,7 @@ class AIService {
       rentalMatchQuery.station_id = new mongoose.Types.ObjectId(stationId);
     }
 
-    // Lấy actual rental data với payments
+    // Lấy actual rental data với payments (BAO GỒM holding_fee forfeited, KHÔNG BAO GỒM refund)
     const actualRentalData = await Rental.aggregate([
       { $match: rentalMatchQuery },
       {
@@ -133,6 +133,20 @@ class AIService {
         }
       },
       {
+        $addFields: {
+          // Tính tổng doanh thu từ payments đã filter
+          totalRevenue: {
+            $sum: {
+              $map: {
+                input: '$payments',
+                as: 'payment',
+                in: '$$payment.amount'
+              }
+            }
+          }
+        }
+      },
+      {
         $group: {
           _id: {
             hour: { $hour: '$actual_start_time' },
@@ -140,7 +154,7 @@ class AIService {
             station: '$station_id'
           },
           rentalCount: { $sum: 1 },
-          totalActualRevenue: { $sum: '$total_fees' },
+          totalActualRevenue: { $sum: '$totalRevenue' },
           paymentsCount: { $sum: { $size: '$payments' } },
           averageDuration: { $avg: { $subtract: ['$actual_end_time', '$actual_start_time'] } }
         }
