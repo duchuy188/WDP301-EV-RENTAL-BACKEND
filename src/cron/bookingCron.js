@@ -7,7 +7,7 @@ const {
 } = require("../services/BookingAutoCancelService");
 
 
-cron.schedule("*/30 * * * *", async () => {
+cron.schedule("*/10 * * * *", async () => {
   console.log("🔄 Running auto-cancel expired bookings...");
   try {
     const cancelledCount = await autoCancelExpiredBookings();
@@ -21,10 +21,10 @@ cron.schedule("*/30 * * * *", async () => {
   }
 });
 
-console.log("✅ Auto-cancel cron job started - running every 30 minutes");
+console.log("✅ Auto-cancel cron job started - running every 10 minutes");
 
 
-cron.schedule("*/10 * * * *", async () => {
+cron.schedule("*/1 * * * *", async () => {
   console.log("🧹 Running cleanup expired pending bookings...");
   try {
     const expiredCount = await autoCleanupExpiredPendingBookings();
@@ -38,7 +38,7 @@ cron.schedule("*/10 * * * *", async () => {
   }
 });
 
-console.log("✅ Cleanup pending bookings cron job started - running every 10 minutes");
+console.log("✅ Cleanup pending bookings cron job started - running every 1 minute");
 
 
 cron.schedule("0 3 * * *", async () => {
@@ -60,7 +60,7 @@ cron.schedule("0 3 * * *", async () => {
 console.log("✅ Delete old pending bookings cron job started - running daily at 3:00 AM");
 
 
-cron.schedule("*/5 * * * *", async () => {
+cron.schedule("*/1 * * * *", async () => {
   console.log("🔓 Running auto unreserve expired vehicles...");
   try {
     const unreservedCount = await autoUnreserveExpiredVehicles();
@@ -74,6 +74,6 @@ cron.schedule("*/5 * * * *", async () => {
   }
 });
 
-console.log("✅ Auto unreserve vehicles cron job started - running every 5 minutes");
+console.log("✅ Auto unreserve vehicles cron job started - running every 1 minute");
 
 

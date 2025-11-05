@@ -8,67 +8,107 @@ const { nowVietnam } = require("../config/timezone");
 /**
  * Tự động hủy các booking quá hạn
  * Booking sẽ bị hủy nếu:
- * 1. Quá 2 tiếng sau thời gian pickup mà chưa được xác nhận
+ * 1. Quá 2 tiếng sau thời gian pickup (start_date + pickup_time) mà chưa được xác nhận
  * 2. Quá ngày end_date mà chưa được xác nhận
  */
 const autoCancelExpiredBookings = async () => {
   try {
-  
     const now = nowVietnam().toDate();
     
-    // Tìm các booking cần hủy
-    const expiredBookings = await Booking.find({
-      status: "pending",
-      $or: [
-      
-        {
-          $expr: {
-            $gt: [
-              now,
-              { $add: ["$start_date", { $multiply: [2, 60, 60, 1000] }] }
-            ]
-          }
-        },
-        // Quá ngày end_date
-        {
-          end_date: { $lt: now }
-        }
-      ]
+    console.log('\n🔍 ========== CHECKING EXPIRED BOOKINGS ==========');
+    console.log('Current time (VN):', now.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    
+    // Tìm tất cả booking PENDING (không dùng $expr vì cần tính pickup_time)
+    const pendingBookings = await Booking.find({
+      status: "pending"
     })
     .populate("user_id", "email fullname")
-    .populate("vehicle_id", "licensePlate model")
+    .populate("vehicle_id", "license_plate model name")
     .populate("station_id", "name address");
 
-    if (expiredBookings.length === 0) {
+    if (pendingBookings.length === 0) {
+      console.log('✅ No pending bookings found');
+      console.log('🔚 ========== END CHECK ==========\n');
       return 0;
     }
 
-    console.log(`Found ${expiredBookings.length} expired bookings to cancel`);
+    console.log(`📋 Found ${pendingBookings.length} pending bookings to check`);
 
-    // Cập nhật trạng thái booking thành cancelled
-    const bookingIds = expiredBookings.map(booking => booking._id);
-    await Booking.updateMany(
-      { _id: { $in: bookingIds } },
-      { 
+    // Filter bookings cần hủy
+    const expiredBookings = [];
+    
+    for (const booking of pendingBookings) {
+      let shouldCancel = false;
+      let reason = "";
+
+      // ✅ FIX: Parse pickup_time và kết hợp với start_date
+      const [pickupHour, pickupMinute] = booking.pickup_time.split(':').map(Number);
+      const pickupDateTime = new Date(booking.start_date);
+      pickupDateTime.setHours(pickupHour, pickupMinute, 0, 0);
+      
+      // Grace period: 2 tiếng sau pickup time
+      const gracePeriod = new Date(pickupDateTime.getTime() + 2 * 60 * 60 * 1000);
+      
+      console.log(`\n📦 Booking ${booking.code}:`);
+      console.log(`  - Start date: ${booking.start_date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`);
+      console.log(`  - Pickup time: ${booking.pickup_time}`);
+      console.log(`  - Exact pickup: ${pickupDateTime.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`);
+      console.log(`  - Grace period (pickup + 2h): ${gracePeriod.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`);
+      console.log(`  - End date: ${booking.end_date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`);
+
+      // Check 1: Quá 2 tiếng sau pickup time
+      if (now > gracePeriod) {
+        shouldCancel = true;
+        reason = `Quá 2 tiếng sau thời gian nhận xe (${booking.pickup_time} ngày ${pickupDateTime.toLocaleDateString('vi-VN')})`;
+        console.log(`  ❌ EXPIRED: ${reason}`);
+      }
+      // Check 2: Quá ngày end_date
+      else if (now > booking.end_date) {
+        shouldCancel = true;
+        reason = `Quá ngày trả xe dự kiến (${booking.end_date.toLocaleDateString('vi-VN')})`;
+        console.log(`  ❌ EXPIRED: ${reason}`);
+      } else {
+        const timeRemaining = Math.round((gracePeriod - now) / (1000 * 60)); // minutes
+        console.log(`  ✅ STILL VALID (${timeRemaining} minutes remaining until grace period)`);
+      }
+
+      if (shouldCancel) {
+        expiredBookings.push({ booking, reason });
+      }
+    }
+
+    if (expiredBookings.length === 0) {
+      console.log('\n✅ No expired bookings to cancel');
+      console.log('🔚 ========== END CHECK ==========\n');
+      return 0;
+    }
+
+    console.log(`\n⚠️ Cancelling ${expiredBookings.length} expired bookings...`);
+
+    // Hủy từng booking
+    for (const { booking, reason } of expiredBookings) {
+      // Update booking status
+      await Booking.findByIdAndUpdate(booking._id, {
         status: "cancelled",
         cancelled_at: now,
-        cancellation_reason: "Auto-cancelled due to expiration"
+        cancellation_reason: `Tự động hủy: ${reason}`
+      });
+
+      console.log(`🚫 Cancelled booking ${booking.code}`);
+
+      // Update vehicle status
+      if (booking.vehicle_id && booking.vehicle_id._id) {
+        await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
+          status: "available"
+        });
+        console.log(`  ↳ Vehicle ${booking.vehicle_id.license_plate} set to available`);
       }
-    );
 
-    // Cập nhật trạng thái xe thành available
-    const vehicleIds = expiredBookings.map(booking => booking.vehicle_id._id);
-    await Vehicle.updateMany(
-      { _id: { $in: vehicleIds } },
-      { status: "available" }
-    );
-
-    // Gửi email thông báo hủy booking
-    for (const booking of expiredBookings) {
+      // Send cancellation email
       try {
         await sendEmail({
           to: booking.user_id.email,
-          subject: "Thông báo hủy đặt xe tự động",
+          subject: "⚠️ Thông báo hủy đặt xe tự động - EVRent",
           template: "booking-cancelled",
           context: {
             user: booking.user_id,
@@ -80,21 +120,22 @@ const autoCancelExpiredBookings = async () => {
               end_date: booking.end_date,
               pickup_time: booking.pickup_time,
               return_time: booking.return_time,
-              cancellation_reason: "Tự động hủy do quá hạn"
+              cancellation_reason: reason
             }
           }
         });
-        console.log(`Sent cancellation email to ${booking.user_id.email}`);
+        console.log(`  ↳ ✉️ Email sent to ${booking.user_id.email}`);
       } catch (emailError) {
-        console.error(`Failed to send email to ${booking.user_id.email}:`, emailError);
+        console.error(`  ↳ ❌ Email failed: ${emailError.message}`);
       }
     }
 
-    console.log(`Successfully auto-cancelled ${expiredBookings.length} bookings`);
+    console.log(`\n✅ Successfully cancelled ${expiredBookings.length} bookings`);
+    console.log('🔚 ========== END CHECK ==========\n');
     return expiredBookings.length;
 
   } catch (error) {
-    console.error("Error in autoCancelExpiredBookings:", error);
+    console.error("❌ Error in autoCancelExpiredBookings:", error);
     throw error;
   }
 };
@@ -208,45 +249,84 @@ const autoUnreserveExpiredVehicles = async () => {
   try {
     const now = nowVietnam().toDate();
     const Vehicle = require("../models/Vehicle");
+    const Booking = require("../models/Booking");
+    const PendingBooking = require("../models/PendingBooking");
     
     console.log('\n🔓 ========== AUTO UNRESERVE EXPIRED VEHICLES ==========');
     
-    // Find vehicles với soft lock (holding_fee_payment) đã expired
-    const expiredVehicles = await Vehicle.find({
-      status: 'reserved',
-      reserved_for: 'holding_fee_payment',
-      reserved_until: { $lt: now }
+    // Find TẤT CẢ vehicles reserved (không chỉ có reserved_until)
+    const reservedVehicles = await Vehicle.find({
+      status: 'reserved'
     });
     
-    if (expiredVehicles.length === 0) {
-      console.log('✅ No expired vehicle reservations to release');
+    if (reservedVehicles.length === 0) {
+      console.log('✅ No reserved vehicles found');
       console.log('🔚 ========== END UNRESERVE ==========\n');
       return 0;
     }
     
-    console.log(`⚠️ Found ${expiredVehicles.length} vehicles with expired soft locks`);
+    console.log(`📊 Found ${reservedVehicles.length} reserved vehicles to check`);
     
-    // Unreserve vehicles
-    const vehicleIds = expiredVehicles.map(v => v._id);
-    await Vehicle.updateMany(
-      { _id: { $in: vehicleIds } },
-      { 
+    let unreservedCount = 0;
+    let skippedCount = 0;
+    
+    for (const vehicle of reservedVehicles) {
+      let shouldUnreserve = false;
+      let reason = '';
+    
+      // Check 1: Xe có reserved_until và đã quá hạn
+      if (vehicle.reserved_until && vehicle.reserved_until < now) {
+        shouldUnreserve = true;
+        reason = `Reserved until expired (${vehicle.reserved_until.toLocaleString('vi-VN')})`;
+      }
+      
+      // Check 2: Xe KHÔNG có reserved_until hoặc reserved_for (bị lỗi)
+      if (!vehicle.reserved_until || !vehicle.reserved_for || vehicle.reserved_for === '') {
+        // Cần check xem có booking/pending booking active không
+        const hasActiveBooking = await Booking.findOne({
+          vehicle_id: vehicle._id,
+          status: { $in: ['pending', 'confirmed'] }  // Chỉ pending và confirmed, KHÔNG có checked_out
+        });
+        
+        const hasPendingBooking = await PendingBooking.findOne({
+          'booking_data.vehicle_id': vehicle._id.toString(),
+          status: 'pending_payment'
+        });
+        
+        if (!hasActiveBooking && !hasPendingBooking) {
+          shouldUnreserve = true;
+          reason = 'No reserved_until/reserved_for and no active booking';
+        } else {
+          console.log(`  ⏭️  ${vehicle.license_plate} - Has active booking, keeping reserved`);
+          skippedCount++;
+          continue;
+        }
+      }
+      
+      if (shouldUnreserve) {
+        await Vehicle.findByIdAndUpdate(vehicle._id, {
         status: 'available',
         reserved_for: '',
         reserved_at: null,
         reserved_until: null
+        });
+    
+        console.log(`  ✅ Unreserved: ${vehicle.license_plate} - ${reason}`);
+        unreservedCount++;
+      } else {
+        // Xe có reserved_until nhưng chưa hết hạn
+        const timeRemaining = vehicle.reserved_until ? Math.round((vehicle.reserved_until - now) / (1000 * 60)) : 0;
+        console.log(`  ⏳ ${vehicle.license_plate} - Reserved until ${vehicle.reserved_until?.toLocaleString('vi-VN') || 'N/A'} (${timeRemaining} min)`);
+        skippedCount++;
       }
-    );
-    
-    console.log(`✅ Unreserved ${expiredVehicles.length} vehicles`);
-    
-    // Log details
-    for (const vehicle of expiredVehicles) {
-      console.log(`  - ${vehicle.license_plate} (${vehicle.name}) - Was reserved until ${vehicle.reserved_until.toLocaleString('vi-VN')}`);
     }
     
+    console.log(`\n📊 Summary:`);
+    console.log(`  ✅ Unreserved: ${unreservedCount} vehicles`);
+    console.log(`  ⏭️  Skipped: ${skippedCount} vehicles`);
     console.log('🔚 ========== END UNRESERVE ==========\n');
-    return expiredVehicles.length;
+    
+    return unreservedCount;
     
   } catch (error) {
     console.error('❌ Error in autoUnreserveExpiredVehicles:', error);

@@ -1119,7 +1119,15 @@ const handleHoldingFeeCallback = async (req, res) => {
     const cloudinaryResult = await uploadToCloudinary(qrBuffer, 'qr-codes');
     const qrExpiresAt = new Date(pendingBooking.booking_data.start_date.getTime() + 24 * 60 * 60 * 1000);
     
-    // ✅ Convert soft lock → hard lock (vehicle already reserved from createBooking)
+   
+    // Tính reserved_until = start_date + pickup_time + grace period (2h)
+    const bookingData = pendingBooking.booking_data;
+    const startDate = new Date(bookingData.start_date);
+    const [pickupHour, pickupMinute] = bookingData.pickup_time.split(':').map(Number);
+    const pickupDateTime = new Date(startDate);
+    pickupDateTime.setHours(pickupHour, pickupMinute, 0, 0);
+    const reservedUntilDate = new Date(pickupDateTime.getTime() + 2 * 60 * 60 * 1000); // +2h grace period
+    
     const vehicle = await Vehicle.findOneAndUpdate(
       { 
         _id: pendingBooking.booking_data.vehicle_id,
@@ -1128,7 +1136,7 @@ const handleHoldingFeeCallback = async (req, res) => {
       },
       { 
         reserved_for: 'booking',  // Change to hard lock
-        $unset: { reserved_until: '' }  // Remove expiry time
+        reserved_until: reservedUntilDate  // ✅ SET reserved_until (pickup + 2h) thay vì xóa
       },
       { new: true }
     );

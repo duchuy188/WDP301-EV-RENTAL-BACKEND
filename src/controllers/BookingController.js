@@ -74,11 +74,16 @@ const canCancelBooking = (booking) => {
   }
   
   const now = nowVietnam().toDate();
-  const bookingStart = new Date(booking.start_date);
-  const timeDiff = bookingStart.getTime() - now.getTime();
+  
+  
+  const [pickupHour, pickupMinute] = booking.pickup_time.split(':').map(Number);
+  const exactPickupTime = new Date(booking.start_date);
+  exactPickupTime.setHours(pickupHour, pickupMinute, 0, 0);
+  
+  const timeDiff = exactPickupTime.getTime() - now.getTime();
   const hoursDiff = timeDiff / (1000 * 3600);
   
-  // Không thể cancel trong vòng 2 giờ trước booking
+  // Không thể cancel trong vòng 2 giờ trước pickup_time
   if (hoursDiff < 2) {
     return false;
   }
