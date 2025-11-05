@@ -232,12 +232,16 @@ Cảm ơn bạn đã sử dụng dịch vụ!`;
       return false;
     }
     
-    const now = nowVietnam().toDate(); 
-    const bookingStart = new Date(booking.start_date);
-    const timeDiff = bookingStart.getTime() - now.getTime();
+    const now = nowVietnam().toDate();
+
+    const [pickupHour, pickupMinute] = booking.pickup_time.split(':').map(Number);
+    const pickupDateTime = new Date(booking.start_date);
+    pickupDateTime.setHours(pickupHour, pickupMinute, 0, 0);
+    
+    const timeDiff = pickupDateTime.getTime() - now.getTime();
     const hoursDiff = timeDiff / (1000 * 3600);
     
-    // Không thể cancel trong vòng 2 giờ trước booking
+    // Không thể cancel trong vòng 2 giờ trước pickup time
     if (hoursDiff < 2) {
       return false;
     }

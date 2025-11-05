@@ -735,9 +735,14 @@ const confirmBooking = async (req, res) => {
 
     // Chặn confirm nếu quá 2 giờ sau thời điểm nhận xe
     const now = nowVietnam().toDate();
+    
+    const [pickupHour, pickupMinute] = booking.pickup_time.split(':').map(Number);
+    const pickupDateTime = new Date(booking.start_date);
+    pickupDateTime.setHours(pickupHour, pickupMinute, 0, 0);
+    
     const PICKUP_GRACE_MS = 2 * 60 * 60 * 1000; // 2 giờ
 
-    if (now > new Date(booking.start_date.getTime() + PICKUP_GRACE_MS)) {
+    if (now > new Date(pickupDateTime.getTime() + PICKUP_GRACE_MS)) {
       return res.status(400).json({
         message: 'Booking đã quá thời gian nhận xe (quá 2 giờ). Không thể xác nhận.'
       });
@@ -2050,7 +2055,12 @@ const updateBooking = async (req, res) => {
     
     // 7. ⏰ CHECK TIME - Must edit at least 24h before pickup
     const now = nowVietnam().toDate();
+    
+    
+    const [pickupHour, pickupMinute] = booking.pickup_time.split(':').map(Number);
     const pickupTime = new Date(booking.start_date);
+    pickupTime.setHours(pickupHour, pickupMinute, 0, 0);
+    
     const MINIMUM_EDIT_TIME = 24 * 60 * 60 * 1000; // 24 hours
     const timeUntilPickup = pickupTime - now;
     
@@ -2061,7 +2071,7 @@ const updateBooking = async (req, res) => {
         success: false,
         message: 'Không thể chỉnh sửa booking trong vòng 24 giờ trước khi nhận xe',
         details: {
-          pickup_time: formatVietnamTime(booking.start_date),
+          pickup_datetime: formatVietnamTime(pickupTime),
           hours_remaining: hoursRemaining,
           minimum_required: 24,
           policy: 'Booking phải được chỉnh sửa trước thời gian nhận xe ít nhất 24 giờ'
