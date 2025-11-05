@@ -35,10 +35,10 @@ class AIService {
         startDate.setDate(endDate.getDate() - 30);
     }
 
-    // FIX: Booking status từ 'completed' thành chỉ 'confirmed'
+    //  Lấy TẤT CẢ bookings (vì booking status thay đổi sang 'completed' khi rental hoàn thành)
     const bookingMatchQuery = {
       createdAt: { $gte: startDate, $lte: endDate },
-      status: 'confirmed'  // FIXED: Removed 'completed' 
+      status: { $in: ['confirmed', 'completed'] } 
     };
 
     if (stationId) {
@@ -53,8 +53,15 @@ class AIService {
       {
         $lookup: {
           from: 'rentals',
-          localField: '_id',
-          foreignField: 'booking_id',
+          let: { bookingId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$booking_id', '$$bookingId'] },
+                status: { $in: ['completed', 'pending_payment'] }  
+              }
+            }
+          ],
           as: 'rentals'
         }
       },
@@ -78,9 +85,16 @@ class AIService {
       { $match: bookingMatchQuery },
       {
         $lookup: {
-          from: 'rentals', 
-          localField: '_id',
-          foreignField: 'booking_id',
+          from: 'rentals',
+          let: { bookingId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$booking_id', '$$bookingId'] },
+                status: { $in: ['completed', 'pending_payment'] }  
+              }
+            }
+          ],
           as: 'rentals'
         }
       },
@@ -160,6 +174,41 @@ class AIService {
         }
       }
     ]);
+
+    // Lấy forfeited holding fees từ cancelled bookings
+    const forfeitedHoldingFeeQuery = {
+      payment_type: 'holding_fee',
+      status: 'completed',
+      is_active: true,
+      forfeited: true,
+      createdAt: { $gte: startDate, $lte: endDate }
+    };
+
+    if (stationId) {
+      const mongoose = require('mongoose');
+      forfeitedHoldingFeeQuery.station_id = new mongoose.Types.ObjectId(stationId);
+    }
+
+    const forfeitedHoldingFees = await Payment.aggregate([
+      { $match: forfeitedHoldingFeeQuery },
+      {
+        $group: {
+          _id: null,
+          totalForfeitedFees: { $sum: '$amount' },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const totalForfeitedFees = forfeitedHoldingFees.length > 0 
+      ? forfeitedHoldingFees[0].totalForfeitedFees 
+      : 0;
+    
+    const forfeitedCount = forfeitedHoldingFees.length > 0
+      ? forfeitedHoldingFees[0].count
+      : 0;
+
+    console.log(`💰 Forfeited holding fees: ${totalForfeitedFees.toLocaleString('vi-VN')} VND (${forfeitedCount} bookings)`);
 
     // Lấy thống kê trạm - FIXED
     const mongoose = require('mongoose');
@@ -253,7 +302,9 @@ class AIService {
         totalBookings: hourlyBookingData.reduce((sum, item) => sum + item.bookingsCount, 0),
         completedRentals: hourlyBookingData.reduce((sum, item) => sum + item.completedRentals, 0),
         expectedRevenue: hourlyBookingData.reduce((sum, item) => sum + item.totalBookingRevenue, 0),
-        actualRevenue: actualRentalData.reduce((sum, item) => sum + item.totalActualRevenue, 0),
+        actualRevenue: actualRentalData.reduce((sum, item) => sum + item.totalActualRevenue, 0) + totalForfeitedFees,  // ✅ BAO GỒM forfeited holding fees
+        forfeitedHoldingFees: totalForfeitedFees,  // ✅ Track riêng forfeited fees
+        forfeitedBookingsCount: forfeitedCount,
         conversionRate: hourlyBookingData.length > 0 ? 
           (hourlyBookingData.reduce((sum, item) => sum + item.completedRentals, 0) / 
            hourlyBookingData.reduce((sum, item) => sum + item.bookingsCount, 0)) * 100 : 0
