@@ -1875,7 +1875,7 @@ const createWalkInBooking = async (req, res) => {
       });
     }
     
-    // Tạo booking
+    // Tạo booking (Walk-in không có holding fee)
     const booking = await Booking.create({
       code,
       user_id: customer._id,
@@ -1890,6 +1890,10 @@ const createWalkInBooking = async (req, res) => {
       total_days: rentalDays,
       total_price: totalPrice,
       deposit_amount: depositAmount,
+      holding_fee: {
+        amount: 0, 
+        status: 'paid'
+      },
       special_requests: special_requests || '',
       notes: notes || '',
       qr_code: qrCodeData.text,
