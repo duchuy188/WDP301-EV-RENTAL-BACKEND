@@ -478,13 +478,31 @@ class ChatbotService {
       const response = await result.response;
       const text = response.text();
       
+      console.log('🤖 Gemini Raw Response:', text);
+      console.log('📏 Response Length:', text.length);
+      
       // Phân tích intent và tạo response
       const responseData = await this.processResponse(text, userRole, userId, message);
       
+      console.log('📊 Processed Response:', {
+        hasMessage: !!responseData.message,
+        messageLength: responseData.message?.length || 0,
+        messagePreview: responseData.message?.substring(0, 100) || 'EMPTY'
+      });
+      
+      // ✅ Validate message không được rỗng
+      const finalMessage = (responseData.message && responseData.message.trim().length > 0)
+        ? responseData.message
+        : 'Xin lỗi, tôi không thể trả lời câu hỏi này. Vui lòng thử lại hoặc liên hệ hỗ trợ.';
+      
+      if (!responseData.message || responseData.message.trim().length === 0) {
+        console.warn('⚠️ Gemini returned empty message! Using fallback.');
+      }
+      
       return {
         success: true,
-        message: responseData.message,
-        suggestions: responseData.suggestions,
+        message: finalMessage,
+        suggestions: responseData.suggestions || ['Thử lại', 'Liên hệ hỗ trợ'],
         actions: responseData.actions,
         context: responseData.context
       };
@@ -2550,9 +2568,11 @@ Trả về JSON format:
     // Support cả 2 dấu: hủy (dấu hỏi) và huỷ (dấu nặng)
     if (messageText.match(/hủy|huỷ|cancel/i)) return 'cancellation';
     
-    // Pattern chung cho booking (fallback)
+    // ✅ CHECK PRICING TRƯỚC (vì "giá thuê" có cả 2 từ)
+    if (messageText.match(/giá|phí|cost|price|cọc|bao nhiêu|how much/i)) return 'pricing';
+    
+    // Pattern chung cho booking (fallback - CHECK SAU PRICING)
     if (messageText.match(/thuê|đặt|book|reservation|đăng ký|booking/i)) return 'booking';
-    if (messageText.match(/giá|phí|cost|price|cọc|thanh toán|payment/i)) return 'pricing';
     if (messageText.match(/trạm|địa điểm|station|location|ở đâu|gần đây/i)) return 'location';
     if (messageText.match(/hỏi|giúp|help|support|hướng dẫn|hỗ trợ/i)) return 'help';
     if (messageText.match(/xe.*màu|màu.*xe|color.*vehicle|vehicle.*color|xe.*đỏ|xe.*trắng|xe.*xanh|xe.*đen|xe.*vàng|xe.*hồng|có.*màu|màu.*nào|màu.*gì|màu.*không|màu.*ko/i)) {
