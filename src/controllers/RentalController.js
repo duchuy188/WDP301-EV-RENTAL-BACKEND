@@ -250,13 +250,19 @@ class RentalController {
         const vehicle = await Vehicle.findById(rental.vehicle_id._id);
         const station = await Station.findById(rental.station_id._id);
         
+        // Tạo rental_date từ booking pickup_time (thời gian user muốn nhận xe)
+      
+        const [hour, minute] = rental.booking_id.pickup_time.split(':').map(Number);
+        const rentalDate = new Date(rental.booking_id.start_date);
+        rentalDate.setHours(hour, minute, 0, 0);
+        
         await userStats.updateStats({
           distance: Math.max(0, distance),
           spent: spent,
           days: Math.max(0, days),
           vehicle_type: vehicle?.type,
           station_id: rental.station_id._id,
-          rental_date: rental.actual_start_time
+          rental_date: rentalDate // Dùng booking pickup_time thay vì actual_start_time
         });
       } catch (statsError) {
         console.error('Error updating user stats:', statsError);
@@ -265,10 +271,23 @@ class RentalController {
 
       // Cập nhật trạng thái xe dựa trên tình trạng
       let vehicleStatus = 'available';
-      if (vehicle_condition_after.exterior_condition === 'poor' || 
-          vehicle_condition_after.interior_condition === 'poor' ||
-          vehicle_condition_after.battery_level < 20) { // Pin dưới 20% cần sạc
+      let technicalStatus = 'good';
+      
+      // Kiểm tra tình trạng xe
+      const isPoorCondition = 
+        vehicle_condition_after.exterior_condition === 'poor' || 
+        vehicle_condition_after.interior_condition === 'poor';
+      
+      const isLowBattery = vehicle_condition_after.battery_level < 20;
+      
+      if (isPoorCondition) {
         vehicleStatus = 'maintenance';
+        technicalStatus = 'needs_maintenance';
+        console.log('⚠️  Vehicle needs maintenance: poor condition');
+      } else if (isLowBattery) {
+        vehicleStatus = 'maintenance';
+        technicalStatus = 'needs_maintenance';
+        console.log(`⚠️  Vehicle needs maintenance: low battery (${vehicle_condition_after.battery_level}%)`);
       }
 
       // CHỈ UPDATE VEHICLE STATUS NẾU RENTAL COMPLETED
@@ -276,14 +295,40 @@ class RentalController {
         console.log('🔍 DEBUG - Updating vehicle (completed):');
         console.log('- Vehicle ID:', rental.vehicle_id._id);
         console.log('- Status:', vehicleStatus);
+        console.log('- Technical Status:', technicalStatus);
         console.log('- Mileage:', vehicle_condition_after.mileage);
         console.log('- Battery:', vehicle_condition_after.battery_level);
         
         await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
           status: vehicleStatus,
+          technical_status: technicalStatus,
           current_mileage: vehicle_condition_after.mileage,
           current_battery: vehicle_condition_after.battery_level
         });
+        
+        // Tự động tạo Maintenance report nếu cần
+        if (isPoorCondition || isLowBattery) {
+          const Maintenance = require('../models/Maintenance');
+          const maintenanceCode = `MT${Date.now().toString().substring(6)}_${rental.vehicle_id.name}`;
+          
+          await Maintenance.create({
+            code: maintenanceCode,
+            vehicle_id: rental.vehicle_id._id,
+            station_id: rental.vehicle_id.station_id,
+            maintenance_type: isPoorCondition ? 'poor_condition' : 'low_battery',
+            title: isPoorCondition 
+              ? `Bảo trì xe ${rental.vehicle_id.name} - Tình trạng kém`
+              : `Sạc pin xe ${rental.vehicle_id.name}`,
+            description: isPoorCondition
+              ? `Xe có tình trạng kém: ${vehicle_condition_after.exterior_condition === 'poor' ? 'Ngoại thất hư hỏng' : 'Nội thất hư hỏng'}`
+              : `Pin còn ${vehicle_condition_after.battery_level}% - Cần sạc đến 80% trở lên`,
+            status: 'reported',
+            reported_by: req.user._id
+          });
+          
+          console.log(`✅ Auto-created ${isPoorCondition ? 'poor_condition' : 'low_battery'} maintenance report`);
+        }
+        
       } else {
         // Nếu pending_payment, chỉ update mileage và battery
         console.log('🔍 DEBUG - Updating vehicle (pending_payment):');

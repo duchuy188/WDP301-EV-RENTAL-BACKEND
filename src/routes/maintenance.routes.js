@@ -32,10 +32,10 @@ router.get('/:id',
     MaintenanceController.getMaintenanceReportById
 );
 
-// Cập nhật trạng thái báo cáo bảo trì
+// Cập nhật trạng thái báo cáo bảo trì (Admin + Staff for low_battery only)
 router.put('/:id',
     authenticateToken,
-    requireRole(['Admin']),
+    requireRole(['Admin', 'Station Staff']),
     vehicleImageUpload.array('images', 5), 
     MaintenanceController.updateMaintenanceStatus
 );

@@ -66,10 +66,23 @@ class AIService {
         }
       },
       {
+        $addFields: {
+          // Parse pickup_time để lấy giờ user muốn nhận xe
+          pickup_hour: {
+            $toInt: {
+              $arrayElemAt: [
+                { $split: ['$pickup_time', ':'] },
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
         $group: {
           _id: {
-            hour: { $hour: '$createdAt' },
-            dayOfWeek: { $dayOfWeek: '$createdAt' },
+            hour: '$pickup_hour', // Dùng pickup_hour thay vì createdAt
+            dayOfWeek: { $dayOfWeek: '$start_date' }, // Dùng start_date thay vì createdAt
             station: '$station_id'
           },
           bookingsCount: { $sum: 1 },
@@ -101,7 +114,7 @@ class AIService {
       {
         $group: {
           _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$start_date' } }, // Dùng start_date thay vì createdAt
             station: '$station_id'
           },
           bookingsCount: { $sum: 1 },

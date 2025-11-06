@@ -8,6 +8,13 @@ const maintenanceSchema = new mongoose.Schema({
   vehicle_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
   station_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Station', required: true },
   
+  // Loại bảo trì
+  maintenance_type: {
+    type: String,
+    enum: ['low_battery', 'poor_condition'],
+    required: true
+  },
+  
   // Mô tả vấn đề
   title: { type: String, required: true },
   description: { type: String, required: true },
@@ -33,10 +40,10 @@ const maintenanceSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes
-
 maintenanceSchema.index({ vehicle_id: 1 });
 maintenanceSchema.index({ station_id: 1 });
 maintenanceSchema.index({ status: 1 });
+maintenanceSchema.index({ maintenance_type: 1 });
 maintenanceSchema.index({ created_at: -1 });
 
 const Maintenance = mongoose.model('Maintenance', maintenanceSchema);

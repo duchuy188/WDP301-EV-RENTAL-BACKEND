@@ -41,6 +41,11 @@
  *             address:
  *               type: string
  *               example: "123 Nguyễn Huệ, Quận 1, TP.HCM"
+ *         maintenance_type:
+ *           type: string
+ *           enum: [low_battery, poor_condition]
+ *           example: "poor_condition"
+ *           description: "Loại bảo trì: low_battery (Staff tự fix) hoặc poor_condition (cần Admin)"
  *         title:
  *           type: string
  *           example: "Bảo trì xe Xe điện Klara S"
@@ -299,7 +304,12 @@
  * /api/maintenance/{id}:
  *   put:
  *     summary: Cập nhật trạng thái báo cáo bảo trì
- *     description: Cập nhật trạng thái và ghi chú của báo cáo bảo trì (Admin only)
+ *     description: |
+ *       Cập nhật trạng thái và ghi chú của báo cáo bảo trì.
+ *       
+ *       **Phân quyền:**
+ *       - **Staff**: Chỉ được fix maintenance_type = "low_battery" (sạc pin). Phải sạc pin đến 80%+ trước khi đánh dấu fixed.
+ *       - **Admin**: Có thể fix tất cả loại maintenance.
  *     tags: [Maintenance]
  *     security:
  *       - bearerAuth: []
@@ -329,6 +339,17 @@
  *                 type: string
  *                 example: "Đã sửa xong phanh trước"
  *                 description: Ghi chú
+ *               battery_level:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 example: 85
+ *                 description: |
+ *                   Mức pin mới sau khi sạc/sửa (tùy chọn, 0-100%).
+ *                   
+ *                   **Bắt buộc** khi Staff fix low_battery (phải ≥ 80%).
+ *                   
+ *                   **Tùy chọn** cho Admin fix poor_condition.
  *               images:
  *                 type: array
  *                 items:
@@ -352,11 +373,20 @@
  *                 data:
  *                   $ref: '#/components/schemas/MaintenanceReport'
  *       400:
- *         description: Dữ liệu không hợp lệ
+ *         description: |
+ *           Dữ liệu không hợp lệ, thiếu battery_level, hoặc pin chưa đủ 80%
+ *           
+ *           Examples:
+ *           - `{ "success": false, "message": "Vui lòng nhập mức pin hiện tại (battery_level) khi hoàn thành sạc pin." }`
+ *           - `{ "success": false, "message": "Mức pin phải đạt ít nhất 80% (hiện tại: 65%). Vui lòng sạc thêm trước khi đánh dấu hoàn thành." }`
+ *           - `{ "success": false, "message": "Mức pin phải từ 0-100%" }`
  *       401:
  *         description: Không có quyền truy cập
  *       403:
- *         description: Không có quyền truy cập
+ *         description: |
+ *           Staff chỉ được phép xử lý bảo trì PIN
+ *           
+ *           Example: `{ "success": false, "message": "Staff chỉ được phép xử lý bảo trì PIN. Vấn đề này cần Admin duyệt.", "maintenance_type": "poor_condition" }`
  *       404:
  *         description: Không tìm thấy báo cáo bảo trì
  *       500:

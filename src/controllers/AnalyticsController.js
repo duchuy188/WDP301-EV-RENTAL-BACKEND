@@ -318,6 +318,8 @@ exports.getRevenueTrends = async (req, res) => {
         // Group theo ngày/tuần/tháng
         const groupFormat = getGroupFormat(period);
         
+        // NOTE: Revenue trends track khi nào payment được tạo (cash flow)
+        // Khác với peak hours tracking (user behavior - khi nào user muốn thuê)
         const trends = await Payment.aggregate([
             {
                 $match: {
@@ -479,6 +481,7 @@ exports.getStationRevenueDetail = async (req, res) => {
         ]);
         
         // Doanh thu theo giờ trong ngày (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
+      
         const revenueByHour = await Payment.aggregate([
             {
                 $match: {
@@ -841,11 +844,25 @@ exports.getPeakAnalysis = async (req, res) => {
             
             const Booking = require('../models/Booking');
             
+            // Parse pickup_time và combine với start_date để lấy giờ chính xác
             const hourlyBookings = await Booking.aggregate([
                 { $match: matchQuery },
                 {
+                    $addFields: {
+                        // Parse pickup_time (format "HH:mm") để lấy giờ
+                        pickup_hour: {
+                            $toInt: {
+                                $arrayElemAt: [
+                                    { $split: ['$pickup_time', ':'] },
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
                     $group: {
-                        _id: { $hour: '$createdAt' },
+                        _id: '$pickup_hour',
                         bookings: { $sum: 1 },
                         revenue: { $sum: '$total_price' }
                     }
@@ -902,11 +919,12 @@ exports.getPeakAnalysis = async (req, res) => {
             
             const Booking = require('../models/Booking');
             
+            // Dùng start_date thay vì createdAt để biết ngày user muốn thuê xe
             const dailyBookings = await Booking.aggregate([
                 { $match: matchQuery },
                 {
                     $group: {
-                        _id: { $dayOfWeek: '$createdAt' },
+                        _id: { $dayOfWeek: '$start_date' }, // Dùng start_date thay vì createdAt
                         bookings: { $sum: 1 },
                         revenue: { $sum: '$total_price' }
                     }

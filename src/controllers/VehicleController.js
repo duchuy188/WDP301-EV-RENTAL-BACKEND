@@ -965,7 +965,7 @@ exports.getVehicleStatistics = async (req, res) => {
 exports.reportMaintenance = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const { reason, maintenance_type } = req.body;
     
     // Lấy images từ req.files (file upload)
     let images = [];
@@ -973,9 +973,17 @@ exports.reportMaintenance = async (req, res) => {
       images = req.files.map(file => file.path); // file.path chứa URL từ Cloudinary
     }
     
-    // Validate
+    // Validate reason
     if (!reason) {
       return res.status(400).json({ message: 'Vui lòng cung cấp lý do bảo trì' });
+    }
+    
+    // Validate maintenance_type
+    const validTypes = ['low_battery', 'poor_condition'];
+    if (maintenance_type && !validTypes.includes(maintenance_type)) {
+      return res.status(400).json({ 
+        message: 'maintenance_type không hợp lệ. Chọn: low_battery hoặc poor_condition' 
+      });
     }
     
     // Tìm xe
@@ -991,15 +999,32 @@ exports.reportMaintenance = async (req, res) => {
       });
     }
     
+    // Xác định type cuối cùng (default: poor_condition)
+    let finalType = maintenance_type || 'poor_condition';
+    
+    // ✅ VALIDATION: Nếu Staff chọn low_battery → Kiểm tra pin
+    if (req.user.role === 'Station Staff' && finalType === 'low_battery') {
+      // Chỉ cho phép low_battery nếu pin < 50%
+      if (vehicle.current_battery >= 50) {
+        return res.status(400).json({
+          message: `Chỉ được báo cáo low_battery khi pin < 50%. Pin hiện tại: ${vehicle.current_battery}%`,
+          suggestion: 'Vui lòng chọn maintenance_type = "poor_condition" nếu có vấn đề khác'
+        });
+      }
+    }
+    
     // Tạo mã bảo trì
     const maintenanceCode = `MT${Date.now().toString().substring(6)}_${vehicle.name}`;
     
-    // Tạo báo cáo bảo trì
+    // Tạo báo cáo bảo trì với type do Staff chọn
     const maintenance = new Maintenance({
       code: maintenanceCode,
       vehicle_id: vehicle._id,
       station_id: vehicle.station_id,
-      title: `Bảo trì xe ${vehicle.name}`,
+      maintenance_type: finalType,
+      title: finalType === 'low_battery' 
+        ? `Sạc pin xe ${vehicle.name}`
+        : `Bảo trì xe ${vehicle.name}`,
       description: reason,
       status: 'reported',
       images,
@@ -1032,7 +1057,14 @@ exports.reportMaintenance = async (req, res) => {
     
     return res.status(201).json({
       message: 'Báo cáo bảo trì thành công',
-      maintenance
+      maintenance: {
+        code: maintenance.code,
+        maintenance_type: maintenance.maintenance_type,
+        status: maintenance.status,
+        can_staff_fix: maintenance.maintenance_type === 'low_battery',
+        title: maintenance.title,
+        description: maintenance.description
+      }
     });
   } catch (error) {
     console.error('Lỗi khi báo cáo bảo trì:', error);
