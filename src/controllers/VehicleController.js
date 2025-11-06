@@ -813,7 +813,7 @@ exports.updateVehicle = async (req, res) => {
   }
 };
 
-// Xóa xe
+// Xóa xe (soft delete)
 exports.deleteVehicle = async (req, res) => {
   try {
     const { id } = req.params;
@@ -834,6 +834,23 @@ exports.deleteVehicle = async (req, res) => {
       return res.status(400).json({ message: 'Xe đã bị xóa trước đó' });
     }
 
+   
+    if (vehicle.status === 'maintenance') {
+      const activeMaintenance = await Maintenance.findOne({
+        vehicle_id: vehicle._id,
+        is_active: true,
+        status: 'reported'
+      });
+      
+      if (activeMaintenance) {
+        return res.status(400).json({ 
+          message: 'Không thể xóa xe đang có báo cáo bảo trì chưa hoàn thành',
+          maintenance_code: activeMaintenance.code,
+          suggestion: 'Vui lòng hoàn thành hoặc xóa báo cáo bảo trì trước'
+        });
+      }
+    }
+
     // Kiểm tra xe có đang được thuê hoặc đặt trước không
     if (vehicle.status === 'rented' || vehicle.status === 'reserved') {
       return res.status(400).json({ 
@@ -841,62 +858,68 @@ exports.deleteVehicle = async (req, res) => {
       });
     }
     
+    // KIỂM TRA CÓ BOOKING ACTIVE KHÔNG
+    const { Booking } = require('../models');
+    const activeBooking = await Booking.findOne({
+      vehicle_id: vehicle._id,
+      status: { $in: ['pending', 'confirmed'] }
+    });
+    
+    if (activeBooking) {
+      return res.status(400).json({ 
+        message: 'Không thể xóa xe có booking chưa hoàn thành',
+        booking_code: activeBooking.booking_code,
+        booking_status: activeBooking.status,
+        suggestion: 'Vui lòng hủy hoặc hoàn thành booking trước'
+      });
+    }
+    
+    // KIỂM TRA CÓ RENTAL ACTIVE KHÔNG
+    const activeRental = await Rental.findOne({
+      vehicle_id: vehicle._id,
+      status: { $in: ['active', 'pending_payment'] }
+    });
+    
+    if (activeRental) {
+      return res.status(400).json({ 
+        message: 'Không thể xóa xe có rental đang active',
+        rental_code: activeRental.rental_code,
+        suggestion: 'Vui lòng hoàn thành rental trước'
+      });
+    }
+    
     // Soft delete
     vehicle.is_active = false;
     await vehicle.save();
+    
+    console.log(`🗑️  Soft deleted vehicle: ${vehicle.name} (${vehicle.license_plate || 'No plate'})`);
     
     // Cập nhật số lượng xe tại trạm (nếu có)
     if (vehicle.station_id) {
       const station = await Station.findById(vehicle.station_id);
       if (station) {
-        station.current_vehicles -= 1;
+        station.current_vehicles = Math.max(0, station.current_vehicles - 1);
         
-        // Giảm số lượng xe theo trạng thái
-        if (vehicle.status === 'available') station.available_vehicles -= 1;
-        else if (vehicle.status === 'rented') station.rented_vehicles -= 1;
-        else if (vehicle.status === 'maintenance') station.maintenance_vehicles -= 1;
-        else if (vehicle.status === 'reserved') station.reserved_vehicles -= 1;
+        // Giảm số lượng xe theo trạng thái (chỉ available và maintenance vì rented/reserved đã bị block)
+        if (vehicle.status === 'available') {
+          station.available_vehicles = Math.max(0, station.available_vehicles - 1);
+        } else if (vehicle.status === 'maintenance') {
+          station.maintenance_vehicles = Math.max(0, station.maintenance_vehicles - 1);
+        }
         
         await station.save();
+        console.log(`✅ Station counts updated: -1 vehicle (${vehicle.status})`);
       }
     }
     
     return res.status(200).json({
-      message: 'Xóa xe thành công'
+      message: 'Xóa xe thành công',
+      note: 'Soft delete - dữ liệu vẫn được giữ lại trong database',
+      vehicle_name: vehicle.name,
+      vehicle_status: vehicle.status
     });
   } catch (error) {
     console.error('Lỗi khi xóa xe:', error);
-    return res.status(500).json({ message: 'Lỗi server' });
-  }
-};
-
-// Cập nhật pin xe
-exports.updateVehicleBattery = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { current_battery } = req.body;
-    
-    // Validate battery
-    if (current_battery < 0 || current_battery > 100) {
-      return res.status(400).json({ message: 'Pin phải từ 0% đến 100%' });
-    }
-    
-    // Tìm xe
-    const vehicle = await Vehicle.findById(id);
-    if (!vehicle) {
-      return res.status(404).json({ message: 'Không tìm thấy xe' });
-    }
-    
-    // Cập nhật pin
-    vehicle.current_battery = current_battery;
-    await vehicle.save();
-    
-    return res.status(200).json({
-      message: 'Cập nhật pin xe thành công',
-      vehicle
-    });
-  } catch (error) {
-    console.error('Lỗi khi cập nhật pin xe:', error);
     return res.status(500).json({ message: 'Lỗi server' });
   }
 };

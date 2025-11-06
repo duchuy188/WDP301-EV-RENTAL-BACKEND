@@ -226,18 +226,6 @@
  *           description: Trạng thái mới
  *           example: available
  *     
- *     VehicleBattery:
- *       type: object
- *       required:
- *         - current_battery
- *       properties:
- *         current_battery:
- *           type: number
- *           minimum: 0
- *           maximum: 100
- *           description: Phần trăm pin hiện tại
- *           example: 85
- *     
  *     VehicleMaintenance:
  *       type: object
  *       required:

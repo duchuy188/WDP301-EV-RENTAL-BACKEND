@@ -397,8 +397,9 @@
  * @swagger
  * /api/maintenance/{id}:
  *   delete:
- *     summary: Xóa báo cáo bảo trì
- *     description: Xóa báo cáo bảo trì (soft delete) - Admin only
+ *     summary: Xóa báo cáo bảo trì (Soft Delete)      
+ *       **Permission:** Admin only
+ *       
  *     tags: [Maintenance]
  *     security:
  *       - bearerAuth: []
@@ -424,12 +425,43 @@
  *                 message:
  *                   type: string
  *                   example: "Xóa báo cáo bảo trì thành công"
+ *                 note:
+ *                   type: string
+ *                   example: "Soft delete - dữ liệu vẫn được giữ lại trong database"
+ *                 vehicle_status_updated:
+ *                   type: boolean
+ *                   example: true
+ *                   description: True nếu xe được chuyển về available
+ *                 vehicle_name:
+ *                   type: string
+ *                   example: "VH001"
+ *                   description: Tên xe liên quan
+ *       400:
+ *         description: |
+ *           Báo cáo đã fixed không thể xóa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Không thể xóa báo cáo đã hoàn thành"
+ *                 reason:
+ *                   type: string
+ *                   example: "Báo cáo đã fixed là audit trail, không nên xóa"
+ *                 suggestion:
+ *                   type: string
+ *                   example: "Chỉ có thể xóa báo cáo đang ở trạng thái \"reported\""
  *       401:
  *         description: Không có quyền truy cập
  *       403:
- *         description: Chỉ Admin mới có quyền
+ *         description: Chỉ Admin mới có quyền xóa báo cáo bảo trì
  *       404:
- *         description: Không tìm thấy báo cáo bảo trì
+ *         description: Không tìm thấy báo cáo bảo trì hoặc đã bị xóa trước đó
  *       500:
  *         description: Lỗi server
  */

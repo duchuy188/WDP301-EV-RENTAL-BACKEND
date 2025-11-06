@@ -332,43 +332,62 @@ exports.deleteStation = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy station' });
     }
     
-    // Kiểm tra có xe đang hoạt động không
+    // KIỂM TRA TẤT CẢ XE ĐANG HOẠT ĐỘNG (không chỉ rented)
     const activeVehicles = await Vehicle.countDocuments({ 
       station_id: id, 
-      status: 'rented',
+      status: { $in: ['available', 'reserved', 'rented', 'maintenance'] },  // Tất cả xe active
       is_active: true 
     });
     
     if (activeVehicles > 0) {
       return res.status(400).json({ 
-        message: 'Không thể xóa station vì có xe đang được thuê',
-        activeVehicles
+        message: 'Không thể xóa station vì còn xe đang hoạt động',
+        activeVehicles,
+        suggestion: 'Vui lòng chuyển tất cả xe sang station khác hoặc xóa xe trước'
       });
     }
     
-    // Kiểm tra có booking đang active không
+    //  KIỂM TRA BOOKING (thêm 'pending')
     const activeBookings = await Booking.countDocuments({
       station_id: id,
-      status: { $in: ['confirmed'] }
+      status: { $in: ['pending', 'confirmed'] }  // Cả pending và confirmed
     });
     
     if (activeBookings > 0) {
       return res.status(400).json({ 
-        message: 'Không thể xóa station vì có booking đang active',
-        activeBookings
+        message: 'Không thể xóa station vì có booking chưa hoàn thành',
+        activeBookings,
+        suggestion: 'Vui lòng hủy hoặc hoàn thành các booking trước'
       });
     }
     
-    // Kiểm tra có rental đang active không
+    // KIỂM TRA RENTAL (thêm 'pending_payment')
     const activeRentals = await Rental.countDocuments({
       station_id: id,
-      status: { $in: ['active'] }
+      status: { $in: ['active', 'pending_payment'] }  // Cả active và pending_payment
     });
     
     if (activeRentals > 0) {
       return res.status(400).json({ 
-        message: 'Không thể xóa station vì có rental đang active',
-        activeRentals
+        message: 'Không thể xóa station vì có rental chưa hoàn thành',
+        activeRentals,
+        suggestion: 'Vui lòng hoàn thành tất cả rental trước'
+      });
+    }
+    
+    // ✅ KIỂM TRA MAINTENANCE CHƯA HOÀN THÀNH
+    const { Maintenance } = require('../models');
+    const activeMaintenance = await Maintenance.countDocuments({
+      station_id: id,
+      is_active: true,
+      status: 'reported'
+    });
+    
+    if (activeMaintenance > 0) {
+      return res.status(400).json({
+        message: 'Không thể xóa station vì có báo cáo bảo trì chưa hoàn thành',
+        activeMaintenance,
+        suggestion: 'Vui lòng hoàn thành hoặc xóa các báo cáo bảo trì trước'
       });
     }
     
@@ -382,13 +401,16 @@ exports.deleteStation = async (req, res) => {
     if (staffCount > 0) {
       return res.status(400).json({ 
         message: 'Không thể xóa station vì có nhân viên đang làm việc',
-        staffCount
+        staffCount,
+        suggestion: 'Vui lòng chuyển nhân viên sang station khác trước'
       });
     }
     
-    // Thay vì xóa, đánh dấu là không hoạt động
+    // Đánh dấu là không hoạt động
     station.status = 'inactive';
     await station.save();
+    
+    console.log(` Station marked as inactive: ${station.name} (ID: ${id})`);
     
     // Format thời gian theo giờ Việt Nam
     const formattedStation = {
@@ -399,6 +421,7 @@ exports.deleteStation = async (req, res) => {
 
     return res.status(200).json({
       message: 'Đã đánh dấu station không hoạt động',
+      note: 'Station status changed to inactive - all data preserved',
       station: formattedStation
     });
   } catch (error) {

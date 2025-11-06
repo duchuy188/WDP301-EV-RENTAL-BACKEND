@@ -679,44 +679,6 @@
 
 /**
  * @swagger
- * /api/vehicles/{id}/battery:
- *   patch:
- *     summary: Cập nhật pin xe
- *     tags: [Vehicles]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         schema:
- *           type: string
- *         required: true
- *         description: ID của xe
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - current_battery
- *             properties:
- *               current_battery:
- *                 type: number
- *                 minimum: 0
- *                 maximum: 100
- *                 description: Phần trăm pin hiện tại
- *     responses:
- *       200:
- *         description: Cập nhật thành công
- *       400:
- *         description: Dữ liệu không hợp lệ
- *       404:
- *         description: Không tìm thấy xe
- */
-
-/**
- * @swagger
  * /api/vehicles/{id}/maintenance:
  *   post:
  *     summary: Báo cáo bảo trì xe (Staff manual report)
@@ -1262,7 +1224,7 @@
  * /api/vehicles/{id}:
  *   delete:
  *     summary: Xóa xe (Soft Delete)
- *     description: Đánh dấu xe là không hoạt động (is_active = false) và cập nhật số lượng xe tại trạm
+ *       **Permission:** Admin only
  *     tags: [Vehicles]
  *     security:
  *       - bearerAuth: []
@@ -1283,11 +1245,43 @@
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Xóa xe thành công
+ *                   example: "Xóa xe thành công"
+ *                 note:
+ *                   type: string
+ *                   example: "Soft delete - dữ liệu vẫn được giữ lại trong database"
+ *                 vehicle_name:
+ *                   type: string
+ *                   example: "VH001"
+ *                 vehicle_status:
+ *                   type: string
+ *                   example: "available"
+ *       400:
+ *         description: |
+ *           Không thể xóa xe do vi phạm business rules
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Không thể xóa xe đang có báo cáo bảo trì chưa hoàn thành"
+ *                 maintenance_code:
+ *                   type: string
+ *                   example: "MT123456_VH001"
+ *                 booking_code:
+ *                   type: string
+ *                   example: "BK20240115001"
+ *                 rental_code:
+ *                   type: string
+ *                   example: "RN20240115001"
+ *                 suggestion:
+ *                   type: string
+ *                   example: "Vui lòng hoàn thành hoặc xóa báo cáo bảo trì trước"
  *       403:
  *         description: Không có quyền thực hiện (chỉ Admin)
  *       404:
- *         description: Không tìm thấy xe
+ *         description: Không tìm thấy xe hoặc xe đã bị xóa trước đó
  *       500:
  *         description: Lỗi server
  */
