@@ -1044,24 +1044,27 @@ const handleHoldingFeeCallback = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=invalid_order`);
     }
     
-    // Find pending booking bằng temp_id
+    // Find pending booking bằng temp_id (accept both pending_payment and paid to handle VNPay retries)
     const PendingBooking = require('../models/PendingBooking');
     const pendingBooking = await PendingBooking.findOne({ 
       temp_id: tempId,
-      status: 'pending_payment'
+      status: { $in: ['pending_payment', 'paid'] }
     }).populate('user_id');
     
     if (!pendingBooking) {
-      console.error(`❌ Pending booking not found or expired for temp_id: ${tempId}`);
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=expired`);
+      console.error(`❌ Pending booking not found for temp_id: ${tempId}`);
+      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=not_found`);
     }
     
     console.log(`✅ Found pending booking: ${pendingBooking.temp_id} (${pendingBooking._id})`);
+    console.log(`📊 Status: ${pendingBooking.status}`);
     console.log(`👤 User: ${pendingBooking.user_id.fullname} (${pendingBooking.user_id.email})`);
     
-    //  DUPLICATE PAYMENT PREVENTION: Check if already paid
+    //  DUPLICATE PAYMENT PREVENTION: Check if already paid (VNPay retry)
     if (pendingBooking.status === 'paid' || pendingBooking.status === 'completed') {
-      console.log(`⚠️ PendingBooking already paid - Redirecting to success page`);
+      console.log(`⚠️ DUPLICATE CALLBACK DETECTED - PendingBooking already paid`);
+      console.log(`🔄 VNPay retry detected - Finding existing booking...`);
+      
       // Tìm booking đã tạo
       const Booking = require('../models/Booking');
       const existingBooking = await Booking.findOne({
@@ -1070,8 +1073,11 @@ const handleHoldingFeeCallback = async (req, res) => {
       }).sort({ createdAt: -1 }).limit(1);
       
       if (existingBooking) {
+        console.log(` Found existing booking: ${existingBooking.code} - Redirecting to success`);
         return res.redirect(`${process.env.FRONTEND_URL}/booking-success?code=${existingBooking.code}&duplicate=true`);
       }
+      
+      console.warn(` Existing booking not found - Redirecting to success page anyway`);
       return res.redirect(`${process.env.FRONTEND_URL}/booking-success?duplicate=true`);
     }
     
