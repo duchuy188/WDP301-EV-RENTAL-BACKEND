@@ -10,6 +10,7 @@
 
 const crypto = require('crypto');
 const moment = require('moment');
+const { nowVietnam } = require('../config/timezone');
 
 class VNPayService {
   constructor() {
@@ -41,9 +42,9 @@ class VNPayService {
         clientIP = '127.0.0.1';
       }
 
-
-  const createDate = moment().format('YYYYMMDDHHmmss');
-  const expireDate = moment().add(15, 'minutes').format('YYYYMMDDHHmmss'); // Some gateways require this when version=2.1.0
+    
+      const createDate = nowVietnam().format('YYYYMMDDHHmmss');
+      const expireDate = nowVietnam().add(15, 'minutes').format('YYYYMMDDHHmmss');
       
      
       const originalOrderId = payment.payment_code || `PAY${Date.now()}`;
@@ -211,6 +212,10 @@ class VNPayService {
         case '12':
           status = 'failed';
           message = 'Giao dịch bị hủy';
+          break;
+        case '15':
+          status = 'failed';
+          message = 'Giao dịch đã quá thời gian chờ thanh toán hoặc URL không hợp lệ';
           break;
         case '24':
           status = 'failed';

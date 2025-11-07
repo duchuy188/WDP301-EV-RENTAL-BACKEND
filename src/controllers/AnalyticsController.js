@@ -195,9 +195,6 @@ exports.getRevenueByStation = async (req, res) => {
                 }
             },
             {
-                $match: { station_id: { $ne: null } }
-            },
-            {
                 $lookup: {
                     from: 'stations',
                     localField: 'station_id',
@@ -206,14 +203,27 @@ exports.getRevenueByStation = async (req, res) => {
                 }
             },
             {
-                $unwind: '$station'
+                $addFields: {
+                    stationInfo: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$station' }, 0] },
+                            then: { $arrayElemAt: ['$station', 0] },
+                            else: {
+                                _id: 'unknown',
+                                name: 'Không xác định',
+                                code: 'N/A',
+                                address: 'N/A'
+                            }
+                        }
+                    }
+                }
             },
             {
                 $group: {
-                    _id: '$station._id',
-                    stationName: { $first: '$station.name' },
-                    stationCode: { $first: '$station.code' },
-                    stationAddress: { $first: '$station.address' },
+                    _id: '$stationInfo._id',
+                    stationName: { $first: '$stationInfo.name' },
+                    stationCode: { $first: '$stationInfo.code' },
+                    stationAddress: { $first: '$stationInfo.address' },
                     revenue: { $sum: '$amount' },
                     transactionCount: { $sum: 1 },
                     averageTransaction: { $avg: '$amount' }
