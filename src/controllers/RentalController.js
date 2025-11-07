@@ -126,7 +126,7 @@ class RentalController {
         .populate('user_id', 'fullname email phone')
         .populate('vehicle_id', 'name license_plate model hourly_rate daily_rate')
         .populate('station_id', 'name address')
-        .populate('booking_id', 'end_date total_days total_price deposit_amount');
+        .populate('booking_id', 'start_date end_date pickup_time total_days total_price deposit_amount');
 
       if (!rental) {
         return res.status(404).json({
@@ -514,7 +514,7 @@ class RentalController {
         .populate('user_id', 'fullname email phone')
         .populate('vehicle_id', 'name license_plate model hourly_rate daily_rate')
         .populate('station_id', 'name address')
-        .populate('booking_id', 'end_date total_days total_price deposit_amount');
+        .populate('booking_id', 'start_date end_date pickup_time total_days total_price deposit_amount');
 
       if (!rental) {
         return res.status(404).json({
