@@ -99,7 +99,10 @@ const autoCancelExpiredBookings = async () => {
       // Update vehicle status
       if (booking.vehicle_id && booking.vehicle_id._id) {
         await Vehicle.findByIdAndUpdate(booking.vehicle_id._id, {
-          status: "available"
+          status: "available",
+          reserved_for: '',
+          reserved_at: null,
+          reserved_until: null
         });
         console.log(`  ↳ Vehicle ${booking.vehicle_id.license_plate} set to available`);
       }

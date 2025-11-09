@@ -156,9 +156,10 @@ vehicleSchema.index({ status: 1, station_id: 1 });
 vehicleSchema.index({ price_per_day: 1 });
 vehicleSchema.index({ technical_status: 1 });
 
-// Compound unique index: model + type phải unique
-// Mỗi model chỉ có thể thuộc về 1 type duy nhất
-vehicleSchema.index({ model: 1, type: 1 }, { unique: true });
+// ❌ REMOVED: Unique index model + type
+// Lý do: Cho phép nhiều xe cùng model nhưng khác màu
+// Ví dụ: 10 xe Klara S màu đỏ, 5 xe Klara S màu xanh
+// vehicleSchema.index({ model: 1, type: 1 }, { unique: true });
 
 const Vehicle = mongoose.model('Vehicle', vehicleSchema);
 
