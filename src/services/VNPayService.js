@@ -122,11 +122,12 @@ class VNPayService {
    * Tạo QR Code VNPay
    * @param {Object} payment - Payment object
    * @param {String} ipAddress - IP address của user
+   * @param {String} paymentType - Type of payment (holding_fee, confirm_booking, checkout_fee)
    * @returns {Object} QR Code data
    */
-  async createVNPayQR(payment, ipAddress = '127.0.0.1') {
+  async createVNPayQR(payment, ipAddress = '127.0.0.1', paymentType = 'holding_fee') {
     try {
-      const vnpayData = this.createPaymentUrl(payment, ipAddress);
+      const vnpayData = this.createPaymentUrl(payment, ipAddress, paymentType);
       
       // Import QRCode dynamically
       const QRCode = require('qrcode');

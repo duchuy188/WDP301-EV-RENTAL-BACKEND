@@ -1021,11 +1021,35 @@ const updatePaymentMethod = async (req, res) => {
       const vnpayService = new VNPayService();
       const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1';
       
-      const qrData = await vnpayService.createVNPayQR(payment, ipAddress);
+      // ✅ XÁC ĐỊNH ĐÚNG VNPAY PAYMENT TYPE
+      let vnpayPaymentType;
+      if (payment.payment_type === 'holding_fee') {
+        vnpayPaymentType = 'holding_fee';  // User online booking
+      } else if (payment.payment_type === 'deposit') {
+        vnpayPaymentType = 'confirm_booking';  // ← QUAN TRỌNG! Staff confirm
+      } else if (payment.payment_type === 'rental_fee') {
+        vnpayPaymentType = 'confirm_booking';  // Staff confirm rental
+      } else if (payment.payment_type === 'additional_fee') {
+        vnpayPaymentType = 'checkout_fee';  // Staff checkout có phí
+      } else {
+        vnpayPaymentType = 'holding_fee';  // Fallback
+      }
+      
+      console.log(`💳 Changing payment method to VNPay:`);
+      console.log(`   - Payment ID: ${payment._id}`);
+      console.log(`   - Payment Code: ${payment.code}`);
+      console.log(`   - DB payment_type: ${payment.payment_type}`);
+      console.log(`   - VNPay payment_type: ${vnpayPaymentType}`);
+      console.log(`   - Amount: ${payment.amount}`);
+      
+      const qrData = await vnpayService.createVNPayQR(payment, ipAddress, vnpayPaymentType);
+      
       payment.qr_code_data = qrData.qrData;
       payment.qr_code_image = qrData.qrImageUrl;
       payment.vnpay_url = qrData.vnpayData.paymentUrl;
       payment.vnpay_transaction_no = qrData.vnpayData.orderId;
+      
+      console.log(`✅ VNPay URL created: ${qrData.vnpayData.paymentUrl}`);
     } else if (payment_method === 'cash') {
       // Xóa VNPay data nếu chuyển về cash
       payment.qr_code_data = '';
