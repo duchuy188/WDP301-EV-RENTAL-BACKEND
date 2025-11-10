@@ -189,7 +189,24 @@ const createPayment = async (req, res) => {
     if (paymentStatus === 'pending' && calculatedAmount > 0 && payment_method === 'vnpay') {
       const vnpayService = new VNPayService();
       const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1';
-      qrData = await vnpayService.createVNPayQR(payment, ipAddress);
+      
+      // ✅ XÁC ĐỊNH ĐÚNG VNPAY PAYMENT TYPE
+      let vnpayPaymentType;
+      if (payment.payment_type === 'holding_fee') {
+        vnpayPaymentType = 'holding_fee';
+      } else if (payment.payment_type === 'deposit') {
+        vnpayPaymentType = 'confirm_booking';
+      } else if (payment.payment_type === 'rental_fee') {
+        vnpayPaymentType = 'confirm_booking';
+      } else if (payment.payment_type === 'additional_fee') {
+        vnpayPaymentType = 'checkout_fee';
+      } else {
+        vnpayPaymentType = 'holding_fee';
+      }
+      
+      console.log(`💳 Creating VNPay QR (createPayment) - DB type: ${payment.payment_type} → VNPay type: ${vnpayPaymentType}`);
+      
+      qrData = await vnpayService.createVNPayQR(payment, ipAddress, vnpayPaymentType);
       payment.qr_code_data = qrData.qrData;
       payment.qr_code_image = qrData.qrImageUrl;
       payment.vnpay_url = qrData.vnpayData.paymentUrl;

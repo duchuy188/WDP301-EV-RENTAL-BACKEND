@@ -304,7 +304,8 @@ class BookingHandler {
           payment_type: 'holding_fee'
         };
         
-        const vnpayResult = vnpayService.createPaymentUrl(paymentData, '127.0.0.1');
+        // ✅ TRUYỀN 'holding_fee' VÀO PARAMETER THỨ 3
+        const vnpayResult = vnpayService.createPaymentUrl(paymentData, '127.0.0.1', 'holding_fee');
         vnpayUrl = vnpayResult.paymentUrl;
         
         // Restore original return URL
