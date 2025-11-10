@@ -388,8 +388,19 @@ class RentalController {
       for (const payment of payments) {
         if (payment.payment_method === 'vnpay' && payment.amount > 0) {
           try {
-            // ✅ Xác định payment type cho VNPay redirect
-            const vnpayPaymentType = payment.payment_type === 'additional_fee' ? 'checkout_fee' : 'confirm_booking';
+            
+            let vnpayPaymentType;
+            if (payment.payment_type === 'additional_fee') {
+              vnpayPaymentType = 'checkout_fee';  
+            } else if (payment.payment_type === 'deposit') {
+              vnpayPaymentType = 'confirm_booking'; 
+            } else if (payment.payment_type === 'rental_fee') {
+              vnpayPaymentType = 'confirm_booking';  
+            } else {
+              vnpayPaymentType = 'holding_fee'; 
+            }
+            
+            console.log(`💳 Creating VNPay URL - DB type: ${payment.payment_type} → VNPay type: ${vnpayPaymentType}`);
             
             const vnpayData = vnpayService.createPaymentUrl({
               payment_code: payment.code,
@@ -767,8 +778,19 @@ class RentalController {
       for (const payment of payments) {
         if (payment.payment_method === 'vnpay' && payment.amount > 0) {
           try {
-            // ✅ Xác định payment type cho VNPay redirect (lần 2)
-            const vnpayPaymentType = payment.payment_type === 'additional_fee' ? 'checkout_fee' : 'confirm_booking';
+            // ✅ FIX: Xác định đúng payment type cho VNPay redirect
+            let vnpayPaymentType;
+            if (payment.payment_type === 'additional_fee') {
+              vnpayPaymentType = 'checkout_fee';  // Phí phạt → Staff checkout
+            } else if (payment.payment_type === 'deposit') {
+              vnpayPaymentType = 'confirm_booking';  // Cọc → Staff confirm
+            } else if (payment.payment_type === 'rental_fee') {
+              vnpayPaymentType = 'confirm_booking';  // Phí thuê → Staff confirm
+            } else {
+              vnpayPaymentType = 'holding_fee';  // Fallback
+            }
+            
+            console.log(`💳 Creating VNPay URL - DB type: ${payment.payment_type} → VNPay type: ${vnpayPaymentType}`);
             
             const vnpayData = vnpayService.createPaymentUrl({
               payment_code: payment.code,
