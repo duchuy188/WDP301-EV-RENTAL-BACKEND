@@ -952,7 +952,7 @@ const handleVNPayWebhook = async (req, res) => {
         }
       } catch (error) {
         console.error('Error updating rental status after IPN:', error);
-        // Không fail webhook response vì lỗi cập nhật rental
+        // Don't fail webhook response nếu lỗi cập nhật rental
       }
       
       return res.status(200).send('RspCode=00&Message=Success');
@@ -1058,7 +1058,6 @@ const updatePaymentMethod = async (req, res) => {
 };
 
 // ========== HOLDING FEE CALLBACK HANDLER ==========
-// VNPay Callback for Holding Fee (Online Booking)
 const handleHoldingFeeCallback = async (req, res) => {
   try {
     console.log('\n💳 ========== HOLDING FEE CALLBACK ==========');
@@ -1069,12 +1068,16 @@ const handleHoldingFeeCallback = async (req, res) => {
     
     console.log('Callback result:', callbackResult);
     
+    // ✅ DÙNG VNPAY_USER_FRONTEND thay vì FRONTEND_URL
+    const frontendUrl = process.env.VNPAY_USER_FRONTEND || process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:5173';
+    
+    console.log(`🌐 Frontend URL: ${frontendUrl}`);
+    
     if (!callbackResult.success) {
       console.error('❌ VNPay callback failed:', callbackResult.message);
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&message=${encodeURIComponent(callbackResult.message)}`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=payment_failed&message=${encodeURIComponent(callbackResult.message)}`);
     }
     
-   
     const orderInfo = callbackResult.params.vnp_OrderInfo || '';
     
     const tempIdMatch = orderInfo.match(/PB\d{4}\d{6}[A-Z0-9]{2,}/i);
@@ -1085,7 +1088,7 @@ const handleHoldingFeeCallback = async (req, res) => {
     
     if (!tempId) {
       console.error('❌ Cannot extract temp_id from OrderInfo');
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=invalid_order`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=invalid_order`);
     }
     
     // Find pending booking bằng temp_id (accept both pending_payment and paid to handle VNPay retries)
@@ -1097,7 +1100,7 @@ const handleHoldingFeeCallback = async (req, res) => {
     
     if (!pendingBooking) {
       console.error(`❌ Pending booking not found for temp_id: ${tempId}`);
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=not_found`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=not_found`);
     }
     
     console.log(`✅ Found pending booking: ${pendingBooking.temp_id} (${pendingBooking._id})`);
@@ -1109,7 +1112,6 @@ const handleHoldingFeeCallback = async (req, res) => {
       console.log(`⚠️ DUPLICATE CALLBACK DETECTED - PendingBooking already paid`);
       console.log(`🔄 VNPay retry detected - Finding existing booking...`);
       
-      // Tìm booking đã tạo
       const Booking = require('../models/Booking');
       const existingBooking = await Booking.findOne({
         user_id: pendingBooking.user_id._id,
@@ -1117,23 +1119,22 @@ const handleHoldingFeeCallback = async (req, res) => {
       }).sort({ createdAt: -1 }).limit(1);
       
       if (existingBooking) {
-        console.log(` Found existing booking: ${existingBooking.code} - Redirecting to success`);
-        return res.redirect(`${process.env.FRONTEND_URL}/booking-success?code=${existingBooking.code}&duplicate=true`);
+        console.log(`✅ Found existing booking: ${existingBooking.code} - Redirecting to success`);
+        return res.redirect(`${frontendUrl}/booking-success?code=${existingBooking.code}&duplicate=true`);
       }
       
-      console.warn(` Existing booking not found - Redirecting to success page anyway`);
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-success?duplicate=true`);
+      console.warn(`⚠️ Existing booking not found - Redirecting to success page anyway`);
+      return res.redirect(`${frontendUrl}/booking-success?duplicate=true`);
     }
     
     // Check payment status
     if (callbackResult.responseCode !== '00') {
       console.error(`❌ Payment failed - Response code: ${callbackResult.responseCode}`);
       
-      // Update pending booking status
       pendingBooking.status = 'cancelled';
       await pendingBooking.save();
       
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&code=${callbackResult.responseCode}`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=payment_failed&code=${callbackResult.responseCode}`);
     }
     
     // Payment successful - Create actual booking
@@ -1195,7 +1196,7 @@ const handleHoldingFeeCallback = async (req, res) => {
       console.error('❌ Vehicle not found or not in correct reserved state');
       pendingBooking.status = 'cancelled';
       await pendingBooking.save();
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=vehicle_unavailable`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=vehicle_unavailable`);
     }
     
     console.log(`🚗 Reserved vehicle: ${vehicle.name} (${vehicle.license_plate})`);
@@ -1266,7 +1267,6 @@ const handleHoldingFeeCallback = async (req, res) => {
       await pendingBooking.save();
       
     } catch (createError) {
-      // ❌ ROLLBACK: Unreserve vehicle if booking/payment creation fails
       console.error('❌ CRITICAL ERROR creating booking/payment:', createError);
       console.log('🔄 ROLLBACK: Unreserving vehicle...');
       
@@ -1277,19 +1277,17 @@ const handleHoldingFeeCallback = async (req, res) => {
         reserved_until: null
       });
       
-      // Mark pending booking as cancelled
       pendingBooking.status = 'cancelled';
       await pendingBooking.save();
       
       console.log('✅ Vehicle unreserved, pending booking cancelled');
       
-      // Delete partial booking if created
       if (booking) {
         await Booking.findByIdAndDelete(booking._id);
         console.log('🗑️ Partial booking deleted');
       }
       
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=system_error&message=Failed to create booking`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=system_error&message=Failed to create booking`);
     }
     
     // Send confirmation email
@@ -1394,12 +1392,14 @@ Chúc bạn có chuyến đi vui vẻ! 🎉`;
     
     console.log('🔚 ========== END HOLDING FEE CALLBACK ==========\n');
     
-    // Redirect to success page
-    return res.redirect(`${process.env.FRONTEND_URL}/booking-success?code=${booking.code}&holdingFeePaid=true`);
+    // ✅ FIX: DÙNG frontendUrl đã định nghĩa
+    console.log(`✅ Redirecting to: ${frontendUrl}/booking-success?code=${booking.code}`);
+    return res.redirect(`${frontendUrl}/booking-success?code=${booking.code}&holdingFeePaid=true`);
     
   } catch (error) {
     console.error('❌ Error in holding fee callback:', error);
-    return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=system_error`);
+    const frontendUrl = process.env.VNPAY_USER_FRONTEND || process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:5173';
+    return res.redirect(`${frontendUrl}/booking-failed?reason=system_error`);
   }
 };
 
