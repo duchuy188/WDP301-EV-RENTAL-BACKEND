@@ -388,21 +388,17 @@ class RentalController {
       for (const payment of payments) {
         if (payment.payment_method === 'vnpay' && payment.amount > 0) {
           try {
+            // ✅ Xác định payment type cho VNPay redirect
+            const vnpayPaymentType = payment.payment_type === 'additional_fee' ? 'checkout_fee' : 'confirm_booking';
+            
             const vnpayData = vnpayService.createPaymentUrl({
+              payment_code: payment.code,
               amount: payment.amount,
-              orderId: payment.code,
-              orderInfo: `Thanh toan ${payment.payment_type} - ${rental.code}`,
-              orderType: 'rental_checkout',
-              returnUrl: process.env.VNPAY_RETURN_URL,
-              ipAddr: clientIP,
-              extraData: {
-                payment_id: payment._id.toString(),
-                rental_id: rental._id.toString(),
-                payment_type: payment.payment_type
-              }
-            }, clientIP);
+              payment_type: payment.payment_type
+            }, clientIP, vnpayPaymentType);
+            
             payment.vnpay_url = vnpayData.paymentUrl;
-            payment.vnpay_transaction_no = vnpayData.orderId;
+            payment.vnpay_transaction_no = vnpayData.txnRef;
             await payment.save();
             
             paymentUrls[payment._id] = {
@@ -771,21 +767,17 @@ class RentalController {
       for (const payment of payments) {
         if (payment.payment_method === 'vnpay' && payment.amount > 0) {
           try {
+            // ✅ Xác định payment type cho VNPay redirect (lần 2)
+            const vnpayPaymentType = payment.payment_type === 'additional_fee' ? 'checkout_fee' : 'confirm_booking';
+            
             const vnpayData = vnpayService.createPaymentUrl({
+              payment_code: payment.code,
               amount: payment.amount,
-              orderId: payment.code,
-              orderInfo: `Thanh toan ${payment.payment_type} - ${rental.code}`,
-              orderType: 'rental_checkout',
-              returnUrl: process.env.VNPAY_RETURN_URL,
-              ipAddr: clientIP,
-              extraData: {
-                payment_id: payment._id.toString(),
-                rental_id: rental._id.toString(),
-                payment_type: payment.payment_type
-              }
-            }, clientIP);
+              payment_type: payment.payment_type
+            }, clientIP, vnpayPaymentType);
+            
             payment.vnpay_url = vnpayData.paymentUrl;
-            payment.vnpay_transaction_no = vnpayData.orderId;
+            payment.vnpay_transaction_no = vnpayData.txnRef;
             await payment.save();
             
             paymentUrls[payment._id] = {

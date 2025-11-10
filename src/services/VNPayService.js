@@ -32,9 +32,10 @@ class VNPayService {
    * Tạo URL thanh toán VNPay
    * @param {Object} payment - Payment object
    * @param {String} ipAddress - IP address của user
+   * @param {String} paymentType - Type of payment (holding_fee, confirm_booking, checkout_fee)
    * @returns {Object} VNPay URL và thông tin
    */
-  createPaymentUrl(payment, ipAddress = '127.0.0.1') {
+  createPaymentUrl(payment, ipAddress = '127.0.0.1', paymentType = 'holding_fee') {
     try {
       // ✅ Convert IPv6 localhost thành IPv4
       let clientIP = ipAddress;
@@ -57,7 +58,8 @@ class VNPayService {
       if (numericTxnRef.length > 20) numericTxnRef = numericTxnRef.substring(0,20);
       const orderId = originalOrderId; // vẫn trả về cho hệ thống nội bộ
       const txnRef = numericTxnRef; // dùng cho VNPay
-      const orderInfo = `Thanh toan ${payment.payment_type} ${orderId}`;
+      
+      const orderInfo = `Thanh toan ${payment.payment_type} ${orderId}|${paymentType}`;
 
 
     

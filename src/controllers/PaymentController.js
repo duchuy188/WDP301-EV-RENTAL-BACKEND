@@ -643,9 +643,49 @@ const handleVNPayCallback = async (req, res) => {
     const vnpayService = new VNPayService();
     const callbackResult = vnpayService.processCallback(req.query);
 
+  
+    const orderInfo = req.query.vnp_OrderInfo || '';
+    const paymentTypeParts = orderInfo.split('|');
+    const paymentType = paymentTypeParts.length > 1 ? paymentTypeParts[1] : 'holding_fee';
+    
+    console.log(`📝 VNPay callback - Parsed payment_type: ${paymentType}`);
+    
+
+    let frontendUrl;
+    let successRoute;
+    let errorRoute;
+    
+    switch (paymentType) {
+      case 'holding_fee':
+        // User thanh toán giữ chỗ
+        frontendUrl = process.env.VNPAY_USER_FRONTEND || process.env.FRONTEND_URL || 'http://localhost:5173';
+        successRoute = '/payments/success';
+        errorRoute = '/payments/error';
+        break;
+        
+      case 'confirm_booking':
+        // Staff confirm booking
+        frontendUrl = process.env.VNPAY_STAFF_FRONTEND || 'http://localhost:5174';
+        successRoute = '/bookings/confirm/success';
+        errorRoute = '/bookings/confirm/error';
+        break;
+        
+      case 'checkout_fee':
+        // Staff checkout có phí
+        frontendUrl = process.env.VNPAY_STAFF_FRONTEND || 'http://localhost:5174';
+        successRoute = '/rentals/checkout/success';
+        errorRoute = '/rentals/checkout/error';
+        break;
+        
+      default:
+        frontendUrl = process.env.VNPAY_USER_FRONTEND || process.env.FRONTEND_URL || 'http://localhost:5173';
+        successRoute = '/payments/success';
+        errorRoute = '/payments/error';
+    }
+
     if (!callbackResult.success) {
       // Redirect về frontend với lỗi
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=${encodeURIComponent(callbackResult.message)}`);
+      return res.redirect(`${frontendUrl}${errorRoute}?status=error&message=${encodeURIComponent(callbackResult.message)}&type=${paymentType}`);
     }
 
     // Tìm payment theo txnRef (numeric version từ VNPay)
@@ -663,7 +703,7 @@ const handleVNPayCallback = async (req, res) => {
     }
 
     if (!payment) {
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=${encodeURIComponent('Không tìm thấy payment')}`);
+      return res.redirect(`${frontendUrl}${errorRoute}?status=error&message=${encodeURIComponent('Không tìm thấy payment')}&type=${paymentType}`);
     }
 
     // Nếu payment đã completed (do webhook xử lý trước), redirect luôn
@@ -677,9 +717,10 @@ const handleVNPayCallback = async (req, res) => {
         vnp_ResponseCode: '00',
         vnp_TransactionNo: payment.transaction_id || 'AUTO_' + Date.now(),
         vnp_TransactionStatus: '00',
-        vnp_TxnRef: payment.code
+        vnp_TxnRef: payment.code,
+        type: paymentType
       });
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
+      return res.redirect(`${frontendUrl}${successRoute}?${vnpayParams.toString()}`);
     }
 
     // Cập nhật payment status
@@ -795,9 +836,10 @@ const handleVNPayCallback = async (req, res) => {
         vnp_ResponseCode: '00',
         vnp_TransactionNo: payment.transaction_id || 'AUTO_' + Date.now(),
         vnp_TransactionStatus: '00',
-        vnp_TxnRef: payment.code
+        vnp_TxnRef: payment.code,
+        type: paymentType
       });
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
+      return res.redirect(`${frontendUrl}${successRoute}?${vnpayParams.toString()}`);
       
     } else {
       payment.status = 'cancelled';  
@@ -816,15 +858,17 @@ const handleVNPayCallback = async (req, res) => {
         vnp_ResponseCode: '99',
         vnp_TransactionNo: payment.transaction_id || 'FAILED_' + Date.now(),
         vnp_TransactionStatus: '99',
-        vnp_TxnRef: payment.code
+        vnp_TxnRef: payment.code,
+        type: paymentType
       });
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
+      return res.redirect(`${frontendUrl}${errorRoute}?${vnpayParams.toString()}`);
     }
 
   } catch (error) {
     console.error('Lỗi khi xử lý VNPay callback:', error);
     // Redirect về frontend với lỗi hệ thống
-    return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=System error`);
+    const fallbackUrl = process.env.VNPAY_USER_FRONTEND || process.env.FRONTEND_URL || 'http://localhost:5173';
+    return res.redirect(`${fallbackUrl}/payments/error?status=error&message=System error`);
   }
 };
 

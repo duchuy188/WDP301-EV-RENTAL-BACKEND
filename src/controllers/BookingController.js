@@ -450,7 +450,8 @@ const createBooking = async (req, res) => {
       };
       
       const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress || '127.0.0.1';
-      vnpayResult = vnpayService.createPaymentUrl(paymentData, clientIP);
+      // ✅ Thêm payment type 'holding_fee' vào parameter thứ 3
+      vnpayResult = vnpayService.createPaymentUrl(paymentData, clientIP, 'holding_fee');
       
       // Restore original return URL
       vnpayService.config.vnp_ReturnUrl = originalReturnUrl;
