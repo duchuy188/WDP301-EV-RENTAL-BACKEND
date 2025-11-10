@@ -351,8 +351,8 @@ const createBooking = async (req, res) => {
     }
     
     // Chọn xe có battery cao nhất trong danh sách available
-    const vehicle = availableVehicles.sort((a, b) => b.battery_level - a.battery_level)[0];
-    console.log(`🚗 Auto-selected vehicle: ${vehicle.name} (${vehicle.license_plate}) - Battery: ${vehicle.battery_level}%`);
+    const vehicle = availableVehicles.sort((a, b) => b.current_battery - a.current_battery)[0];
+    console.log(`🚗 Auto-selected vehicle: ${vehicle.name} (${vehicle.license_plate}) - Battery: ${vehicle.current_battery}%`);
     
     // Calculate pricing
     const pricePerDay = vehicle.price_per_day;
@@ -823,7 +823,7 @@ const confirmBooking = async (req, res) => {
         pickup_staff_id: staff_id,
         vehicle_condition_before: {
           mileage: vehicle_condition_before?.mileage || booking.vehicle_id.current_mileage || 0,
-          battery_level: vehicle_condition_before?.battery_level || booking.vehicle_id.current_battery || 100,
+          battery_level: vehicle_condition_before?.battery_level || booking.vehicle_id.current_battery || 100, // Note: Rental model uses battery_level
           exterior_condition: vehicle_condition_before?.exterior_condition || 'good',
           interior_condition: vehicle_condition_before?.interior_condition || 'good',
           notes: vehicle_condition_before?.notes || staff_notes || ''
@@ -1849,8 +1849,8 @@ const createWalkInBooking = async (req, res) => {
     }
 
     // Chọn xe có battery cao nhất trong danh sách available
-    const vehicle = availableVehicles.sort((a, b) => b.battery_level - a.battery_level)[0];
-    console.log(`🚗 Auto-selected vehicle: ${vehicle.name} (${vehicle.license_plate}) - Battery: ${vehicle.battery_level}%`);
+    const vehicle = availableVehicles.sort((a, b) => b.current_battery - a.current_battery)[0];
+    console.log(`🚗 Auto-selected vehicle: ${vehicle.name} (${vehicle.license_plate}) - Battery: ${vehicle.current_battery}%`);
     
     // Calculate pricing
     const pricePerDay = vehicle.price_per_day;

@@ -124,7 +124,7 @@ class RentalController {
 
       const rental = await Rental.findById(id)
         .populate('user_id', 'fullname email phone')
-        .populate('vehicle_id', 'name license_plate model hourly_rate daily_rate')
+        .populate('vehicle_id', 'name license_plate model hourly_rate price_per_day')
         .populate('station_id', 'name address')
         .populate('booking_id', 'start_date end_date pickup_time total_days total_price deposit_amount');
 
@@ -519,7 +519,7 @@ class RentalController {
 
       const rental = await Rental.findById(id)
         .populate('user_id', 'fullname email phone')
-        .populate('vehicle_id', 'name license_plate model hourly_rate daily_rate')
+        .populate('vehicle_id', 'name license_plate model hourly_rate price_per_day')
         .populate('station_id', 'name address')
         .populate('booking_id', 'start_date end_date pickup_time total_days total_price deposit_amount');
 
