@@ -388,8 +388,8 @@ class VNPayService {
     if (!text) return 'Thanh toan';
     // Remove Vietnamese accents
     const noAccents = text.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    // Remove any disallowed symbols (keep letters, numbers, space, hyphen, underscore)
-    const safe = noAccents.replace(/[^A-Za-z0-9 _-]/g, ' ').replace(/\s+/g, ' ').trim();
+   
+    const safe = noAccents.replace(/[^A-Za-z0-9 _\-|]/g, ' ').replace(/\s+/g, ' ').trim();
     // Limit length (VNPay usually allows up to 255, but keep short)
     return safe.substring(0, 120);
   }
