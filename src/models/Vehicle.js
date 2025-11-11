@@ -155,6 +155,7 @@ vehicleSchema.index({ type: 1 });
 vehicleSchema.index({ status: 1, station_id: 1 });
 vehicleSchema.index({ price_per_day: 1 });
 vehicleSchema.index({ technical_status: 1 });
+vehicleSchema.index({ name: 1 }, { unique: true }); 
 
 // ❌ REMOVED: Unique index model + type
 // Lý do: Cho phép nhiều xe cùng model nhưng khác màu

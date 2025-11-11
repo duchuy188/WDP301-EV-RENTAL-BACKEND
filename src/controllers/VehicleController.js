@@ -366,13 +366,13 @@ exports.importLicensePlates = async (req, res) => {
     
     const updateResults = [];
 
-    for (const { id, license_plate } of result.data) {
+    for (const { vehicle_code, license_plate } of result.data) {
       // Kiểm tra xe tồn tại và đang ở trạng thái draft
-      const vehicle = await Vehicle.findById(id);
+      const vehicle = await Vehicle.findOne({ name: vehicle_code });
       if (!vehicle) {
         updateResults.push({
           success: false,
-          id,
+          vehicle_code,
           message: 'Không tìm thấy xe'
         });
         continue;
@@ -382,7 +382,7 @@ exports.importLicensePlates = async (req, res) => {
       if (vehicle.status !== 'draft') {
         updateResults.push({
           success: false,
-          id,
+          vehicle_code,
           message: `Xe ${vehicle.name} không ở trạng thái draft, không thể cập nhật biển số`
         });
         continue;
@@ -393,7 +393,7 @@ exports.importLicensePlates = async (req, res) => {
       if (vehicle.license_plate && !vehicle.license_plate.startsWith('TEMP_')) {
         updateResults.push({
           success: false,
-          id,
+          vehicle_code,
           message: `Xe ${vehicle.name} đã có biển số ${vehicle.license_plate}, không thể cập nhật`
         });
         continue;
@@ -402,13 +402,13 @@ exports.importLicensePlates = async (req, res) => {
       //  Kiểm tra biển số đã tồn tại trong database (không chỉ xe hiện tại)
       const existingVehicle = await Vehicle.findOne({ 
         license_plate,
-        _id: { $ne: id }
+        _id: { $ne: vehicle._id }
       });
       
       if (existingVehicle) {
         updateResults.push({
           success: false,
-          id,
+          vehicle_code,
           message: `Biển số ${license_plate} đã được sử dụng bởi xe ${existingVehicle.name}`
         });
         continue;
@@ -416,14 +416,14 @@ exports.importLicensePlates = async (req, res) => {
       
       // Cập nhật biển số
       const updated = await Vehicle.findByIdAndUpdate(
-        id,
+        vehicle._id,
         { license_plate },
         { new: true }
       );
       
       updateResults.push({
         success: !!updated,
-        id,
+        vehicle_code,
         license_plate,
         name: updated.name
       });
@@ -756,6 +756,20 @@ exports.updateVehicle = async (req, res) => {
       if (existingVehicle) {
         return res.status(400).json({ 
           message: `Biển số ${license_plate} đã được sử dụng bởi xe ${existingVehicle.name}` 
+        });
+      }
+    }
+    
+    // Validation mã xe unique
+    if (name) {
+      const existingVehicle = await Vehicle.findOne({ 
+        name,
+        _id: { $ne: id }
+      });
+
+      if (existingVehicle) {
+        return res.status(400).json({ 
+          message: `Mã xe ${name} đã tồn tại. Vui lòng chọn mã khác.` 
         });
       }
     }

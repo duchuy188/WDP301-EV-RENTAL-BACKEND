@@ -683,21 +683,21 @@ const handleVNPayCallback = async (req, res) => {
         break;
         
       case 'confirm_booking':
-        // Staff confirm booking
+        // Staff confirm booking (deposit/rental_fee)
         frontendUrl = process.env.VNPAY_STAFF_FRONTEND || 
                       process.env.FRONTEND_URL?.split(',')[2] || // staff.evrent.id.vn là domain thứ 3
                       'http://localhost:5174';
-        successRoute = '/bookings/confirm/success';
-        errorRoute = '/bookings/confirm/error';
+        successRoute = '/payments/success'; 
+        errorRoute = '/payments/error';
         break;
         
       case 'checkout_fee':
-        // Staff checkout có phí
+        // Staff checkout có phí phạt
         frontendUrl = process.env.VNPAY_STAFF_FRONTEND || 
                       process.env.FRONTEND_URL?.split(',')[2] || 
                       'http://localhost:5174';
-        successRoute = '/rentals/checkout/success';
-        errorRoute = '/rentals/checkout/error';
+        successRoute = '/payments/success';  
+        errorRoute = '/payments/error';
         break;
         
       default:
