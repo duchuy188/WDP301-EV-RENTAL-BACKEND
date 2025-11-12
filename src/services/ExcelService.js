@@ -221,6 +221,67 @@ class ExcelService {
   }
 
   /**
+   * Export danh sách xe draft (biển số TEMP) để cập nhật biển số thật
+   * Format giống bulk-create: Mã xe, Model, Màu, Biển số xe (trống)
+   * @param {Array} vehicles - Danh sách xe có biển số TEMP
+   * @returns {Object} - Thông tin file Excel đã tạo
+   */
+  static async exportDraftVehicles(vehicles) {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Draft Vehicles');
+      
+  
+      worksheet.columns = [
+        { header: 'Mã xe', key: 'vehicle_code', width: 15 },
+        { header: 'Model', key: 'model', width: 20 },
+        { header: 'Màu', key: 'color', width: 15 },
+        { header: 'Biển số xe', key: 'license_plate', width: 20 }
+      ];
+      
+
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD3D3D3' }
+      };
+      
+    
+      vehicles.forEach(vehicle => {
+        worksheet.addRow({
+          vehicle_code: vehicle.name,       
+          model: vehicle.model || '',       
+          color: vehicle.color || '',      
+          license_plate: ''              
+        });
+      });
+      
+
+      const fileName = `draft_vehicles_${Date.now()}.xlsx`;
+      const filePath = path.join(__dirname, '..', '..', 'uploads', fileName);
+      
+   
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      
+      await workbook.xlsx.writeFile(filePath);
+      
+      return {
+        fileName,
+        filePath,
+        vehicleCount: vehicles.length
+      };
+    } catch (error) {
+      console.error('Lỗi khi export draft vehicles:', error);
+      throw new Error('Không thể tạo file Excel export');
+    }
+  }
+
+  /**
    * Đọc và xử lý file Excel update giá
    * @param {String} filePath - Đường dẫn tới file Excel
    * @returns {Object} - Kết quả xử lý

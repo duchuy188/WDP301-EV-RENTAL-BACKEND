@@ -1871,4 +1871,74 @@ exports.importPricingUpdates = async (req, res) => {
   }
 };
 
+
+exports.exportDraftVehicles = async (req, res) => {
+  try {
+
+    const idsParam = req.query.ids;
+    let vehicleIds = null;
+
+    if (idsParam) {
+   
+      vehicleIds = idsParam.split(',').filter(id => id.trim());
+    }
+
+  
+    let query = {
+      $or: [
+        { license_plate: { $exists: false } },
+        { license_plate: null },
+        { license_plate: '' },
+        { license_plate: 'N/A' },
+        { license_plate: 'Chưa gán biển' },
+        { license_plate: /^TEMP_/i }, 
+        { license_plate: /^chưa/i }
+      ],
+      is_active: true
+    };
+
+
+    if (vehicleIds && vehicleIds.length > 0) {
+      query._id = { $in: vehicleIds };
+    }
+
+    const draftVehicles = await Vehicle.find(query).select('name model color license_plate');
+
+    if (draftVehicles.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không có xe nào chưa có biển số'
+      });
+    }
+
+  
+    const result = await ExcelService.exportDraftVehicles(draftVehicles);
+
+   
+    res.download(result.filePath, result.fileName, (err) => {
+      if (err) {
+        console.error('Error downloading file:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Lỗi khi tải file'
+        });
+      }
+
+   
+      const fs = require('fs');
+      fs.unlink(result.filePath, (unlinkErr) => {
+        if (unlinkErr) console.error('Error deleting temp file:', unlinkErr);
+      });
+    });
+
+  } catch (error) {
+    console.error('Error exporting draft vehicles:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi export danh sách xe',
+      error: error.message
+    });
+  }
+};
+
 module.exports = exports;

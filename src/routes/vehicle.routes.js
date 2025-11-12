@@ -35,6 +35,13 @@ const excelUpload = multer({
 router.get('/', VehicleController.getPublicVehicles);
 router.get('/statistics', VehicleController.getVehicleStatistics);
 
+// Export draft vehicles - PHẢI ĐẶT TRƯỚC /:id
+router.get('/export-draft-vehicles',
+  authMiddleware,
+  roleMiddleware(['Admin']),
+  VehicleController.exportDraftVehicles
+);
+
 // Staff routes - Xem & quản lý xe tại trạm
 router.get('/staff', 
   authMiddleware,
