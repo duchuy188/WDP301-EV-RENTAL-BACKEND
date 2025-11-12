@@ -218,12 +218,13 @@ class BookingHandler {
         };
       }
       
-      // 5. Generate temp ID (format: PB + DDMM + 4 random chars)
+      // 5. Generate temp ID (format: PB + DDMM + timestamp + 2 random chars)
       const now = nowVietnam().toDate();
       const day = String(now.getDate()).padStart(2, '0');
       const month = String(now.getMonth() + 1).padStart(2, '0');
-      const randomChars = Math.random().toString(36).substr(2, 4).toUpperCase();
-      const tempId = `PB${day}${month}${randomChars}`;
+      const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
+      const randomChars = Math.random().toString(36).substr(2, 2).toUpperCase(); // Reduced to 2 chars
+      const tempId = `PB${day}${month}${timestamp}${randomChars}`;
       
       // 6. Calculate expiry (15 minutes)
       const expiresAt = nowVietnam().add(15, 'minutes').toDate(); 
@@ -303,7 +304,8 @@ class BookingHandler {
           payment_type: 'holding_fee'
         };
         
-        const vnpayResult = vnpayService.createPaymentUrl(paymentData, '127.0.0.1');
+        // ✅ TRUYỀN 'holding_fee' VÀO PARAMETER THỨ 3
+        const vnpayResult = vnpayService.createPaymentUrl(paymentData, '127.0.0.1', 'holding_fee');
         vnpayUrl = vnpayResult.paymentUrl;
         
         // Restore original return URL
@@ -316,7 +318,29 @@ class BookingHandler {
         console.log(`💳 VNPay URL created for holding fee: ${vnpayUrl}`);
         
       } catch (error) {
-        // ❌ ROLLBACK: Unreserve vehicle nếu tạo PendingBooking hoặc VNPay URL lỗi
+       
+        if (error.code === 11000 || error.name === 'MongoServerError') {
+          console.error('⚠️ Duplicate pending booking detected in chatbot (race condition prevented by DB)');
+          
+          // Cleanup: Unreserve vehicle
+          await Vehicle.findByIdAndUpdate(bookingData.vehicleId, {
+            status: 'available',
+            reserved_for: null,
+            reserved_at: null,
+            reserved_until: null
+          });
+          
+          console.log(' Vehicle unreserved due to duplicate booking');
+          
+          return {
+            success: false,
+            message: ' Bạn đã có booking chưa thanh toán. Vui lòng hoàn tất hoặc đợi hết hạn trước khi đặt xe mới.',
+            suggestions: ['Xem booking của tôi', 'Hủy booking cũ'],
+            actions: ['view_my_bookings', 'cancel_pending']
+          };
+        }
+        
+        // ROLLBACK: Unreserve vehicle nếu tạo PendingBooking hoặc VNPay URL lỗi
         console.error('❌ Error creating PendingBooking/VNPay URL:', error);
         
         await Vehicle.findByIdAndUpdate(bookingData.vehicleId, {

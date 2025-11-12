@@ -17,7 +17,7 @@ const Vehicle = require('../models/Vehicle');
 const Station = require('../models/Station');
 const Payment = require('../models/Payment');
 const ContractService = require('../services/ContractService');
-const nodemailer = require('../config/nodemailer');
+const nodemailer = require('../config/emailService');
 const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 
 // Gửi email hợp đồng cho customer

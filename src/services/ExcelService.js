@@ -17,8 +17,9 @@ class ExcelService {
       
       // Tạo header
       worksheet.columns = [
-        { header: 'ID', key: 'id', width: 10 },
-        { header: 'Tên xe', key: 'name', width: 30 },
+        { header: 'Mã xe', key: 'vehicle_code', width: 10 },
+        { header: 'Model', key: 'model', width: 20 },
+        { header: 'Màu', key: 'color', width: 15 },
         { header: 'Biển số xe', key: 'license_plate', width: 20 }
       ];
       
@@ -33,8 +34,9 @@ class ExcelService {
       // Thêm dữ liệu
       vehicles.forEach(vehicle => {
         worksheet.addRow({
-          id: vehicle._id.toString(),
-          name: vehicle.name + (color ? ` - ${color}` : ''),
+          vehicle_code: vehicle.name, // VH038, VH039... (mã xe)
+          model: vehicle.model || '', // VF e34, Klara S...
+          color: color || vehicle.color || '', // Xanh Lá, Xanh Rêu...
           license_plate: ''
         });
       });
@@ -90,17 +92,16 @@ class ExcelService {
       // Bỏ qua hàng header (row 1)
       for (let i = 2; i <= worksheet.rowCount; i++) {
         const row = worksheet.getRow(i);
-        const id = row.getCell(1).value;
-        const name = row.getCell(2).value;
-        const licensePlate = row.getCell(3).value;
+        const vehicleCode = row.getCell(1).value; // Cột A: Mã xe
+        const licensePlate = row.getCell(4).value; // Cột D: Biển số xe
         
-        if (!id) continue;
+        if (!vehicleCode) continue;
         
         // Validate biển số
         if (!licensePlate) {
           result.errors.push({
             row: i,
-            id,
+            vehicle_code: vehicleCode,
             message: 'Biển số không được để trống'
           });
           continue;
@@ -111,16 +112,31 @@ class ExcelService {
         if (!licensePlateRegex.test(licensePlate)) {
           result.errors.push({
             row: i,
-            id,
+            vehicle_code: vehicleCode,
             message: 'Biển số không đúng định dạng (VD: 51A-123.45)'
           });
           continue;
         }
         
         result.data.push({
-          id,
-          license_plate: licensePlate
+          vehicle_code: vehicleCode,
+          license_plate: licensePlate,
+          row: i
         });
+      }
+      
+      // Check trùng lặp mã xe trong Excel
+      const seenCodes = new Map();
+      for (const item of result.data) {
+        if (seenCodes.has(item.vehicle_code)) {
+          result.errors.push({
+            row: item.row,
+            vehicle_code: item.vehicle_code,
+            message: `Mã xe ${item.vehicle_code} bị trùng với dòng ${seenCodes.get(item.vehicle_code)}`
+          });
+        } else {
+          seenCodes.set(item.vehicle_code, item.row);
+        }
       }
       
       return result;

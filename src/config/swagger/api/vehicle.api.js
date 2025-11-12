@@ -679,47 +679,25 @@
 
 /**
  * @swagger
- * /api/vehicles/{id}/battery:
- *   patch:
- *     summary: Cập nhật pin xe
- *     tags: [Vehicles]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         schema:
- *           type: string
- *         required: true
- *         description: ID của xe
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - current_battery
- *             properties:
- *               current_battery:
- *                 type: number
- *                 minimum: 0
- *                 maximum: 100
- *                 description: Phần trăm pin hiện tại
- *     responses:
- *       200:
- *         description: Cập nhật thành công
- *       400:
- *         description: Dữ liệu không hợp lệ
- *       404:
- *         description: Không tìm thấy xe
- */
-
-/**
- * @swagger
  * /api/vehicles/{id}/maintenance:
  *   post:
- *     summary: Báo cáo bảo trì xe cho staff
+ *     summary: Báo cáo bảo trì xe (Staff manual report)
+ *     description: |
+ *       Staff báo cáo xe cần bảo trì khi phát hiện vấn đề.
+ *       
+ *       **Maintenance Type:**
+ *       - `low_battery`: Pin yếu cần sạc (< 50%). Staff có thể tự fix sau khi sạc.
+ *       - `poor_condition`: Xe hỏng hóc. Cần Admin duyệt. (Default nếu không chọn)
+ *       
+ *       **Lưu ý:**
+ *       - Xe phải ở trạng thái "available"
+ *       - Xe sẽ chuyển sang status "maintenance" sau khi báo cáo (không available cho booking)
+ *       - Nếu chọn `low_battery`: Pin phải < 50%, nếu không sẽ bị reject
+ *       - Nếu không chọn type: Mặc định = `poor_condition`
+ *       
+ *       **Auto-report (khi checkout):**
+ *       - Pin < 20% → Hệ thống tự tạo `low_battery`
+ *       - Poor condition → Hệ thống tự tạo `poor_condition`
  *     tags: [Vehicles]
  *     security:
  *       - bearerAuth: []
@@ -741,18 +719,68 @@
  *             properties:
  *               reason:
  *                 type: string
- *                 description: Lý do bảo trì
+ *                 description: Lý do bảo trì chi tiết
+ *                 example: "Pin còn 28%, cần sạc trước khi cho thuê"
+ *               maintenance_type:
+ *                 type: string
+ *                 enum: [low_battery, poor_condition]
+ *                 description: |
+ *                   Loại bảo trì (tùy chọn, mặc định: poor_condition)
+ *                   
+ *                   - `low_battery`: Chỉ dùng khi pin < 50%. Staff tự fix được.
+ *                   - `poor_condition`: Xe hỏng, cần Admin duyệt. (Default)
+ *                 example: "low_battery"
  *               images:
  *                 type: array
  *                 items:
  *                   type: string
  *                   format: binary
- *                 description: Hình ảnh lỗi
+ *                 description: Hình ảnh lỗi/hư hỏng (tùy chọn, tối đa 5 ảnh)
  *     responses:
  *       201:
- *         description: Báo cáo thành công
+ *         description: Báo cáo bảo trì thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Báo cáo bảo trì thành công"
+ *                 maintenance:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       example: "MT123456_VH002"
+ *                     maintenance_type:
+ *                       type: string
+ *                       example: "low_battery"
+ *                     status:
+ *                       type: string
+ *                       example: "reported"
+ *                     can_staff_fix:
+ *                       type: boolean
+ *                       example: true
+ *                       description: True nếu Staff có thể tự fix (low_battery)
+ *                     title:
+ *                       type: string
+ *                       example: "Sạc pin xe VH002"
+ *                     description:
+ *                       type: string
+ *                       example: "Pin còn 28%, cần sạc"
  *       400:
- *         description: Dữ liệu không hợp lệ
+ *         description: |
+ *           Dữ liệu không hợp lệ, xe không available, hoặc vi phạm validation
+ *           
+ *           Examples:
+ *           - Xe không available: `{ "message": "Chỉ có thể báo cáo bảo trì xe đang available. Xe hiện tại đang rented" }`
+ *           - Pin >= 50% nhưng chọn low_battery: `{ "message": "Chỉ được báo cáo low_battery khi pin < 50%. Pin hiện tại: 65%", "suggestion": "..." }`
+ *           - Type không hợp lệ: `{ "message": "maintenance_type không hợp lệ. Chọn: low_battery hoặc poor_condition" }`
+ *       401:
+ *         description: Không có quyền truy cập
+ *       403:
+ *         description: Chỉ Admin hoặc Station Staff mới có quyền
  *       404:
  *         description: Không tìm thấy xe
  */
@@ -1196,7 +1224,7 @@
  * /api/vehicles/{id}:
  *   delete:
  *     summary: Xóa xe (Soft Delete)
- *     description: Đánh dấu xe là không hoạt động (is_active = false) và cập nhật số lượng xe tại trạm
+ *       **Permission:** Admin only
  *     tags: [Vehicles]
  *     security:
  *       - bearerAuth: []
@@ -1217,11 +1245,43 @@
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Xóa xe thành công
+ *                   example: "Xóa xe thành công"
+ *                 note:
+ *                   type: string
+ *                   example: "Soft delete - dữ liệu vẫn được giữ lại trong database"
+ *                 vehicle_name:
+ *                   type: string
+ *                   example: "VH001"
+ *                 vehicle_status:
+ *                   type: string
+ *                   example: "available"
+ *       400:
+ *         description: |
+ *           Không thể xóa xe do vi phạm business rules
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Không thể xóa xe đang có báo cáo bảo trì chưa hoàn thành"
+ *                 maintenance_code:
+ *                   type: string
+ *                   example: "MT123456_VH001"
+ *                 booking_code:
+ *                   type: string
+ *                   example: "BK20240115001"
+ *                 rental_code:
+ *                   type: string
+ *                   example: "RN20240115001"
+ *                 suggestion:
+ *                   type: string
+ *                   example: "Vui lòng hoàn thành hoặc xóa báo cáo bảo trì trước"
  *       403:
  *         description: Không có quyền thực hiện (chỉ Admin)
  *       404:
- *         description: Không tìm thấy xe
+ *         description: Không tìm thấy xe hoặc xe đã bị xóa trước đó
  *       500:
  *         description: Lỗi server
  */

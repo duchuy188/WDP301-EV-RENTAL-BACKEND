@@ -9,7 +9,7 @@ const PaymentService = require('../services/PaymentService');
 const VNPayService = require('../services/VNPayService');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { nowVietnam } = require('../config/timezone');
-const { sendEmail, getCheckoutReceiptTemplate } = require('../config/nodemailer');
+const { sendEmail, getCheckoutReceiptTemplate } = require('../config/emailService');
 
 class RentalController {
   // GET /api/rentals/:id/checkout-info
@@ -124,9 +124,9 @@ class RentalController {
 
       const rental = await Rental.findById(id)
         .populate('user_id', 'fullname email phone')
-        .populate('vehicle_id', 'name license_plate model hourly_rate daily_rate')
+        .populate('vehicle_id', 'name license_plate model hourly_rate price_per_day')
         .populate('station_id', 'name address')
-        .populate('booking_id', 'end_date total_days total_price deposit_amount');
+        .populate('booking_id', 'start_date end_date pickup_time total_days total_price deposit_amount');
 
       if (!rental) {
         return res.status(404).json({
@@ -177,6 +177,17 @@ class RentalController {
         return res.status(400).json({
           success: false,
           message: 'Thiếu thông tin tình trạng xe'
+        });
+      }
+
+     
+      const mileageBefore = rental.vehicle_condition_before.mileage;
+      const mileageAfter = vehicle_condition_after.mileage;
+
+      if (mileageAfter < mileageBefore) {
+        return res.status(400).json({
+          success: false,
+          message: `Số km khi trả xe (${mileageAfter} km) không thể nhỏ hơn số km khi nhận xe (${mileageBefore} km). Vui lòng kiểm tra lại.`
         });
       }
 
@@ -233,11 +244,17 @@ class RentalController {
         // Tính toán dữ liệu rental
         const distance = vehicle_condition_after.mileage - rental.vehicle_condition_before.mileage;
         const days = (rental.actual_end_time - rental.actual_start_time) / (1000 * 60 * 60 * 24);
-        const spent = rental.total_price + total_fees;
+        const spent = rental.booking_id.total_price + total_fees;
         
         // Lấy thông tin vehicle và station
         const vehicle = await Vehicle.findById(rental.vehicle_id._id);
         const station = await Station.findById(rental.station_id._id);
+        
+        // Tạo rental_date từ booking pickup_time (thời gian user muốn nhận xe)
+      
+        const [hour, minute] = rental.booking_id.pickup_time.split(':').map(Number);
+        const rentalDate = new Date(rental.booking_id.start_date);
+        rentalDate.setHours(hour, minute, 0, 0);
         
         await userStats.updateStats({
           distance: Math.max(0, distance),
@@ -245,7 +262,7 @@ class RentalController {
           days: Math.max(0, days),
           vehicle_type: vehicle?.type,
           station_id: rental.station_id._id,
-          rental_date: rental.actual_start_time
+          rental_date: rentalDate // Dùng booking pickup_time thay vì actual_start_time
         });
       } catch (statsError) {
         console.error('Error updating user stats:', statsError);
@@ -254,10 +271,23 @@ class RentalController {
 
       // Cập nhật trạng thái xe dựa trên tình trạng
       let vehicleStatus = 'available';
-      if (vehicle_condition_after.exterior_condition === 'poor' || 
-          vehicle_condition_after.interior_condition === 'poor' ||
-          vehicle_condition_after.battery_level < 20) { // Pin dưới 20% cần sạc
+      let technicalStatus = 'good';
+      
+      // Kiểm tra tình trạng xe
+      const isPoorCondition = 
+        vehicle_condition_after.exterior_condition === 'poor' || 
+        vehicle_condition_after.interior_condition === 'poor';
+      
+      const isLowBattery = vehicle_condition_after.battery_level < 20;
+      
+      if (isPoorCondition) {
         vehicleStatus = 'maintenance';
+        technicalStatus = 'needs_maintenance';
+        console.log('⚠️  Vehicle needs maintenance: poor condition');
+      } else if (isLowBattery) {
+        vehicleStatus = 'maintenance';
+        technicalStatus = 'needs_maintenance';
+        console.log(`⚠️  Vehicle needs maintenance: low battery (${vehicle_condition_after.battery_level}%)`);
       }
 
       // CHỈ UPDATE VEHICLE STATUS NẾU RENTAL COMPLETED
@@ -265,14 +295,40 @@ class RentalController {
         console.log('🔍 DEBUG - Updating vehicle (completed):');
         console.log('- Vehicle ID:', rental.vehicle_id._id);
         console.log('- Status:', vehicleStatus);
+        console.log('- Technical Status:', technicalStatus);
         console.log('- Mileage:', vehicle_condition_after.mileage);
         console.log('- Battery:', vehicle_condition_after.battery_level);
         
         await Vehicle.findByIdAndUpdate(rental.vehicle_id._id, {
           status: vehicleStatus,
+          technical_status: technicalStatus,
           current_mileage: vehicle_condition_after.mileage,
           current_battery: vehicle_condition_after.battery_level
         });
+        
+        // Tự động tạo Maintenance report nếu cần
+        if (isPoorCondition || isLowBattery) {
+          const Maintenance = require('../models/Maintenance');
+          const maintenanceCode = `MT${Date.now().toString().substring(6)}_${rental.vehicle_id.name}`;
+          
+          await Maintenance.create({
+            code: maintenanceCode,
+            vehicle_id: rental.vehicle_id._id,
+            station_id: rental.vehicle_id.station_id,
+            maintenance_type: isPoorCondition ? 'poor_condition' : 'low_battery',
+            title: isPoorCondition 
+              ? `Bảo trì xe ${rental.vehicle_id.name} - Tình trạng kém`
+              : `Sạc pin xe ${rental.vehicle_id.name}`,
+            description: isPoorCondition
+              ? `Xe có tình trạng kém: ${vehicle_condition_after.exterior_condition === 'poor' ? 'Ngoại thất hư hỏng' : 'Nội thất hư hỏng'}`
+              : `Pin còn ${vehicle_condition_after.battery_level}% - Cần sạc đến 80% trở lên`,
+            status: 'reported',
+            reported_by: req.user._id
+          });
+          
+          console.log(`✅ Auto-created ${isPoorCondition ? 'poor_condition' : 'low_battery'} maintenance report`);
+        }
+        
       } else {
         // Nếu pending_payment, chỉ update mileage và battery
         console.log('🔍 DEBUG - Updating vehicle (pending_payment):');
@@ -332,21 +388,28 @@ class RentalController {
       for (const payment of payments) {
         if (payment.payment_method === 'vnpay' && payment.amount > 0) {
           try {
+            
+            let vnpayPaymentType;
+            if (payment.payment_type === 'additional_fee') {
+              vnpayPaymentType = 'checkout_fee';  
+            } else if (payment.payment_type === 'deposit') {
+              vnpayPaymentType = 'confirm_booking'; 
+            } else if (payment.payment_type === 'rental_fee') {
+              vnpayPaymentType = 'confirm_booking';  
+            } else {
+              vnpayPaymentType = 'holding_fee'; 
+            }
+            
+            console.log(`💳 Creating VNPay URL - DB type: ${payment.payment_type} → VNPay type: ${vnpayPaymentType}`);
+            
             const vnpayData = vnpayService.createPaymentUrl({
+              payment_code: payment.code,
               amount: payment.amount,
-              orderId: payment.code,
-              orderInfo: `Thanh toan ${payment.payment_type} - ${rental.code}`,
-              orderType: 'rental_checkout',
-              returnUrl: process.env.VNPAY_RETURN_URL,
-              ipAddr: clientIP,
-              extraData: {
-                payment_id: payment._id.toString(),
-                rental_id: rental._id.toString(),
-                payment_type: payment.payment_type
-              }
-            }, clientIP);
+              payment_type: payment.payment_type
+            }, clientIP, vnpayPaymentType);
+            
             payment.vnpay_url = vnpayData.paymentUrl;
-            payment.vnpay_transaction_no = vnpayData.orderId;
+            payment.vnpay_transaction_no = vnpayData.txnRef;
             await payment.save();
             
             paymentUrls[payment._id] = {
@@ -456,9 +519,9 @@ class RentalController {
 
       const rental = await Rental.findById(id)
         .populate('user_id', 'fullname email phone')
-        .populate('vehicle_id', 'name license_plate model hourly_rate daily_rate')
+        .populate('vehicle_id', 'name license_plate model hourly_rate price_per_day')
         .populate('station_id', 'name address')
-        .populate('booking_id', 'end_date total_days total_price deposit_amount');
+        .populate('booking_id', 'start_date end_date pickup_time total_days total_price deposit_amount');
 
       if (!rental) {
         return res.status(404).json({
@@ -495,6 +558,17 @@ class RentalController {
         return res.status(400).json({
           success: false,
           message: 'Thiếu thông tin tình trạng xe'
+        });
+      }
+
+      
+      const mileageBefore = rental.vehicle_condition_before.mileage;
+      const mileageAfter = vehicle_condition_after.mileage;
+
+      if (mileageAfter < mileageBefore) {
+        return res.status(400).json({
+          success: false,
+          message: `Số km khi trả xe (${mileageAfter} km) không thể nhỏ hơn số km khi nhận xe (${mileageBefore} km). Vui lòng kiểm tra lại.`
         });
       }
 
@@ -615,7 +689,7 @@ class RentalController {
         // Tính toán dữ liệu rental
         const distance = vehicle_condition_after.mileage - rental.vehicle_condition_before.mileage;
         const days = (rental.actual_end_time - rental.actual_start_time) / (1000 * 60 * 60 * 24);
-        const spent = rental.total_price + total_fees;
+        const spent = rental.booking_id.total_price + total_fees;
         
         // Lấy thông tin vehicle và station
         const vehicle = await Vehicle.findById(rental.vehicle_id._id);
@@ -704,21 +778,28 @@ class RentalController {
       for (const payment of payments) {
         if (payment.payment_method === 'vnpay' && payment.amount > 0) {
           try {
+            // ✅ FIX: Xác định đúng payment type cho VNPay redirect
+            let vnpayPaymentType;
+            if (payment.payment_type === 'additional_fee') {
+              vnpayPaymentType = 'checkout_fee';  // Phí phạt → Staff checkout
+            } else if (payment.payment_type === 'deposit') {
+              vnpayPaymentType = 'confirm_booking';  // Cọc → Staff confirm
+            } else if (payment.payment_type === 'rental_fee') {
+              vnpayPaymentType = 'confirm_booking';  // Phí thuê → Staff confirm
+            } else {
+              vnpayPaymentType = 'holding_fee';  // Fallback
+            }
+            
+            console.log(`💳 Creating VNPay URL - DB type: ${payment.payment_type} → VNPay type: ${vnpayPaymentType}`);
+            
             const vnpayData = vnpayService.createPaymentUrl({
+              payment_code: payment.code,
               amount: payment.amount,
-              orderId: payment.code,
-              orderInfo: `Thanh toan ${payment.payment_type} - ${rental.code}`,
-              orderType: 'rental_checkout',
-              returnUrl: process.env.VNPAY_RETURN_URL,
-              ipAddr: clientIP,
-              extraData: {
-                payment_id: payment._id.toString(),
-                rental_id: rental._id.toString(),
-                payment_type: payment.payment_type
-              }
-            }, clientIP);
+              payment_type: payment.payment_type
+            }, clientIP, vnpayPaymentType);
+            
             payment.vnpay_url = vnpayData.paymentUrl;
-            payment.vnpay_transaction_no = vnpayData.orderId;
+            payment.vnpay_transaction_no = vnpayData.txnRef;
             await payment.save();
             
             paymentUrls[payment._id] = {
@@ -987,7 +1068,7 @@ class RentalController {
 
       const rental = await Rental.findById(id)
         .populate('user_id', 'fullname email phone')
-        .populate('vehicle_id', 'name license_plate model battery_capacity')
+        .populate('vehicle_id', 'name license_plate model battery_capacity current_mileage current_battery type status')
         .populate('station_id', 'name address')
         .populate('pickup_staff_id', 'fullname')
         .populate('return_staff_id', 'fullname')

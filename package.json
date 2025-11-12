@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "prestart": "npx puppeteer browsers install chrome",
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -42,6 +43,7 @@
     "puppeteer": "^24.22.2",
     "qrcode": "^1.5.4",
     "qs": "^6.14.0",
+    "resend": "^6.4.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^8.3.2"

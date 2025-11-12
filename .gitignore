@@ -85,6 +85,8 @@ web_modules/
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
+# BUT allow Puppeteer cache for Render deployment
+!.cache/puppeteer
 .parcel-cache
 
 # Next.js build output
@@ -97,6 +99,8 @@ dist
 
 # Gatsby files
 .cache/
+# BUT allow Puppeteer cache for Render deployment
+!.cache/puppeteer/
 # Comment in the public line in if your project uses Gatsby and not Next.js
 # https://nextjs.org/blog/next-9-1#public-directory-support
 # public

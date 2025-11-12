@@ -105,12 +105,6 @@ router.patch('/:id/status',
   VehicleController.updateVehicleStatus
 );
 
-router.patch('/:id/battery',
-  authMiddleware,
-  roleMiddleware(['Admin', 'Station Staff']),
-  VehicleController.updateVehicleBattery
-);
-
 router.post('/:id/maintenance',
   authMiddleware,
   roleMiddleware(['Admin', 'Station Staff']),

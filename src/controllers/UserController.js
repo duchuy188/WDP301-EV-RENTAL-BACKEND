@@ -1,7 +1,7 @@
 const { User, Station, UserStats } = require('../models');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { sendEmail, getStaffAccountEmailTemplate } = require('../config/nodemailer');
+const { sendEmail, getStaffAccountEmailTemplate } = require('../config/emailService');
 const { formatVietnamTime, nowVietnam } = require('../config/timezone');
 
 // Tạo tài khoản Staff (chỉ Admin) - KHÔNG gán station
@@ -940,7 +940,8 @@ exports.getUserPersonalStats = async (req, res) => {
     const sortedPeakDays = userStats.peak_days
       .sort((a, b) => b.count - a.count)
       .map(day => ({
-        ...day,
+        day: day.day,
+        count: day.count,
         dayName: ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'][day.day]
       }));
 
@@ -989,7 +990,7 @@ exports.getUserPersonalStats = async (req, res) => {
           total_rentals: userStats.total_rentals,
           total_distance: userStats.total_distance,
           total_spent: userStats.total_spent,
-          total_days: userStats.total_days,
+          total_days: Math.round(userStats.total_days * 100) / 100,
           avg_spent_per_rental: avgSpentPerRental,
           avg_distance_per_rental: avgDistancePerRental,
           last_rental_date: userStats.last_rental_date

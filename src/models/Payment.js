@@ -30,7 +30,16 @@ const paymentSchema = new mongoose.Schema({
   amount: { 
     type: Number, 
     required: true,
-    min: 0
+    validate: {
+      validator: function(value) {
+      
+        if (value < 0) {
+          return this.payment_type === 'refund';
+        }
+        return true; 
+      },
+      message: 'Chỉ payment type "refund" mới được phép có amount âm'
+    }
   },
   payment_method: { 
     type: String, 

@@ -366,13 +366,13 @@ exports.importLicensePlates = async (req, res) => {
     
     const updateResults = [];
 
-    for (const { id, license_plate } of result.data) {
+    for (const { vehicle_code, license_plate } of result.data) {
       // Kiểm tra xe tồn tại và đang ở trạng thái draft
-      const vehicle = await Vehicle.findById(id);
+      const vehicle = await Vehicle.findOne({ name: vehicle_code });
       if (!vehicle) {
         updateResults.push({
           success: false,
-          id,
+          vehicle_code,
           message: 'Không tìm thấy xe'
         });
         continue;
@@ -382,7 +382,7 @@ exports.importLicensePlates = async (req, res) => {
       if (vehicle.status !== 'draft') {
         updateResults.push({
           success: false,
-          id,
+          vehicle_code,
           message: `Xe ${vehicle.name} không ở trạng thái draft, không thể cập nhật biển số`
         });
         continue;
@@ -393,7 +393,7 @@ exports.importLicensePlates = async (req, res) => {
       if (vehicle.license_plate && !vehicle.license_plate.startsWith('TEMP_')) {
         updateResults.push({
           success: false,
-          id,
+          vehicle_code,
           message: `Xe ${vehicle.name} đã có biển số ${vehicle.license_plate}, không thể cập nhật`
         });
         continue;
@@ -402,13 +402,13 @@ exports.importLicensePlates = async (req, res) => {
       //  Kiểm tra biển số đã tồn tại trong database (không chỉ xe hiện tại)
       const existingVehicle = await Vehicle.findOne({ 
         license_plate,
-        _id: { $ne: id }
+        _id: { $ne: vehicle._id }
       });
       
       if (existingVehicle) {
         updateResults.push({
           success: false,
-          id,
+          vehicle_code,
           message: `Biển số ${license_plate} đã được sử dụng bởi xe ${existingVehicle.name}`
         });
         continue;
@@ -416,14 +416,14 @@ exports.importLicensePlates = async (req, res) => {
       
       // Cập nhật biển số
       const updated = await Vehicle.findByIdAndUpdate(
-        id,
+        vehicle._id,
         { license_plate },
         { new: true }
       );
       
       updateResults.push({
         success: !!updated,
-        id,
+        vehicle_code,
         license_plate,
         name: updated.name
       });
@@ -760,6 +760,20 @@ exports.updateVehicle = async (req, res) => {
       }
     }
     
+    // Validation mã xe unique
+    if (name) {
+      const existingVehicle = await Vehicle.findOne({ 
+        name,
+        _id: { $ne: id }
+      });
+
+      if (existingVehicle) {
+        return res.status(400).json({ 
+          message: `Mã xe ${name} đã tồn tại. Vui lòng chọn mã khác.` 
+        });
+      }
+    }
+    
     // (Removed: Model+type uniqueness validation - allow multiple vehicles with same model+type but different colors)
     
     // Cập nhật thông tin - Mongoose sẽ validate các trường còn lại
@@ -813,7 +827,7 @@ exports.updateVehicle = async (req, res) => {
   }
 };
 
-// Xóa xe
+// Xóa xe (soft delete)
 exports.deleteVehicle = async (req, res) => {
   try {
     const { id } = req.params;
@@ -834,6 +848,23 @@ exports.deleteVehicle = async (req, res) => {
       return res.status(400).json({ message: 'Xe đã bị xóa trước đó' });
     }
 
+   
+    if (vehicle.status === 'maintenance') {
+      const activeMaintenance = await Maintenance.findOne({
+        vehicle_id: vehicle._id,
+        is_active: true,
+        status: 'reported'
+      });
+      
+      if (activeMaintenance) {
+        return res.status(400).json({ 
+          message: 'Không thể xóa xe đang có báo cáo bảo trì chưa hoàn thành',
+          maintenance_code: activeMaintenance.code,
+          suggestion: 'Vui lòng hoàn thành hoặc xóa báo cáo bảo trì trước'
+        });
+      }
+    }
+
     // Kiểm tra xe có đang được thuê hoặc đặt trước không
     if (vehicle.status === 'rented' || vehicle.status === 'reserved') {
       return res.status(400).json({ 
@@ -841,62 +872,68 @@ exports.deleteVehicle = async (req, res) => {
       });
     }
     
+    // KIỂM TRA CÓ BOOKING ACTIVE KHÔNG
+    const { Booking } = require('../models');
+    const activeBooking = await Booking.findOne({
+      vehicle_id: vehicle._id,
+      status: { $in: ['pending', 'confirmed'] }
+    });
+    
+    if (activeBooking) {
+      return res.status(400).json({ 
+        message: 'Không thể xóa xe có booking chưa hoàn thành',
+        booking_code: activeBooking.booking_code,
+        booking_status: activeBooking.status,
+        suggestion: 'Vui lòng hủy hoặc hoàn thành booking trước'
+      });
+    }
+    
+    // KIỂM TRA CÓ RENTAL ACTIVE KHÔNG
+    const activeRental = await Rental.findOne({
+      vehicle_id: vehicle._id,
+      status: { $in: ['active', 'pending_payment'] }
+    });
+    
+    if (activeRental) {
+      return res.status(400).json({ 
+        message: 'Không thể xóa xe có rental đang active',
+        rental_code: activeRental.rental_code,
+        suggestion: 'Vui lòng hoàn thành rental trước'
+      });
+    }
+    
     // Soft delete
     vehicle.is_active = false;
     await vehicle.save();
+    
+    console.log(`🗑️  Soft deleted vehicle: ${vehicle.name} (${vehicle.license_plate || 'No plate'})`);
     
     // Cập nhật số lượng xe tại trạm (nếu có)
     if (vehicle.station_id) {
       const station = await Station.findById(vehicle.station_id);
       if (station) {
-        station.current_vehicles -= 1;
+        station.current_vehicles = Math.max(0, station.current_vehicles - 1);
         
-        // Giảm số lượng xe theo trạng thái
-        if (vehicle.status === 'available') station.available_vehicles -= 1;
-        else if (vehicle.status === 'rented') station.rented_vehicles -= 1;
-        else if (vehicle.status === 'maintenance') station.maintenance_vehicles -= 1;
-        else if (vehicle.status === 'reserved') station.reserved_vehicles -= 1;
+        // Giảm số lượng xe theo trạng thái (chỉ available và maintenance vì rented/reserved đã bị block)
+        if (vehicle.status === 'available') {
+          station.available_vehicles = Math.max(0, station.available_vehicles - 1);
+        } else if (vehicle.status === 'maintenance') {
+          station.maintenance_vehicles = Math.max(0, station.maintenance_vehicles - 1);
+        }
         
         await station.save();
+        console.log(`✅ Station counts updated: -1 vehicle (${vehicle.status})`);
       }
     }
     
     return res.status(200).json({
-      message: 'Xóa xe thành công'
+      message: 'Xóa xe thành công',
+      note: 'Soft delete - dữ liệu vẫn được giữ lại trong database',
+      vehicle_name: vehicle.name,
+      vehicle_status: vehicle.status
     });
   } catch (error) {
     console.error('Lỗi khi xóa xe:', error);
-    return res.status(500).json({ message: 'Lỗi server' });
-  }
-};
-
-// Cập nhật pin xe
-exports.updateVehicleBattery = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { current_battery } = req.body;
-    
-    // Validate battery
-    if (current_battery < 0 || current_battery > 100) {
-      return res.status(400).json({ message: 'Pin phải từ 0% đến 100%' });
-    }
-    
-    // Tìm xe
-    const vehicle = await Vehicle.findById(id);
-    if (!vehicle) {
-      return res.status(404).json({ message: 'Không tìm thấy xe' });
-    }
-    
-    // Cập nhật pin
-    vehicle.current_battery = current_battery;
-    await vehicle.save();
-    
-    return res.status(200).json({
-      message: 'Cập nhật pin xe thành công',
-      vehicle
-    });
-  } catch (error) {
-    console.error('Lỗi khi cập nhật pin xe:', error);
     return res.status(500).json({ message: 'Lỗi server' });
   }
 };
@@ -965,7 +1002,7 @@ exports.getVehicleStatistics = async (req, res) => {
 exports.reportMaintenance = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const { reason, maintenance_type } = req.body;
     
     // Lấy images từ req.files (file upload)
     let images = [];
@@ -973,9 +1010,17 @@ exports.reportMaintenance = async (req, res) => {
       images = req.files.map(file => file.path); // file.path chứa URL từ Cloudinary
     }
     
-    // Validate
+    // Validate reason
     if (!reason) {
       return res.status(400).json({ message: 'Vui lòng cung cấp lý do bảo trì' });
+    }
+    
+    // Validate maintenance_type
+    const validTypes = ['low_battery', 'poor_condition'];
+    if (maintenance_type && !validTypes.includes(maintenance_type)) {
+      return res.status(400).json({ 
+        message: 'maintenance_type không hợp lệ. Chọn: low_battery hoặc poor_condition' 
+      });
     }
     
     // Tìm xe
@@ -991,15 +1036,32 @@ exports.reportMaintenance = async (req, res) => {
       });
     }
     
+    // Xác định type cuối cùng (default: poor_condition)
+    let finalType = maintenance_type || 'poor_condition';
+    
+    // ✅ VALIDATION: Nếu Staff chọn low_battery → Kiểm tra pin
+    if (req.user.role === 'Station Staff' && finalType === 'low_battery') {
+      // Chỉ cho phép low_battery nếu pin < 50%
+      if (vehicle.current_battery >= 50) {
+        return res.status(400).json({
+          message: `Chỉ được báo cáo low_battery khi pin < 50%. Pin hiện tại: ${vehicle.current_battery}%`,
+          suggestion: 'Vui lòng chọn maintenance_type = "poor_condition" nếu có vấn đề khác'
+        });
+      }
+    }
+    
     // Tạo mã bảo trì
     const maintenanceCode = `MT${Date.now().toString().substring(6)}_${vehicle.name}`;
     
-    // Tạo báo cáo bảo trì
+    // Tạo báo cáo bảo trì với type do Staff chọn
     const maintenance = new Maintenance({
       code: maintenanceCode,
       vehicle_id: vehicle._id,
       station_id: vehicle.station_id,
-      title: `Bảo trì xe ${vehicle.name}`,
+      maintenance_type: finalType,
+      title: finalType === 'low_battery' 
+        ? `Sạc pin xe ${vehicle.name}`
+        : `Bảo trì xe ${vehicle.name}`,
       description: reason,
       status: 'reported',
       images,
@@ -1032,7 +1094,14 @@ exports.reportMaintenance = async (req, res) => {
     
     return res.status(201).json({
       message: 'Báo cáo bảo trì thành công',
-      maintenance
+      maintenance: {
+        code: maintenance.code,
+        maintenance_type: maintenance.maintenance_type,
+        status: maintenance.status,
+        can_staff_fix: maintenance.maintenance_type === 'low_battery',
+        title: maintenance.title,
+        description: maintenance.description
+      }
     });
   } catch (error) {
     console.error('Lỗi khi báo cáo bảo trì:', error);

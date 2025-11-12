@@ -7,11 +7,11 @@
  *       properties:
  *         totalRevenue:
  *           type: number
- *           description: Tổng doanh thu
+ *           description: Tổng doanh thu (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *           example: 15000000
  *         transactionCount:
  *           type: number
- *           description: Số lượng giao dịch
+ *           description: Số lượng giao dịch (BAO GỒM holding_fee, TRỪ ĐI refund nếu có)
  *           example: 125
  *         growthRate:
  *           type: number
@@ -28,6 +28,7 @@
  *               example: "Trạm Quận 1"
  *             revenue:
  *               type: number
+ *               description: Doanh thu trạm (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *               example: 5000000
  *         period:
  *           type: string
@@ -63,11 +64,11 @@
  *           example: "123 Nguyễn Huệ, Quận 1, TP.HCM"
  *         revenue:
  *           type: number
- *           description: Doanh thu
+ *           description: Doanh thu (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *           example: 5000000
  *         transactionCount:
  *           type: number
- *           description: Số giao dịch
+ *           description: Số giao dịch (BAO GỒM holding_fee, TRỪ ĐI refund nếu có)
  *           example: 45
  *         averageTransaction:
  *           type: number
@@ -93,9 +94,11 @@
  *               example: "2025-01-01"
  *         revenue:
  *           type: number
+ *           description: Doanh thu (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *           example: 500000
  *         transactionCount:
  *           type: number
+ *           description: Số giao dịch (BAO GỒM holding_fee, TRỪ ĐI refund nếu có)
  *           example: 25
  *     
  *     StationRevenueDetail:
@@ -126,6 +129,7 @@
  *                 example: "scooter"
  *               revenue:
  *                 type: number
+ *                 description: Doanh thu (BAO GỒM holding_fee, TRỪ ĐI refund)
  *                 example: 3000000
  *               count:
  *                 type: number
@@ -140,6 +144,7 @@
  *                 example: 8
  *               revenue:
  *                 type: number
+ *                 description: Doanh thu (BAO GỒM holding_fee, TRỪ ĐI refund)
  *                 example: 500000
  *               count:
  *                 type: number
@@ -160,6 +165,7 @@
  *                 example: "nguyenvana@email.com"
  *               totalSpent:
  *                 type: number
+ *                 description: Tổng chi tiêu (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *                 example: 1000000
  *               rentalCount:
  *                 type: number
@@ -191,7 +197,7 @@
  * /api/analytics/revenue/overview:
  *   get:
  *     summary: Lấy tổng quan doanh thu
- *     description: Lấy thông tin tổng quan về doanh thu hệ thống
+ *     description: Lấy thông tin tổng quan về doanh thu hệ thống (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
@@ -207,7 +213,7 @@
  *         name: payment_method
  *         schema:
  *           type: string
- *           enum: [all, cash, vnpay, bank_transfer]
+ *           enum: [all, cash, vnpay]
  *           default: all
  *         description: Phương thức thanh toán
  *     responses:
@@ -236,7 +242,7 @@
  * /api/analytics/revenue/by-station:
  *   get:
  *     summary: Lấy doanh thu theo trạm
- *     description: Lấy thông tin doanh thu chi tiết theo từng trạm
+ *     description: Lấy thông tin doanh thu chi tiết theo từng trạm (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
@@ -259,7 +265,7 @@
  *         name: payment_method
  *         schema:
  *           type: string
- *           enum: [all, cash, vnpay, bank_transfer]
+ *           enum: [all, cash, vnpay]
  *           default: all
  *         description: Phương thức thanh toán
  *     responses:
@@ -282,6 +288,7 @@
  *                         $ref: '#/components/schemas/StationRevenue'
  *                     totalRevenue:
  *                       type: number
+ *                       description: Tổng doanh thu (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *                       example: 15000000
  *                     period:
  *                       type: string
@@ -308,7 +315,7 @@
  * /api/analytics/revenue/trends:
  *   get:
  *     summary: Lấy xu hướng doanh thu
- *     description: Lấy thông tin xu hướng doanh thu theo thời gian
+ *     description: Lấy thông tin xu hướng doanh thu theo thời gian (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
@@ -330,7 +337,7 @@
  *         name: payment_method
  *         schema:
  *           type: string
- *           enum: [all, cash, vnpay, bank_transfer]
+ *           enum: [all, cash, vnpay]
  *           default: all
  *         description: Phương thức thanh toán
  *     responses:
@@ -370,7 +377,7 @@
  * /api/analytics/revenue/station-detail/{stationId}:
  *   get:
  *     summary: Lấy chi tiết doanh thu trạm
- *     description: Lấy thông tin chi tiết doanh thu của một trạm cụ thể
+ *     description: Lấy thông tin chi tiết doanh thu của một trạm cụ thể (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
@@ -400,7 +407,7 @@
  *         name: payment_method
  *         schema:
  *           type: string
- *           enum: [all, cash, vnpay, bank_transfer]
+ *           enum: [all, cash, vnpay]
  *           default: all
  *         description: Phương thức thanh toán
  *     responses:

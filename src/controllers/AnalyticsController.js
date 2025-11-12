@@ -16,7 +16,7 @@ exports.getRevenueOverview = async (req, res) => {
         // Tính toán date range
         const dateRange = getDateRange(period);
         
-        // Tổng doanh thu
+        // Tổng doanh thu (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
         const totalRevenue = await Payment.aggregate([
             {
                 $match: {
@@ -33,7 +33,7 @@ exports.getRevenueOverview = async (req, res) => {
             }
         ]);
         
-        // Số giao dịch
+        // Số giao dịch (BAO GỒM holding_fee, KHÔNG BAO GỒM refund)
         const transactionCount = await Payment.countDocuments({
             status: 'completed',
             createdAt: { $gte: dateRange.start, $lte: dateRange.end },
@@ -64,7 +64,7 @@ exports.getRevenueOverview = async (req, res) => {
         const growthRate = previousTotal > 0 ? 
             ((currentTotal - previousTotal) / previousTotal * 100) : 0;
         
-        // Trạm có doanh thu cao nhất
+        // Trạm có doanh thu cao nhất (bao gồm cả holding fee từ booking, trừ refund)
         const topStation = await Payment.aggregate([
             {
                 $match: {
@@ -82,15 +82,31 @@ exports.getRevenueOverview = async (req, res) => {
                 }
             },
             {
-                $match: { 'rental.0': { $exists: true } }
+                $lookup: {
+                    from: 'bookings',
+                    localField: 'booking_id',
+                    foreignField: '_id',
+                    as: 'booking'
+                }
             },
             {
-                $unwind: '$rental'
+                $addFields: {
+                    station_id: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$rental' }, 0] },
+                            then: { $arrayElemAt: ['$rental.station_id', 0] },
+                            else: { $arrayElemAt: ['$booking.station_id', 0] }
+                        }
+                    }
+                }
+            },
+            {
+                $match: { station_id: { $ne: null } }
             },
             {
                 $lookup: {
                     from: 'stations',
-                    localField: 'rental.station_id',
+                    localField: 'station_id',
                     foreignField: '_id',
                     as: 'station'
                 }
@@ -142,7 +158,7 @@ exports.getRevenueByStation = async (req, res) => {
         
         const dateRange = getDateRange(period, date);
         
-        // Doanh thu theo trạm
+        // Doanh thu theo trạm (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
         const stationRevenue = await Payment.aggregate([
             {
                 $match: {
@@ -160,28 +176,54 @@ exports.getRevenueByStation = async (req, res) => {
                 }
             },
             {
-                $match: { 'rental.0': { $exists: true } }
+                $lookup: {
+                    from: 'bookings',
+                    localField: 'booking_id',
+                    foreignField: '_id',
+                    as: 'booking'
+                }
             },
             {
-                $unwind: '$rental'
+                $addFields: {
+                    station_id: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$rental' }, 0] },
+                            then: { $arrayElemAt: ['$rental.station_id', 0] },
+                            else: { $arrayElemAt: ['$booking.station_id', 0] }
+                        }
+                    }
+                }
             },
             {
                 $lookup: {
                     from: 'stations',
-                    localField: 'rental.station_id',
+                    localField: 'station_id',
                     foreignField: '_id',
                     as: 'station'
                 }
             },
             {
-                $unwind: '$station'
+                $addFields: {
+                    stationInfo: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$station' }, 0] },
+                            then: { $arrayElemAt: ['$station', 0] },
+                            else: {
+                                _id: 'unknown',
+                                name: 'Không xác định',
+                                code: 'N/A',
+                                address: 'N/A'
+                            }
+                        }
+                    }
+                }
             },
             {
                 $group: {
-                    _id: '$station._id',
-                    stationName: { $first: '$station.name' },
-                    stationCode: { $first: '$station.code' },
-                    stationAddress: { $first: '$station.address' },
+                    _id: '$stationInfo._id',
+                    stationName: { $first: '$stationInfo.name' },
+                    stationCode: { $first: '$stationInfo.code' },
+                    stationAddress: { $first: '$stationInfo.address' },
                     revenue: { $sum: '$amount' },
                     transactionCount: { $sum: 1 },
                     averageTransaction: { $avg: '$amount' }
@@ -217,13 +259,26 @@ exports.getRevenueByStation = async (req, res) => {
                         }
                     },
                     {
-                        $match: { 'rental.0': { $exists: true } }
+                        $lookup: {
+                            from: 'bookings',
+                            localField: 'booking_id',
+                            foreignField: '_id',
+                            as: 'booking'
+                        }
                     },
                     {
-                        $unwind: '$rental'
+                        $addFields: {
+                            station_id: {
+                                $cond: {
+                                    if: { $gt: [{ $size: '$rental' }, 0] },
+                                    then: { $arrayElemAt: ['$rental.station_id', 0] },
+                                    else: { $arrayElemAt: ['$booking.station_id', 0] }
+                                }
+                            }
+                        }
                     },
                     {
-                        $match: { 'rental.station_id': station._id }
+                        $match: { station_id: station._id }
                     },
                     {
                         $group: {
@@ -270,19 +325,11 @@ exports.getRevenueTrends = async (req, res) => {
     try {
         const { period = 'month', stations = 'all', payment_method = 'all' } = req.query;
         
-        let matchCondition = {
-            status: 'completed'
-        };
-        
-        // Lọc theo trạm nếu có
-        if (stations !== 'all') {
-            const stationIds = stations.split(',').map(id => new mongoose.Types.ObjectId(id));
-            matchCondition['rental.station_id'] = { $in: stationIds };
-        }
-        
         // Group theo ngày/tuần/tháng
         const groupFormat = getGroupFormat(period);
         
+        // NOTE: Revenue trends track khi nào payment được tạo (cash flow)
+        // Khác với peak hours tracking (user behavior - khi nào user muốn thuê)
         const trends = await Payment.aggregate([
             {
                 $match: {
@@ -300,13 +347,29 @@ exports.getRevenueTrends = async (req, res) => {
                 }
             },
             {
-                $match: { 'rental.0': { $exists: true } }
+                $lookup: {
+                    from: 'bookings',
+                    localField: 'booking_id',
+                    foreignField: '_id',
+                    as: 'booking'
+                }
             },
             {
-                $unwind: '$rental'
+                $addFields: {
+                    station_id: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$rental' }, 0] },
+                            then: { $arrayElemAt: ['$rental.station_id', 0] },
+                            else: { $arrayElemAt: ['$booking.station_id', 0] }
+                        }
+                    }
+                }
             },
             {
-                $match: matchCondition
+                $match: {
+                    station_id: { $ne: null },
+                    ...(stations !== 'all' ? { station_id: { $in: stations.split(',').map(id => new mongoose.Types.ObjectId(id)) } } : {})
+                }
             },
             {
                 $group: {
@@ -358,7 +421,7 @@ exports.getStationRevenueDetail = async (req, res) => {
             });
         }
         
-        // Doanh thu theo loại xe
+        // Doanh thu theo loại xe (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
         const revenueByVehicleType = await Payment.aggregate([
             {
                 $match: {
@@ -376,18 +439,41 @@ exports.getStationRevenueDetail = async (req, res) => {
                 }
             },
             {
-                $match: { 'rental.0': { $exists: true } }
+                $lookup: {
+                    from: 'bookings',
+                    localField: 'booking_id',
+                    foreignField: '_id',
+                    as: 'booking'
+                }
             },
             {
-                $unwind: '$rental'
+                $addFields: {
+                    station_id: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$rental' }, 0] },
+                            then: { $arrayElemAt: ['$rental.station_id', 0] },
+                            else: { $arrayElemAt: ['$booking.station_id', 0] }
+                        }
+            },
+                    vehicle_id: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$rental' }, 0] },
+                            then: { $arrayElemAt: ['$rental.vehicle_id', 0] },
+                            else: { $arrayElemAt: ['$booking.vehicle_id', 0] }
+                        }
+                    }
+                }
             },
             {
-                $match: { 'rental.station_id': new mongoose.Types.ObjectId(stationId) }
+                $match: { 
+                    station_id: new mongoose.Types.ObjectId(stationId),
+                    vehicle_id: { $ne: null }
+                }
             },
             {
                 $lookup: {
                     from: 'vehicles',
-                    localField: 'rental.vehicle_id',
+                    localField: 'vehicle_id',
                     foreignField: '_id',
                     as: 'vehicle'
                 }
@@ -404,7 +490,8 @@ exports.getStationRevenueDetail = async (req, res) => {
             }
         ]);
         
-        // Doanh thu theo giờ trong ngày
+        // Doanh thu theo giờ trong ngày (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
+      
         const revenueByHour = await Payment.aggregate([
             {
                 $match: {
@@ -422,13 +509,26 @@ exports.getStationRevenueDetail = async (req, res) => {
                 }
             },
             {
-                $match: { 'rental.0': { $exists: true } }
+                $lookup: {
+                    from: 'bookings',
+                    localField: 'booking_id',
+                    foreignField: '_id',
+                    as: 'booking'
+                }
             },
             {
-                $unwind: '$rental'
+                $addFields: {
+                    station_id: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$rental' }, 0] },
+                            then: { $arrayElemAt: ['$rental.station_id', 0] },
+                            else: { $arrayElemAt: ['$booking.station_id', 0] }
+                        }
+                    }
+                }
             },
             {
-                $match: { 'rental.station_id': new mongoose.Types.ObjectId(stationId) }
+                $match: { station_id: new mongoose.Types.ObjectId(stationId) }
             },
             {
                 $group: {
@@ -442,7 +542,7 @@ exports.getStationRevenueDetail = async (req, res) => {
             }
         ]);
         
-        // Top khách hàng
+        // Top khách hàng (BAO GỒM holding_fee forfeited, TRỪ ĐI refund nếu có)
         const topCustomers = await Payment.aggregate([
             {
                 $match: {
@@ -460,18 +560,41 @@ exports.getStationRevenueDetail = async (req, res) => {
                 }
             },
             {
-                $match: { 'rental.0': { $exists: true } }
+                $lookup: {
+                    from: 'bookings',
+                    localField: 'booking_id',
+                    foreignField: '_id',
+                    as: 'booking'
+                }
             },
             {
-                $unwind: '$rental'
+                $addFields: {
+                    station_id: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$rental' }, 0] },
+                            then: { $arrayElemAt: ['$rental.station_id', 0] },
+                            else: { $arrayElemAt: ['$booking.station_id', 0] }
+                        }
+            },
+                    user_id: {
+                        $cond: {
+                            if: { $gt: [{ $size: '$rental' }, 0] },
+                            then: { $arrayElemAt: ['$rental.user_id', 0] },
+                            else: { $arrayElemAt: ['$booking.user_id', 0] }
+                        }
+                    }
+                }
             },
             {
-                $match: { 'rental.station_id': new mongoose.Types.ObjectId(stationId) }
+                $match: { 
+                    station_id: new mongoose.Types.ObjectId(stationId),
+                    user_id: { $ne: null }
+                }
             },
             {
                 $lookup: {
                     from: 'users',
-                    localField: 'rental.user_id',
+                    localField: 'user_id',
                     foreignField: '_id',
                     as: 'user'
                 }
@@ -496,12 +619,12 @@ exports.getStationRevenueDetail = async (req, res) => {
             }
         ]);
         
-        // Tỷ lệ sử dụng xe
+        // Tỷ lệ sử dụng xe (với doanh thu từ Payment)
         const vehicleUtilization = await Rental.aggregate([
             {
                 $match: {
                     station_id: new mongoose.Types.ObjectId(stationId),
-                    start_time: { $gte: dateRange.start, $lte: dateRange.end }
+                    actual_start_time: { $gte: dateRange.start, $lte: dateRange.end }
                 }
             },
             {
@@ -516,12 +639,40 @@ exports.getStationRevenueDetail = async (req, res) => {
                 $unwind: '$vehicle'
             },
             {
+                $lookup: {
+                    from: 'payments',
+                    localField: '_id',
+                    foreignField: 'rental_id',
+                    as: 'payments'
+                }
+            },
+            {
+                $addFields: {
+                    // Tính tổng doanh thu từ payments (BAO GỒM holding_fee, TRỪ ĐI refund)
+                    totalRevenue: {
+                        $sum: {
+                            $map: {
+                                input: {
+                                    $filter: {
+                                        input: '$payments',
+                                        as: 'payment',
+                                        cond: { $eq: ['$$payment.status', 'completed'] }
+                                    }
+                                },
+                                as: 'payment',
+                                in: '$$payment.amount'
+                            }
+                        }
+                    }
+                }
+            },
+            {
                 $group: {
                     _id: '$vehicle._id',
                     licensePlate: { $first: '$vehicle.license_plate' },
                     vehicleType: { $first: '$vehicle.type' },
                     rentalCount: { $sum: 1 },
-                    totalRevenue: { $sum: '$total_amount' }
+                    totalRevenue: { $sum: '$totalRevenue' }
                 }
             },
             {
@@ -692,9 +843,10 @@ exports.getPeakAnalysis = async (req, res) => {
         
         // Thống kê giờ cao điểm
         if (type === 'hours' || type === 'both') {
+            // ✅ FIX: Filter theo start_date (ngày khách muốn thuê xe) thay vì createdAt (ngày đặt)
             const matchQuery = {
                 status: { $in: ['confirmed', 'completed'] },
-                createdAt: { $gte: startDate, $lte: endDate }
+                start_date: { $gte: startDate, $lte: endDate }
             };
             
             if (station_id) {
@@ -703,17 +855,80 @@ exports.getPeakAnalysis = async (req, res) => {
             
             const Booking = require('../models/Booking');
             
+            // ✅ FIX: Tính revenue từ payments thực tế thay vì booking.total_price
             const hourlyBookings = await Booking.aggregate([
                 { $match: matchQuery },
                 {
+                    $addFields: {
+                        // Parse pickup_time (format "HH:mm") để lấy giờ
+                        pickup_hour: {
+                            $toInt: {
+                                $arrayElemAt: [
+                                    { $split: ['$pickup_time', ':'] },
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'payments',
+                        let: { bookingId: '$_id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ['$booking_id', '$$bookingId'] },
+                                    status: 'completed',
+                                    is_active: true
+                                }
+                            }
+                        ],
+                        as: 'payments'
+                    }
+                },
+                {
+                    $addFields: {
+                        // Tính tổng revenue từ payments thực tế
+                        actual_revenue: {
+                            $sum: {
+                                $map: {
+                                    input: '$payments',
+                                    as: 'payment',
+                                    in: '$$payment.amount'
+                                }
+                            }
+                        }
+                    }
+                },
+                {
                     $group: {
-                        _id: { $hour: '$createdAt' },
+                        _id: '$pickup_hour',
                         bookings: { $sum: 1 },
-                        revenue: { $sum: '$total_price' }
+                        revenue: { $sum: '$actual_revenue' }
                     }
                 },
                 { $sort: { '_id': 1 } }
             ]);
+            
+            // ✅ Lấy giờ mở/đóng cửa của trạm
+            let openingHour = 6;  // Default
+            let closingHour = 20; // Default
+            
+            if (station_id) {
+                const station = await Station.findById(station_id);
+                if (station) {
+                    openingHour = parseInt(station.opening_time.split(':')[0]);
+                    closingHour = parseInt(station.closing_time.split(':')[0]);
+                }
+            } else {
+                // Nếu không có station_id, lấy giờ chung của tất cả trạm
+                const stations = await Station.find({ status: 'active' });
+                if (stations.length > 0) {
+                    openingHour = Math.min(...stations.map(s => parseInt(s.opening_time.split(':')[0])));
+                    closingHour = Math.max(...stations.map(s => parseInt(s.closing_time.split(':')[0])));
+                }
+            }
             
             // Tạo mảng 24 giờ với giá trị 0
             const hourlyData = Array.from({ length: 24 }, (_, hour) => {
@@ -727,8 +942,11 @@ exports.getPeakAnalysis = async (req, res) => {
                 };
             });
             
-            // Sắp xếp theo số bookings để tìm peak và low
-            const sortedHours = [...hourlyData].sort((a, b) => b.bookings - a.bookings);
+            // ✅ Chỉ lấy giờ trong khoảng opening_time - closing_time
+            const workingHoursData = hourlyData.filter(h => h.hour >= openingHour && h.hour < closingHour);
+            
+            // Sắp xếp theo số bookings để tìm peak và low (CHỈ TRONG GIỜ LÀM VIỆC)
+            const sortedHours = [...workingHoursData].sort((a, b) => b.bookings - a.bookings);
             const peakHours = sortedHours.slice(0, 3).map(h => ({ ...h, trend: 'high' }));
             const lowHours = sortedHours.slice(-3).reverse().map(h => ({ ...h, trend: 'low' }));
             
@@ -737,6 +955,7 @@ exports.getPeakAnalysis = async (req, res) => {
             
             result.peak_hours = {
                 data: hourlyData,
+                working_hours_data: workingHoursData, // ✅ Thêm data chỉ giờ làm việc
                 top_3: peakHours,
                 bottom_3: lowHours,
                 summary: {
@@ -746,16 +965,19 @@ exports.getPeakAnalysis = async (req, res) => {
                     quietest_hour: lowHours[0]?.hour,
                     peak_bookings: peakHours[0]?.bookings || 0,
                     low_bookings: lowHours[0]?.bookings || 0,
-                    avg_bookings_per_hour: Math.round(totalBookings / 24)
+                    avg_bookings_per_hour: Math.round(totalBookings / 24),
+                    opening_hour: openingHour, // ✅ Thêm thông tin giờ làm việc
+                    closing_hour: closingHour
                 }
             };
         }
         
         // Thống kê ngày cao điểm
         if (type === 'days' || type === 'both') {
+            // ✅ FIX: Filter theo start_date (ngày khách muốn thuê xe) thay vì createdAt (ngày đặt)
             const matchQuery = {
                 status: { $in: ['confirmed', 'completed'] },
-                createdAt: { $gte: startDate, $lte: endDate }
+                start_date: { $gte: startDate, $lte: endDate }
             };
             
             if (station_id) {
@@ -764,13 +986,49 @@ exports.getPeakAnalysis = async (req, res) => {
             
             const Booking = require('../models/Booking');
             
+            // ✅ FIX: Tính revenue từ payments thực tế
             const dailyBookings = await Booking.aggregate([
                 { $match: matchQuery },
                 {
+                    $lookup: {
+                        from: 'payments',
+                        let: { bookingId: '$_id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ['$booking_id', '$$bookingId'] },
+                                    status: 'completed',
+                                    is_active: true
+                                }
+                            }
+                        ],
+                        as: 'payments'
+                    }
+                },
+                {
+                    $addFields: {
+                        actual_revenue: {
+                            $sum: {
+                                $map: {
+                                    input: '$payments',
+                                    as: 'payment',
+                                    in: '$$payment.amount'
+                                }
+                            }
+                        }
+                    }
+                },
+                {
                     $group: {
-                        _id: { $dayOfWeek: '$createdAt' },
+                        // ✅ FIX: Dùng timezone Asia/Ho_Chi_Minh để tính đúng ngày
+                        _id: { 
+                            $dayOfWeek: { 
+                                date: '$start_date', 
+                                timezone: 'Asia/Ho_Chi_Minh' 
+                            } 
+                        },
                         bookings: { $sum: 1 },
-                        revenue: { $sum: '$total_price' }
+                        revenue: { $sum: '$actual_revenue' }
                     }
                 },
                 { $sort: { '_id': 1 } }

@@ -41,6 +41,11 @@
  *             address:
  *               type: string
  *               example: "123 Nguyễn Huệ, Quận 1, TP.HCM"
+ *         maintenance_type:
+ *           type: string
+ *           enum: [low_battery, poor_condition]
+ *           example: "poor_condition"
+ *           description: "Loại bảo trì: low_battery (Staff tự fix) hoặc poor_condition (cần Admin)"
  *         title:
  *           type: string
  *           example: "Bảo trì xe Xe điện Klara S"
@@ -299,7 +304,12 @@
  * /api/maintenance/{id}:
  *   put:
  *     summary: Cập nhật trạng thái báo cáo bảo trì
- *     description: Cập nhật trạng thái và ghi chú của báo cáo bảo trì (Admin only)
+ *     description: |
+ *       Cập nhật trạng thái và ghi chú của báo cáo bảo trì.
+ *       
+ *       **Phân quyền:**
+ *       - **Staff**: Chỉ được fix maintenance_type = "low_battery" (sạc pin). Phải sạc pin đến 80%+ trước khi đánh dấu fixed.
+ *       - **Admin**: Có thể fix tất cả loại maintenance.
  *     tags: [Maintenance]
  *     security:
  *       - bearerAuth: []
@@ -329,6 +339,17 @@
  *                 type: string
  *                 example: "Đã sửa xong phanh trước"
  *                 description: Ghi chú
+ *               battery_level:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 example: 85
+ *                 description: |
+ *                   Mức pin mới sau khi sạc/sửa (tùy chọn, 0-100%).
+ *                   
+ *                   **Bắt buộc** khi Staff fix low_battery (phải ≥ 80%).
+ *                   
+ *                   **Tùy chọn** cho Admin fix poor_condition.
  *               images:
  *                 type: array
  *                 items:
@@ -352,11 +373,20 @@
  *                 data:
  *                   $ref: '#/components/schemas/MaintenanceReport'
  *       400:
- *         description: Dữ liệu không hợp lệ
+ *         description: |
+ *           Dữ liệu không hợp lệ, thiếu battery_level, hoặc pin chưa đủ 80%
+ *           
+ *           Examples:
+ *           - `{ "success": false, "message": "Vui lòng nhập mức pin hiện tại (battery_level) khi hoàn thành sạc pin." }`
+ *           - `{ "success": false, "message": "Mức pin phải đạt ít nhất 80% (hiện tại: 65%). Vui lòng sạc thêm trước khi đánh dấu hoàn thành." }`
+ *           - `{ "success": false, "message": "Mức pin phải từ 0-100%" }`
  *       401:
  *         description: Không có quyền truy cập
  *       403:
- *         description: Không có quyền truy cập
+ *         description: |
+ *           Staff chỉ được phép xử lý bảo trì PIN
+ *           
+ *           Example: `{ "success": false, "message": "Staff chỉ được phép xử lý bảo trì PIN. Vấn đề này cần Admin duyệt.", "maintenance_type": "poor_condition" }`
  *       404:
  *         description: Không tìm thấy báo cáo bảo trì
  *       500:
@@ -367,8 +397,9 @@
  * @swagger
  * /api/maintenance/{id}:
  *   delete:
- *     summary: Xóa báo cáo bảo trì
- *     description: Xóa báo cáo bảo trì (soft delete) - Admin only
+ *     summary: Xóa báo cáo bảo trì (Soft Delete)      
+ *       **Permission:** Admin only
+ *       
  *     tags: [Maintenance]
  *     security:
  *       - bearerAuth: []
@@ -394,12 +425,43 @@
  *                 message:
  *                   type: string
  *                   example: "Xóa báo cáo bảo trì thành công"
+ *                 note:
+ *                   type: string
+ *                   example: "Soft delete - dữ liệu vẫn được giữ lại trong database"
+ *                 vehicle_status_updated:
+ *                   type: boolean
+ *                   example: true
+ *                   description: True nếu xe được chuyển về available
+ *                 vehicle_name:
+ *                   type: string
+ *                   example: "VH001"
+ *                   description: Tên xe liên quan
+ *       400:
+ *         description: |
+ *           Báo cáo đã fixed không thể xóa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Không thể xóa báo cáo đã hoàn thành"
+ *                 reason:
+ *                   type: string
+ *                   example: "Báo cáo đã fixed là audit trail, không nên xóa"
+ *                 suggestion:
+ *                   type: string
+ *                   example: "Chỉ có thể xóa báo cáo đang ở trạng thái \"reported\""
  *       401:
  *         description: Không có quyền truy cập
  *       403:
- *         description: Chỉ Admin mới có quyền
+ *         description: Chỉ Admin mới có quyền xóa báo cáo bảo trì
  *       404:
- *         description: Không tìm thấy báo cáo bảo trì
+ *         description: Không tìm thấy báo cáo bảo trì hoặc đã bị xóa trước đó
  *       500:
  *         description: Lỗi server
  */

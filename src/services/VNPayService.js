@@ -10,6 +10,7 @@
 
 const crypto = require('crypto');
 const moment = require('moment');
+const { nowVietnam } = require('../config/timezone');
 
 class VNPayService {
   constructor() {
@@ -31,9 +32,10 @@ class VNPayService {
    * Tạo URL thanh toán VNPay
    * @param {Object} payment - Payment object
    * @param {String} ipAddress - IP address của user
+   * @param {String} paymentType - Type of payment (holding_fee, confirm_booking, checkout_fee)
    * @returns {Object} VNPay URL và thông tin
    */
-  createPaymentUrl(payment, ipAddress = '127.0.0.1') {
+  createPaymentUrl(payment, ipAddress = '127.0.0.1', paymentType = 'holding_fee') {
     try {
       // ✅ Convert IPv6 localhost thành IPv4
       let clientIP = ipAddress;
@@ -41,9 +43,9 @@ class VNPayService {
         clientIP = '127.0.0.1';
       }
 
-
-  const createDate = moment().format('YYYYMMDDHHmmss');
-  const expireDate = moment().add(15, 'minutes').format('YYYYMMDDHHmmss'); // Some gateways require this when version=2.1.0
+    
+      const createDate = nowVietnam().format('YYYYMMDDHHmmss');
+      const expireDate = nowVietnam().add(15, 'minutes').format('YYYYMMDDHHmmss');
       
      
       const originalOrderId = payment.payment_code || `PAY${Date.now()}`;
@@ -56,7 +58,8 @@ class VNPayService {
       if (numericTxnRef.length > 20) numericTxnRef = numericTxnRef.substring(0,20);
       const orderId = originalOrderId; // vẫn trả về cho hệ thống nội bộ
       const txnRef = numericTxnRef; // dùng cho VNPay
-      const orderInfo = `Thanh toan ${payment.payment_type} ${orderId}`;
+      
+      const orderInfo = `Thanh toan ${payment.payment_type} ${orderId}|${paymentType}`;
 
 
     
@@ -119,11 +122,12 @@ class VNPayService {
    * Tạo QR Code VNPay
    * @param {Object} payment - Payment object
    * @param {String} ipAddress - IP address của user
+   * @param {String} paymentType - Type of payment (holding_fee, confirm_booking, checkout_fee)
    * @returns {Object} QR Code data
    */
-  async createVNPayQR(payment, ipAddress = '127.0.0.1') {
+  async createVNPayQR(payment, ipAddress = '127.0.0.1', paymentType = 'holding_fee') {
     try {
-      const vnpayData = this.createPaymentUrl(payment, ipAddress);
+      const vnpayData = this.createPaymentUrl(payment, ipAddress, paymentType);
       
       // Import QRCode dynamically
       const QRCode = require('qrcode');
@@ -211,6 +215,10 @@ class VNPayService {
         case '12':
           status = 'failed';
           message = 'Giao dịch bị hủy';
+          break;
+        case '15':
+          status = 'failed';
+          message = 'Giao dịch đã quá thời gian chờ thanh toán hoặc URL không hợp lệ';
           break;
         case '24':
           status = 'failed';
@@ -380,8 +388,8 @@ class VNPayService {
     if (!text) return 'Thanh toan';
     // Remove Vietnamese accents
     const noAccents = text.normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    // Remove any disallowed symbols (keep letters, numbers, space, hyphen, underscore)
-    const safe = noAccents.replace(/[^A-Za-z0-9 _-]/g, ' ').replace(/\s+/g, ' ').trim();
+   
+    const safe = noAccents.replace(/[^A-Za-z0-9 _\-|]/g, ' ').replace(/\s+/g, ' ').trim();
     // Limit length (VNPay usually allows up to 255, but keep short)
     return safe.substring(0, 120);
   }

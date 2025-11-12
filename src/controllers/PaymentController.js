@@ -2,7 +2,7 @@ const { Payment, Booking, Rental, User } = require('../models');
 const PaymentService = require('../services/PaymentService');
 const VNPayService = require('../services/VNPayService');
 const { formatVietnamTime, nowVietnam } = require('../config/timezone');
-const { sendEmail, getPaymentSuccessTemplate } = require('../config/nodemailer');
+const { sendEmail, getPaymentSuccessTemplate } = require('../config/emailService');
 
 // Gửi email notification khi payment thành công
 const sendPaymentSuccessEmail = async (payment, user) => {
@@ -189,7 +189,24 @@ const createPayment = async (req, res) => {
     if (paymentStatus === 'pending' && calculatedAmount > 0 && payment_method === 'vnpay') {
       const vnpayService = new VNPayService();
       const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1';
-      qrData = await vnpayService.createVNPayQR(payment, ipAddress);
+      
+      // ✅ XÁC ĐỊNH ĐÚNG VNPAY PAYMENT TYPE
+      let vnpayPaymentType;
+      if (payment.payment_type === 'holding_fee') {
+        vnpayPaymentType = 'holding_fee';
+      } else if (payment.payment_type === 'deposit') {
+        vnpayPaymentType = 'confirm_booking';
+      } else if (payment.payment_type === 'rental_fee') {
+        vnpayPaymentType = 'confirm_booking';
+      } else if (payment.payment_type === 'additional_fee') {
+        vnpayPaymentType = 'checkout_fee';
+      } else {
+        vnpayPaymentType = 'holding_fee';
+      }
+      
+      console.log(`💳 Creating VNPay QR (createPayment) - DB type: ${payment.payment_type} → VNPay type: ${vnpayPaymentType}`);
+      
+      qrData = await vnpayService.createVNPayQR(payment, ipAddress, vnpayPaymentType);
       payment.qr_code_data = qrData.qrData;
       payment.qr_code_image = qrData.qrImageUrl;
       payment.vnpay_url = qrData.vnpayData.paymentUrl;
@@ -643,9 +660,59 @@ const handleVNPayCallback = async (req, res) => {
     const vnpayService = new VNPayService();
     const callbackResult = vnpayService.processCallback(req.query);
 
+    // ✅ PARSE payment type từ vnp_OrderInfo
+    const orderInfo = req.query.vnp_OrderInfo || '';
+    const paymentTypeParts = orderInfo.split('|');
+    const paymentType = paymentTypeParts.length > 1 ? paymentTypeParts[1] : 'holding_fee';
+    
+    console.log(`📝 VNPay callback - Parsed payment_type: ${paymentType}`);
+    
+    // ✅ CHỌN frontend URL dựa vào payment type với FULL FALLBACK
+    let frontendUrl;
+    let successRoute;
+    let errorRoute;
+    
+    switch (paymentType) {
+      case 'holding_fee':
+        // User thanh toán giữ chỗ
+        frontendUrl = process.env.VNPAY_USER_FRONTEND || 
+                      process.env.FRONTEND_URL?.split(',')[0] || 
+                      'http://localhost:5173';
+        successRoute = '/payments/success';
+        errorRoute = '/payments/error';
+        break;
+        
+      case 'confirm_booking':
+        // Staff confirm booking (deposit/rental_fee)
+        frontendUrl = process.env.VNPAY_STAFF_FRONTEND || 
+                      process.env.FRONTEND_URL?.split(',')[2] || // staff.evrent.id.vn là domain thứ 3
+                      'http://localhost:5174';
+        successRoute = '/payments/success'; 
+        errorRoute = '/payments/error';
+        break;
+        
+      case 'checkout_fee':
+        // Staff checkout có phí phạt
+        frontendUrl = process.env.VNPAY_STAFF_FRONTEND || 
+                      process.env.FRONTEND_URL?.split(',')[2] || 
+                      'http://localhost:5174';
+        successRoute = '/payments/success';  
+        errorRoute = '/payments/error';
+        break;
+        
+      default:
+        frontendUrl = process.env.VNPAY_USER_FRONTEND || 
+                      process.env.FRONTEND_URL?.split(',')[0] || 
+                      'http://localhost:5173';
+        successRoute = '/payments/success';
+        errorRoute = '/payments/error';
+    }
+
+    console.log(`🌐 Frontend URL (${paymentType}): ${frontendUrl}`);
+
     if (!callbackResult.success) {
       // Redirect về frontend với lỗi
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=${encodeURIComponent(callbackResult.message)}`);
+      return res.redirect(`${frontendUrl}${errorRoute}?status=error&message=${encodeURIComponent(callbackResult.message)}&type=${paymentType}`);
     }
 
     // Tìm payment theo txnRef (numeric version từ VNPay)
@@ -663,7 +730,7 @@ const handleVNPayCallback = async (req, res) => {
     }
 
     if (!payment) {
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=${encodeURIComponent('Không tìm thấy payment')}`);
+      return res.redirect(`${frontendUrl}${errorRoute}?status=error&message=${encodeURIComponent('Không tìm thấy payment')}&type=${paymentType}`);
     }
 
     // Nếu payment đã completed (do webhook xử lý trước), redirect luôn
@@ -677,9 +744,10 @@ const handleVNPayCallback = async (req, res) => {
         vnp_ResponseCode: '00',
         vnp_TransactionNo: payment.transaction_id || 'AUTO_' + Date.now(),
         vnp_TransactionStatus: '00',
-        vnp_TxnRef: payment.code
+        vnp_TxnRef: payment.code,
+        type: paymentType
       });
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
+      return res.redirect(`${frontendUrl}${successRoute}?${vnpayParams.toString()}`);
     }
 
     // Cập nhật payment status
@@ -795,9 +863,12 @@ const handleVNPayCallback = async (req, res) => {
         vnp_ResponseCode: '00',
         vnp_TransactionNo: payment.transaction_id || 'AUTO_' + Date.now(),
         vnp_TransactionStatus: '00',
-        vnp_TxnRef: payment.code
+        vnp_TxnRef: payment.code,
+        type: paymentType
       });
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
+      
+      console.log(`✅ Redirecting to: ${frontendUrl}${successRoute}`);
+      return res.redirect(`${frontendUrl}${successRoute}?${vnpayParams.toString()}`);
       
     } else {
       payment.status = 'cancelled';  
@@ -806,25 +877,17 @@ const handleVNPayCallback = async (req, res) => {
       
       await payment.save();
       
-      // Redirect về frontend với thất bại
-      const vnpayParams = new URLSearchParams({
-        vnp_Amount: (payment.amount * 100).toString(),
-        vnp_BankCode: 'VNPAY',
-        vnp_CardType: 'QRCODE',
-        vnp_OrderInfo: `Thanh toan ${payment.code}`,
-        vnp_PayDate: nowVietnam().toDate().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
-        vnp_ResponseCode: '99',
-        vnp_TransactionNo: payment.transaction_id || 'FAILED_' + Date.now(),
-        vnp_TransactionStatus: '99',
-        vnp_TxnRef: payment.code
-      });
-      return res.redirect(`${process.env.FRONTEND_URL}/payments/success?${vnpayParams.toString()}`);
+      console.log(`❌ Redirecting to: ${frontendUrl}${errorRoute}`);
+      return res.redirect(`${frontendUrl}${errorRoute}?${vnpayParams.toString()}`);
     }
 
   } catch (error) {
     console.error('Lỗi khi xử lý VNPay callback:', error);
-    // Redirect về frontend với lỗi hệ thống
-    return res.redirect(`${process.env.FRONTEND_URL}/payments/success?status=error&message=System error`);
+    // ✅ FALLBACK cũng cần fix
+    const fallbackUrl = process.env.VNPAY_USER_FRONTEND || 
+                        process.env.FRONTEND_URL?.split(',')[0] || 
+                        'http://localhost:5173';
+    return res.redirect(`${fallbackUrl}/payments/error?status=error&message=System error`);
   }
 };
 
@@ -908,7 +971,7 @@ const handleVNPayWebhook = async (req, res) => {
         }
       } catch (error) {
         console.error('Error updating rental status after IPN:', error);
-        // Không fail webhook response vì lỗi cập nhật rental
+        // Don't fail webhook response nếu lỗi cập nhật rental
       }
       
       return res.status(200).send('RspCode=00&Message=Success');
@@ -975,11 +1038,35 @@ const updatePaymentMethod = async (req, res) => {
       const vnpayService = new VNPayService();
       const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1';
       
-      const qrData = await vnpayService.createVNPayQR(payment, ipAddress);
+      // ✅ XÁC ĐỊNH ĐÚNG VNPAY PAYMENT TYPE
+      let vnpayPaymentType;
+      if (payment.payment_type === 'holding_fee') {
+        vnpayPaymentType = 'holding_fee';  // User online booking
+      } else if (payment.payment_type === 'deposit') {
+        vnpayPaymentType = 'confirm_booking';  // ← QUAN TRỌNG! Staff confirm
+      } else if (payment.payment_type === 'rental_fee') {
+        vnpayPaymentType = 'confirm_booking';  // Staff confirm rental
+      } else if (payment.payment_type === 'additional_fee') {
+        vnpayPaymentType = 'checkout_fee';  // Staff checkout có phí
+      } else {
+        vnpayPaymentType = 'holding_fee';  // Fallback
+      }
+      
+      console.log(`💳 Changing payment method to VNPay:`);
+      console.log(`   - Payment ID: ${payment._id}`);
+      console.log(`   - Payment Code: ${payment.code}`);
+      console.log(`   - DB payment_type: ${payment.payment_type}`);
+      console.log(`   - VNPay payment_type: ${vnpayPaymentType}`);
+      console.log(`   - Amount: ${payment.amount}`);
+      
+      const qrData = await vnpayService.createVNPayQR(payment, ipAddress, vnpayPaymentType);
+      
       payment.qr_code_data = qrData.qrData;
       payment.qr_code_image = qrData.qrImageUrl;
       payment.vnpay_url = qrData.vnpayData.paymentUrl;
       payment.vnpay_transaction_no = qrData.vnpayData.orderId;
+      
+      console.log(`✅ VNPay URL created: ${qrData.vnpayData.paymentUrl}`);
     } else if (payment_method === 'cash') {
       // Xóa VNPay data nếu chuyển về cash
       payment.qr_code_data = '';
@@ -1014,7 +1101,6 @@ const updatePaymentMethod = async (req, res) => {
 };
 
 // ========== HOLDING FEE CALLBACK HANDLER ==========
-// VNPay Callback for Holding Fee (Online Booking)
 const handleHoldingFeeCallback = async (req, res) => {
   try {
     console.log('\n💳 ========== HOLDING FEE CALLBACK ==========');
@@ -1025,14 +1111,19 @@ const handleHoldingFeeCallback = async (req, res) => {
     
     console.log('Callback result:', callbackResult);
     
+    // ✅ DÙNG VNPAY_USER_FRONTEND thay vì FRONTEND_URL
+    const frontendUrl = process.env.VNPAY_USER_FRONTEND || process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:5173';
+    
+    console.log(`🌐 Frontend URL: ${frontendUrl}`);
+    
     if (!callbackResult.success) {
       console.error('❌ VNPay callback failed:', callbackResult.message);
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&message=${encodeURIComponent(callbackResult.message)}`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=payment_failed&message=${encodeURIComponent(callbackResult.message)}`);
     }
     
-   
     const orderInfo = callbackResult.params.vnp_OrderInfo || '';
-    const tempIdMatch = orderInfo.match(/PB\d{4}[A-Z0-9]{4}/i);
+    
+    const tempIdMatch = orderInfo.match(/PB\d{4}\d{6}[A-Z0-9]{2,}/i);
     const tempId = tempIdMatch ? tempIdMatch[0] : null;
     
     console.log(`🔑 VNPay OrderInfo: ${orderInfo}`);
@@ -1040,28 +1131,30 @@ const handleHoldingFeeCallback = async (req, res) => {
     
     if (!tempId) {
       console.error('❌ Cannot extract temp_id from OrderInfo');
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=invalid_order`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=invalid_order`);
     }
     
-    // Find pending booking bằng temp_id
+    // Find pending booking bằng temp_id (accept both pending_payment and paid to handle VNPay retries)
     const PendingBooking = require('../models/PendingBooking');
     const pendingBooking = await PendingBooking.findOne({ 
       temp_id: tempId,
-      status: 'pending_payment'
+      status: { $in: ['pending_payment', 'paid'] }
     }).populate('user_id');
     
     if (!pendingBooking) {
-      console.error(`❌ Pending booking not found or expired for temp_id: ${tempId}`);
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=expired`);
+      console.error(`❌ Pending booking not found for temp_id: ${tempId}`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=not_found`);
     }
     
     console.log(`✅ Found pending booking: ${pendingBooking.temp_id} (${pendingBooking._id})`);
+    console.log(`📊 Status: ${pendingBooking.status}`);
     console.log(`👤 User: ${pendingBooking.user_id.fullname} (${pendingBooking.user_id.email})`);
     
-    //  DUPLICATE PAYMENT PREVENTION: Check if already paid
+    //  DUPLICATE PAYMENT PREVENTION: Check if already paid (VNPay retry)
     if (pendingBooking.status === 'paid' || pendingBooking.status === 'completed') {
-      console.log(`⚠️ PendingBooking already paid - Redirecting to success page`);
-      // Tìm booking đã tạo
+      console.log(`⚠️ DUPLICATE CALLBACK DETECTED - PendingBooking already paid`);
+      console.log(`🔄 VNPay retry detected - Finding existing booking...`);
+      
       const Booking = require('../models/Booking');
       const existingBooking = await Booking.findOne({
         user_id: pendingBooking.user_id._id,
@@ -1069,20 +1162,22 @@ const handleHoldingFeeCallback = async (req, res) => {
       }).sort({ createdAt: -1 }).limit(1);
       
       if (existingBooking) {
-        return res.redirect(`${process.env.FRONTEND_URL}/booking-success?code=${existingBooking.code}&duplicate=true`);
+        console.log(`✅ Found existing booking: ${existingBooking.code} - Redirecting to success`);
+        return res.redirect(`${frontendUrl}/booking-success?code=${existingBooking.code}&duplicate=true`);
       }
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-success?duplicate=true`);
+      
+      console.warn(`⚠️ Existing booking not found - Redirecting to success page anyway`);
+      return res.redirect(`${frontendUrl}/booking-success?duplicate=true`);
     }
     
     // Check payment status
     if (callbackResult.responseCode !== '00') {
       console.error(`❌ Payment failed - Response code: ${callbackResult.responseCode}`);
       
-      // Update pending booking status
       pendingBooking.status = 'cancelled';
       await pendingBooking.save();
       
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=payment_failed&code=${callbackResult.responseCode}`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=payment_failed&code=${callbackResult.responseCode}`);
     }
     
     // Payment successful - Create actual booking
@@ -1093,7 +1188,7 @@ const handleHoldingFeeCallback = async (req, res) => {
     const Station = require('../models/Station');
     const QRCode = require('qrcode');
     const { uploadToCloudinary } = require('../config/cloudinary');
-    const { sendEmail, getBookingConfirmationTemplate } = require('../config/nodemailer');
+    const { sendEmail, getBookingConfirmationTemplate } = require('../config/emailService');
     
     // Generate booking code
     const generateBookingCode = async () => {
@@ -1118,7 +1213,15 @@ const handleHoldingFeeCallback = async (req, res) => {
     const cloudinaryResult = await uploadToCloudinary(qrBuffer, 'qr-codes');
     const qrExpiresAt = new Date(pendingBooking.booking_data.start_date.getTime() + 24 * 60 * 60 * 1000);
     
-    // ✅ Convert soft lock → hard lock (vehicle already reserved from createBooking)
+   
+    // Tính reserved_until = start_date + pickup_time + grace period (2h)
+    const bookingData = pendingBooking.booking_data;
+    const startDate = new Date(bookingData.start_date);
+    const [pickupHour, pickupMinute] = bookingData.pickup_time.split(':').map(Number);
+    const pickupDateTime = new Date(startDate);
+    pickupDateTime.setHours(pickupHour, pickupMinute, 0, 0);
+    const reservedUntilDate = new Date(pickupDateTime.getTime() + 2 * 60 * 60 * 1000); // +2h grace period
+    
     const vehicle = await Vehicle.findOneAndUpdate(
       { 
         _id: pendingBooking.booking_data.vehicle_id,
@@ -1127,7 +1230,7 @@ const handleHoldingFeeCallback = async (req, res) => {
       },
       { 
         reserved_for: 'booking',  // Change to hard lock
-        $unset: { reserved_until: '' }  // Remove expiry time
+        reserved_until: reservedUntilDate  // ✅ SET reserved_until (pickup + 2h) thay vì xóa
       },
       { new: true }
     );
@@ -1136,7 +1239,7 @@ const handleHoldingFeeCallback = async (req, res) => {
       console.error('❌ Vehicle not found or not in correct reserved state');
       pendingBooking.status = 'cancelled';
       await pendingBooking.save();
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=vehicle_unavailable`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=vehicle_unavailable`);
     }
     
     console.log(`🚗 Reserved vehicle: ${vehicle.name} (${vehicle.license_plate})`);
@@ -1207,7 +1310,6 @@ const handleHoldingFeeCallback = async (req, res) => {
       await pendingBooking.save();
       
     } catch (createError) {
-      // ❌ ROLLBACK: Unreserve vehicle if booking/payment creation fails
       console.error('❌ CRITICAL ERROR creating booking/payment:', createError);
       console.log('🔄 ROLLBACK: Unreserving vehicle...');
       
@@ -1218,19 +1320,17 @@ const handleHoldingFeeCallback = async (req, res) => {
         reserved_until: null
       });
       
-      // Mark pending booking as cancelled
       pendingBooking.status = 'cancelled';
       await pendingBooking.save();
       
       console.log('✅ Vehicle unreserved, pending booking cancelled');
       
-      // Delete partial booking if created
       if (booking) {
         await Booking.findByIdAndDelete(booking._id);
         console.log('🗑️ Partial booking deleted');
       }
       
-      return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=system_error&message=Failed to create booking`);
+      return res.redirect(`${frontendUrl}/booking-failed?reason=system_error&message=Failed to create booking`);
     }
     
     // Send confirmation email
@@ -1335,12 +1435,14 @@ Chúc bạn có chuyến đi vui vẻ! 🎉`;
     
     console.log('🔚 ========== END HOLDING FEE CALLBACK ==========\n');
     
-    // Redirect to success page
-    return res.redirect(`${process.env.FRONTEND_URL}/booking-success?code=${booking.code}&holdingFeePaid=true`);
+    // ✅ FIX: DÙNG frontendUrl đã định nghĩa
+    console.log(`✅ Redirecting to: ${frontendUrl}/booking-success?code=${booking.code}`);
+    return res.redirect(`${frontendUrl}/booking-success?code=${booking.code}&holdingFeePaid=true`);
     
   } catch (error) {
     console.error('❌ Error in holding fee callback:', error);
-    return res.redirect(`${process.env.FRONTEND_URL}/booking-failed?reason=system_error`);
+    const frontendUrl = process.env.VNPAY_USER_FRONTEND || process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:5173';
+    return res.redirect(`${frontendUrl}/booking-failed?reason=system_error`);
   }
 };
 

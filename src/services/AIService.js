@@ -35,10 +35,10 @@ class AIService {
         startDate.setDate(endDate.getDate() - 30);
     }
 
-    // FIX: Booking status từ 'completed' thành chỉ 'confirmed'
+    //  Lấy TẤT CẢ bookings (vì booking status thay đổi sang 'completed' khi rental hoàn thành)
     const bookingMatchQuery = {
       createdAt: { $gte: startDate, $lte: endDate },
-      status: 'confirmed'  // FIXED: Removed 'completed' 
+      status: { $in: ['confirmed', 'completed'] } 
     };
 
     if (stationId) {
@@ -53,16 +53,36 @@ class AIService {
       {
         $lookup: {
           from: 'rentals',
-          localField: '_id',
-          foreignField: 'booking_id',
+          let: { bookingId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$booking_id', '$$bookingId'] },
+                status: { $in: ['completed', 'pending_payment'] }  
+              }
+            }
+          ],
           as: 'rentals'
+        }
+      },
+      {
+        $addFields: {
+          // Parse pickup_time để lấy giờ user muốn nhận xe
+          pickup_hour: {
+            $toInt: {
+              $arrayElemAt: [
+                { $split: ['$pickup_time', ':'] },
+                0
+              ]
+            }
+          }
         }
       },
       {
         $group: {
           _id: {
-            hour: { $hour: '$createdAt' },
-            dayOfWeek: { $dayOfWeek: '$createdAt' },
+            hour: '$pickup_hour', // Dùng pickup_hour thay vì createdAt
+            dayOfWeek: { $dayOfWeek: '$start_date' }, // Dùng start_date thay vì createdAt
             station: '$station_id'
           },
           bookingsCount: { $sum: 1 },
@@ -78,16 +98,23 @@ class AIService {
       { $match: bookingMatchQuery },
       {
         $lookup: {
-          from: 'rentals', 
-          localField: '_id',
-          foreignField: 'booking_id',
+          from: 'rentals',
+          let: { bookingId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$booking_id', '$$bookingId'] },
+                status: { $in: ['completed', 'pending_payment'] }  
+              }
+            }
+          ],
           as: 'rentals'
         }
       },
       {
         $group: {
           _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$start_date' } }, // Dùng start_date thay vì createdAt
             station: '$station_id'
           },
           bookingsCount: { $sum: 1 },
@@ -98,54 +125,55 @@ class AIService {
       { $sort: { '_id.date': 1 } }
     ]);
 
-    // FIX: Thêm Rental data để có actual revenue
-    const rentalMatchQuery = {
-      actual_start_time: { $gte: startDate, $lte: endDate },
-      status: { $in: ['completed', 'pending_payment'] }
+    // ✅ FIX: Tính doanh thu theo payment.createdAt (giống Dashboard) thay vì rental.actual_start_time
+    const paymentMatchQuery = {
+      createdAt: { $gte: startDate, $lte: endDate },
+      status: 'completed',
+      is_active: true
     };
 
     if (stationId) {
-      // Convert string to ObjectId
       const mongoose = require('mongoose');
-      rentalMatchQuery.station_id = new mongoose.Types.ObjectId(stationId);
+      paymentMatchQuery.station_id = new mongoose.Types.ObjectId(stationId);
     }
 
-    // Lấy actual rental data với payments
-    const actualRentalData = await Rental.aggregate([
-      { $match: rentalMatchQuery },
-      {
-        $lookup: {
-          from: 'payments',
-          let: { rentalId: '$_id', bookingId: '$booking_id' },
-          pipeline: [
-            { $match: { 
-              $expr: { 
-                $or: [
-                  { $eq: ['$rental_id', '$$rentalId'] },
-                  { $eq: ['$booking_id', '$$bookingId'] }
-                ]
-              },
-              status: 'completed',
-              is_active: true
-            }}
-          ],
-          as: 'payments'
-        }
-      },
+    // Lấy TẤT CẢ payments trong khoảng thời gian (bao gồm deposit, rental_fee, additional_fee, holding_fee, refund)
+    const allPayments = await Payment.aggregate([
+      { $match: paymentMatchQuery },
       {
         $group: {
-          _id: {
-            hour: { $hour: '$actual_start_time' },
-            dayOfWeek: { $dayOfWeek: '$actual_start_time' },
-            station: '$station_id'
-          },
-          rentalCount: { $sum: 1 },
-          totalActualRevenue: { $sum: '$total_fees' },
-          paymentsCount: { $sum: { $size: '$payments' } },
-          averageDuration: { $avg: { $subtract: ['$actual_end_time', '$actual_start_time'] } }
+          _id: null,
+          totalRevenue: { $sum: '$amount' },
+          count: { $sum: 1 },
+          byType: {
+            $push: {
+              type: '$payment_type',
+              amount: '$amount',
+              forfeited: '$forfeited'
+            }
+          }
         }
       }
     ]);
+
+    const totalActualRevenue = allPayments.length > 0 ? allPayments[0].totalRevenue : 0;
+    const totalPayments = allPayments.length > 0 ? allPayments[0].count : 0;
+
+    // Phân tích chi tiết theo loại payment
+    const paymentsByType = {};
+    if (allPayments.length > 0) {
+      allPayments[0].byType.forEach(p => {
+        const type = p.type || 'unknown';
+        if (!paymentsByType[type]) {
+          paymentsByType[type] = { count: 0, total: 0 };
+        }
+        paymentsByType[type].count++;
+        paymentsByType[type].total += p.amount;
+      });
+    }
+
+    console.log(`💰 Total revenue from payments: ${totalActualRevenue.toLocaleString('vi-VN')} VND (${totalPayments} payments)`);
+    console.log(`   Breakdown:`, paymentsByType);
 
     // Lấy thống kê trạm - FIXED
     const mongoose = require('mongoose');
@@ -224,7 +252,6 @@ class AIService {
       // New detailed data
       detailedHourlyBookings: hourlyBookingData,
       detailedDailyBookings: dailyBookingData,
-      actualRentalData: actualRentalData,
       
       stationStats,
       weatherData: externalData.weather,
@@ -239,7 +266,8 @@ class AIService {
         totalBookings: hourlyBookingData.reduce((sum, item) => sum + item.bookingsCount, 0),
         completedRentals: hourlyBookingData.reduce((sum, item) => sum + item.completedRentals, 0),
         expectedRevenue: hourlyBookingData.reduce((sum, item) => sum + item.totalBookingRevenue, 0),
-        actualRevenue: actualRentalData.reduce((sum, item) => sum + item.totalActualRevenue, 0),
+        actualRevenue: totalActualRevenue,  // ✅ Tổng từ TẤT CẢ payments (bao gồm deposit, rental_fee, additional_fee, holding_fee, refund)
+        paymentsByType: paymentsByType,  // ✅ Chi tiết theo loại payment
         conversionRate: hourlyBookingData.length > 0 ? 
           (hourlyBookingData.reduce((sum, item) => sum + item.completedRentals, 0) / 
            hourlyBookingData.reduce((sum, item) => sum + item.bookingsCount, 0)) * 100 : 0
@@ -276,10 +304,9 @@ ${historicalData.detailedDailyBookings.slice(-7).map(item =>
   `Ngày ${item._id.date}: ${item.bookingsCount} lượt đặt, ${item.completedRentals} hoàn thành`
 ).join('\n')}
 
-=== THUÊ XE THỰC TẾ ===
-Dữ liệu thuê xe đã hoàn thành:
-${historicalData.actualRentalData.map(item => 
-  `Giờ ${item._id.hour}h: ${item.rentalCount} lượt thuê, thời gian trung bình: ${Math.round(item.averageDuration/3600000)}h`
+=== DOANH THU THEO LOẠI ===
+${Object.entries(historicalData.summary.paymentsByType || {}).map(([type, data]) => 
+  `${type}: ${data.count} payments - ${(data.total/1000000).toFixed(1)}M VND`
 ).join('\n')}
 
 === TRẠM ===

@@ -133,7 +133,7 @@ exports.getMaintenanceReportById = async (req, res) => {
 exports.updateMaintenanceStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, notes = '' } = req.body;
+        const { status, notes = '', battery_level } = req.body;
         
         // ✅ Lấy ảnh sau khi sửa từ req.files
         let fixed_images = [];
@@ -150,7 +150,7 @@ exports.updateMaintenanceStatus = async (req, res) => {
         }
 
         const maintenance = await Maintenance.findById(id)
-            .populate('vehicle_id', 'name license_plate status');
+            .populate('vehicle_id', 'name license_plate status current_battery');
 
         if (!maintenance) {
             return res.status(404).json({
@@ -165,6 +165,38 @@ exports.updateMaintenanceStatus = async (req, res) => {
                 message: 'Báo cáo bảo trì đã bị xóa'
             });
         }
+
+        //  PHÂN QUYỀN THEO MAINTENANCE_TYPE
+        if (req.user.role === 'Station Staff') {
+            // Staff CHỈ được fix low_battery
+            if (maintenance.maintenance_type !== 'low_battery') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Staff chỉ được phép xử lý bảo trì PIN. Vấn đề này cần Admin duyệt.',
+                    maintenance_type: maintenance.maintenance_type
+                });
+            }
+            
+            // Kiểm tra battery_level khi fix low_battery
+            if (status === 'fixed') {
+                if (battery_level === undefined || battery_level === null) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Vui lòng nhập mức pin hiện tại (battery_level) khi hoàn thành sạc pin.'
+                    });
+                }
+                
+                if (battery_level < 80) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Mức pin phải đạt ít nhất 80% (hiện tại: ${battery_level}%). Vui lòng sạc thêm trước khi đánh dấu hoàn thành.`
+                    });
+                }
+            }
+            
+            console.log(`✅ Staff ${req.user.name} fixing low_battery maintenance`);
+        }
+        // Admin có thể fix tất cả
 
         const oldStatus = maintenance.status;
         maintenance.status = status;
@@ -183,7 +215,26 @@ exports.updateMaintenanceStatus = async (req, res) => {
             if (vehicle) {
                 vehicle.status = 'available';
                 vehicle.technical_status = 'good';
+                
+                // ✅ CẬP NHẬT BATTERY NẾU CÓ
+                if (battery_level !== undefined && battery_level !== null) {
+                    // Validate battery level
+                    if (battery_level < 0 || battery_level > 100) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'Mức pin phải từ 0-100%'
+                        });
+                    }
+                    
+                    const oldBattery = vehicle.current_battery;
+                    vehicle.current_battery = battery_level;
+                    console.log(`🔋 Updated battery: ${oldBattery}% → ${battery_level}%`);
+                }
+                
                 await vehicle.save();
+                
+                
+                await maintenance.populate('vehicle_id');
 
                 // Cập nhật số lượng xe tại trạm
                 const station = await Station.findById(maintenance.station_id);
@@ -216,7 +267,8 @@ exports.deleteMaintenanceReport = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const maintenance = await Maintenance.findById(id);
+        const maintenance = await Maintenance.findById(id)
+            .populate('vehicle_id', 'name status technical_status');
 
         if (!maintenance) {
             return res.status(404).json({
@@ -232,13 +284,70 @@ exports.deleteMaintenanceReport = async (req, res) => {
             });
         }
 
-        // Soft delete
+        //  CHỈ CHO XÓA MAINTENANCE STATUS 'REPORTED'
+        if (maintenance.status === 'fixed') {
+            return res.status(400).json({
+                success: false,
+                message: 'Không thể xóa báo cáo đã hoàn thành',
+                reason: 'Báo cáo đã fixed là audit trail, không nên xóa',
+                suggestion: 'Chỉ có thể xóa báo cáo đang ở trạng thái "reported"'
+            });
+        }
+
+        const vehicleId = maintenance.vehicle_id?._id;
+        const stationId = maintenance.station_id;
+        let vehicleStatusUpdated = false;
+
+        // Soft delete maintenance
         maintenance.is_active = false;
         await maintenance.save();
 
+        console.log(`🗑️  Soft deleted maintenance: ${maintenance.code}`);
+
+        // NẾU XE ĐANG MAINTENANCE → KIỂM TRA CÒN MAINTENANCE ACTIVE NÀO KHÁC KHÔNG
+        if (vehicleId && maintenance.vehicle_id.status === 'maintenance') {
+            // Kiểm tra xe có maintenance report ACTIVE nào khác không?
+            const otherActiveMaintenance = await Maintenance.findOne({
+                vehicle_id: vehicleId,
+                is_active: true,
+                _id: { $ne: maintenance._id }
+            });
+
+            // Nếu KHÔNG còn maintenance active nào khác → Chuyển xe về available
+            if (!otherActiveMaintenance) {
+                const vehicle = await Vehicle.findById(vehicleId);
+                
+                if (vehicle) {
+                    const oldStatus = vehicle.status;
+                    vehicle.status = 'available';
+                    vehicle.technical_status = 'good';
+                    await vehicle.save();
+                    
+                    vehicleStatusUpdated = true;
+                    console.log(`✅ Vehicle ${vehicle.name}: ${oldStatus} → available (no active maintenance left)`);
+
+                    //  CẬP NHẬT STATION COUNTS
+                    if (stationId) {
+                        const station = await Station.findById(stationId);
+                        if (station) {
+                            station.maintenance_vehicles = Math.max(0, station.maintenance_vehicles - 1);
+                            station.available_vehicles += 1;
+                            await station.save();
+                            console.log(`✅ Station counts updated: -1 maintenance, +1 available`);
+                        }
+                    }
+                }
+            } else {
+                console.log(`⚠️  Vehicle ${maintenance.vehicle_id.name} still has ${otherActiveMaintenance.code} active`);
+            }
+        }
+
         res.json({
             success: true,
-            message: 'Xóa báo cáo bảo trì thành công'
+            message: 'Xóa báo cáo bảo trì thành công',
+            note: 'Soft delete - dữ liệu vẫn được giữ lại trong database',
+            vehicle_status_updated: vehicleStatusUpdated,
+            vehicle_name: maintenance.vehicle_id?.name
         });
 
     } catch (error) {

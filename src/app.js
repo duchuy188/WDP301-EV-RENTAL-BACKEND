@@ -44,7 +44,10 @@ const allowedOrigins = [
   'http://127.0.0.1:5000',
   'http://localhost:5173',
   'http://localhost:5174',
-  'http://localhost:5175' 
+  'http://localhost:5175',
+  'https://admin.evrent.id.vn',
+  'https://staff.evrent.id.vn',
+  'https://evrent.id.vn'
 ];
 
 app.use(cors({

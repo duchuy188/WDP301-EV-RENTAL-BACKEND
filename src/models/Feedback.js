@@ -85,7 +85,7 @@ feedbackSchema.index({ staff_id: 1 });
 feedbackSchema.index({ staff_ids: 1 });
 feedbackSchema.index({ type: 1 });
 feedbackSchema.index({ status: 1 });
-feedbackSchema.index({ created_at: -1 });
+feedbackSchema.index({ createdAt: -1 });
 
 const Feedback = mongoose.model('Feedback', feedbackSchema);
 module.exports = Feedback;
