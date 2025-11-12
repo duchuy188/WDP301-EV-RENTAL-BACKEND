@@ -309,24 +309,33 @@ class RentalController {
         // Tự động tạo Maintenance report nếu cần
         if (isPoorCondition || isLowBattery) {
           const Maintenance = require('../models/Maintenance');
-          const maintenanceCode = `MT${Date.now().toString().substring(6)}_${rental.vehicle_id.name}`;
+          const Vehicle = require('../models/Vehicle');
           
-          await Maintenance.create({
-            code: maintenanceCode,
-            vehicle_id: rental.vehicle_id._id,
-            station_id: rental.vehicle_id.station_id,
-            maintenance_type: isPoorCondition ? 'poor_condition' : 'low_battery',
-            title: isPoorCondition 
-              ? `Bảo trì xe ${rental.vehicle_id.name} - Tình trạng kém`
-              : `Sạc pin xe ${rental.vehicle_id.name}`,
-            description: isPoorCondition
-              ? `Xe có tình trạng kém: ${vehicle_condition_after.exterior_condition === 'poor' ? 'Ngoại thất hư hỏng' : 'Nội thất hư hỏng'}`
-              : `Pin còn ${vehicle_condition_after.battery_level}% - Cần sạc đến 80% trở lên`,
-            status: 'reported',
-            reported_by: req.user._id
-          });
+          // Lấy vehicle với station_id
+          const vehicle = await Vehicle.findById(rental.vehicle_id._id).select('name station_id');
           
-          console.log(`✅ Auto-created ${isPoorCondition ? 'poor_condition' : 'low_battery'} maintenance report`);
+          if (vehicle && vehicle.station_id) {
+            const maintenanceCode = `MT${Date.now().toString().substring(6)}_${vehicle.name}`;
+            
+            await Maintenance.create({
+              code: maintenanceCode,
+              vehicle_id: vehicle._id,
+              station_id: vehicle.station_id,
+              maintenance_type: isPoorCondition ? 'damage' : 'low_battery',
+              title: isPoorCondition 
+                ? `Bảo trì xe ${vehicle.name} - Tình trạng kém`
+                : `Sạc pin xe ${vehicle.name}`,
+              description: isPoorCondition
+                ? `Xe có tình trạng kém: ${vehicle_condition_after.exterior_condition === 'poor' ? 'Ngoại thất hư hỏng' : 'Nội thất hư hỏng'}`
+                : `Pin còn ${vehicle_condition_after.battery_level}% - Cần sạc đến 80% trở lên`,
+              status: 'reported',
+              reported_by: req.user._id
+            });
+            
+            console.log(`✅ Auto-created ${isPoorCondition ? 'damage' : 'low_battery'} maintenance report`);
+          } else {
+            console.warn('⚠️ Cannot create maintenance report: vehicle has no station_id');
+          }
         }
         
       } else {
@@ -758,6 +767,44 @@ class RentalController {
         current_mileage: vehicle_condition_after.mileage,
         current_battery: vehicle_condition_after.battery_level
       });
+
+      // Tự động tạo Maintenance report nếu phát hiện vấn đề
+      const isPoorCondition = 
+        vehicle_condition_after.exterior_condition === 'poor' || 
+        vehicle_condition_after.interior_condition === 'poor';
+      
+      const isLowBattery = vehicle_condition_after.battery_level < 20;
+      
+      if (isPoorCondition || isLowBattery) {
+        const Maintenance = require('../models/Maintenance');
+        const Vehicle = require('../models/Vehicle');
+        
+        // Lấy vehicle với station_id
+        const vehicle = await Vehicle.findById(rental.vehicle_id._id).select('name station_id');
+        
+        if (vehicle && vehicle.station_id) {
+          const maintenanceCode = `MT${Date.now().toString().substring(6)}_${vehicle.name}`;
+          
+          await Maintenance.create({
+            code: maintenanceCode,
+            vehicle_id: vehicle._id,
+            station_id: vehicle.station_id,
+            maintenance_type: isPoorCondition ? 'damage' : 'low_battery',
+            title: isPoorCondition 
+              ? `Bảo trì xe ${vehicle.name} - Tình trạng kém`
+              : `Sạc pin xe ${vehicle.name}`,
+            description: isPoorCondition
+              ? `Xe có tình trạng kém sau checkout: ${vehicle_condition_after.exterior_condition === 'poor' ? 'Ngoại thất hư hỏng' : 'Nội thất hư hỏng'}. Phí sửa chữa: ${validatedDamageFee.toLocaleString('vi-VN')}đ`
+              : `Pin còn ${vehicle_condition_after.battery_level}% - Cần sạc đến 80% trở lên`,
+            status: 'reported',
+            reported_by: req.user._id
+          });
+          
+          console.log(`✅ Auto-created ${isPoorCondition ? 'damage' : 'low_battery'} maintenance report for checkout with fees`);
+        } else {
+          console.warn('⚠️ Cannot create maintenance report: vehicle has no station_id');
+        }
+      }
 
       // Gửi email receipt
       try {
