@@ -843,9 +843,10 @@ exports.getPeakAnalysis = async (req, res) => {
         
         // Thống kê giờ cao điểm
         if (type === 'hours' || type === 'both') {
+            // ✅ FIX: Filter theo start_date (ngày khách muốn thuê xe) thay vì createdAt (ngày đặt)
             const matchQuery = {
                 status: { $in: ['confirmed', 'completed'] },
-                createdAt: { $gte: startDate, $lte: endDate }
+                start_date: { $gte: startDate, $lte: endDate }
             };
             
             if (station_id) {
@@ -854,7 +855,7 @@ exports.getPeakAnalysis = async (req, res) => {
             
             const Booking = require('../models/Booking');
             
-            // Parse pickup_time và combine với start_date để lấy giờ chính xác
+            // ✅ FIX: Tính revenue từ payments thực tế thay vì booking.total_price
             const hourlyBookings = await Booking.aggregate([
                 { $match: matchQuery },
                 {
@@ -871,14 +872,63 @@ exports.getPeakAnalysis = async (req, res) => {
                     }
                 },
                 {
+                    $lookup: {
+                        from: 'payments',
+                        let: { bookingId: '$_id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ['$booking_id', '$$bookingId'] },
+                                    status: 'completed',
+                                    is_active: true
+                                }
+                            }
+                        ],
+                        as: 'payments'
+                    }
+                },
+                {
+                    $addFields: {
+                        // Tính tổng revenue từ payments thực tế
+                        actual_revenue: {
+                            $sum: {
+                                $map: {
+                                    input: '$payments',
+                                    as: 'payment',
+                                    in: '$$payment.amount'
+                                }
+                            }
+                        }
+                    }
+                },
+                {
                     $group: {
                         _id: '$pickup_hour',
                         bookings: { $sum: 1 },
-                        revenue: { $sum: '$total_price' }
+                        revenue: { $sum: '$actual_revenue' }
                     }
                 },
                 { $sort: { '_id': 1 } }
             ]);
+            
+            // ✅ Lấy giờ mở/đóng cửa của trạm
+            let openingHour = 6;  // Default
+            let closingHour = 20; // Default
+            
+            if (station_id) {
+                const station = await Station.findById(station_id);
+                if (station) {
+                    openingHour = parseInt(station.opening_time.split(':')[0]);
+                    closingHour = parseInt(station.closing_time.split(':')[0]);
+                }
+            } else {
+                // Nếu không có station_id, lấy giờ chung của tất cả trạm
+                const stations = await Station.find({ status: 'active' });
+                if (stations.length > 0) {
+                    openingHour = Math.min(...stations.map(s => parseInt(s.opening_time.split(':')[0])));
+                    closingHour = Math.max(...stations.map(s => parseInt(s.closing_time.split(':')[0])));
+                }
+            }
             
             // Tạo mảng 24 giờ với giá trị 0
             const hourlyData = Array.from({ length: 24 }, (_, hour) => {
@@ -892,8 +942,11 @@ exports.getPeakAnalysis = async (req, res) => {
                 };
             });
             
-            // Sắp xếp theo số bookings để tìm peak và low
-            const sortedHours = [...hourlyData].sort((a, b) => b.bookings - a.bookings);
+            // ✅ Chỉ lấy giờ trong khoảng opening_time - closing_time
+            const workingHoursData = hourlyData.filter(h => h.hour >= openingHour && h.hour < closingHour);
+            
+            // Sắp xếp theo số bookings để tìm peak và low (CHỈ TRONG GIỜ LÀM VIỆC)
+            const sortedHours = [...workingHoursData].sort((a, b) => b.bookings - a.bookings);
             const peakHours = sortedHours.slice(0, 3).map(h => ({ ...h, trend: 'high' }));
             const lowHours = sortedHours.slice(-3).reverse().map(h => ({ ...h, trend: 'low' }));
             
@@ -902,6 +955,7 @@ exports.getPeakAnalysis = async (req, res) => {
             
             result.peak_hours = {
                 data: hourlyData,
+                working_hours_data: workingHoursData, // ✅ Thêm data chỉ giờ làm việc
                 top_3: peakHours,
                 bottom_3: lowHours,
                 summary: {
@@ -911,16 +965,19 @@ exports.getPeakAnalysis = async (req, res) => {
                     quietest_hour: lowHours[0]?.hour,
                     peak_bookings: peakHours[0]?.bookings || 0,
                     low_bookings: lowHours[0]?.bookings || 0,
-                    avg_bookings_per_hour: Math.round(totalBookings / 24)
+                    avg_bookings_per_hour: Math.round(totalBookings / 24),
+                    opening_hour: openingHour, // ✅ Thêm thông tin giờ làm việc
+                    closing_hour: closingHour
                 }
             };
         }
         
         // Thống kê ngày cao điểm
         if (type === 'days' || type === 'both') {
+            // ✅ FIX: Filter theo start_date (ngày khách muốn thuê xe) thay vì createdAt (ngày đặt)
             const matchQuery = {
                 status: { $in: ['confirmed', 'completed'] },
-                createdAt: { $gte: startDate, $lte: endDate }
+                start_date: { $gte: startDate, $lte: endDate }
             };
             
             if (station_id) {
@@ -929,14 +986,49 @@ exports.getPeakAnalysis = async (req, res) => {
             
             const Booking = require('../models/Booking');
             
-            // Dùng start_date thay vì createdAt để biết ngày user muốn thuê xe
+            // ✅ FIX: Tính revenue từ payments thực tế
             const dailyBookings = await Booking.aggregate([
                 { $match: matchQuery },
                 {
+                    $lookup: {
+                        from: 'payments',
+                        let: { bookingId: '$_id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ['$booking_id', '$$bookingId'] },
+                                    status: 'completed',
+                                    is_active: true
+                                }
+                            }
+                        ],
+                        as: 'payments'
+                    }
+                },
+                {
+                    $addFields: {
+                        actual_revenue: {
+                            $sum: {
+                                $map: {
+                                    input: '$payments',
+                                    as: 'payment',
+                                    in: '$$payment.amount'
+                                }
+                            }
+                        }
+                    }
+                },
+                {
                     $group: {
-                        _id: { $dayOfWeek: '$start_date' }, // Dùng start_date thay vì createdAt
+                        // ✅ FIX: Dùng timezone Asia/Ho_Chi_Minh để tính đúng ngày
+                        _id: { 
+                            $dayOfWeek: { 
+                                date: '$start_date', 
+                                timezone: 'Asia/Ho_Chi_Minh' 
+                            } 
+                        },
                         bookings: { $sum: 1 },
-                        revenue: { $sum: '$total_price' }
+                        revenue: { $sum: '$actual_revenue' }
                     }
                 },
                 { $sort: { '_id': 1 } }

@@ -125,103 +125,55 @@ class AIService {
       { $sort: { '_id.date': 1 } }
     ]);
 
-    // FIX: Thêm Rental data để có actual revenue
-    const rentalMatchQuery = {
-      actual_start_time: { $gte: startDate, $lte: endDate },
-      status: { $in: ['completed', 'pending_payment'] }
-    };
-
-    if (stationId) {
-      // Convert string to ObjectId
-      const mongoose = require('mongoose');
-      rentalMatchQuery.station_id = new mongoose.Types.ObjectId(stationId);
-    }
-
-    // Lấy actual rental data với payments (BAO GỒM holding_fee forfeited, KHÔNG BAO GỒM refund)
-    const actualRentalData = await Rental.aggregate([
-      { $match: rentalMatchQuery },
-      {
-        $lookup: {
-          from: 'payments',
-          let: { rentalId: '$_id', bookingId: '$booking_id' },
-          pipeline: [
-            { $match: { 
-              $expr: { 
-                $or: [
-                  { $eq: ['$rental_id', '$$rentalId'] },
-                  { $eq: ['$booking_id', '$$bookingId'] }
-                ]
-              },
-              status: 'completed',
-              is_active: true
-            }}
-          ],
-          as: 'payments'
-        }
-      },
-      {
-        $addFields: {
-          // Tính tổng doanh thu từ payments đã filter
-          totalRevenue: {
-            $sum: {
-              $map: {
-                input: '$payments',
-                as: 'payment',
-                in: '$$payment.amount'
-              }
-            }
-          }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            hour: { $hour: '$actual_start_time' },
-            dayOfWeek: { $dayOfWeek: '$actual_start_time' },
-            station: '$station_id'
-          },
-          rentalCount: { $sum: 1 },
-          totalActualRevenue: { $sum: '$totalRevenue' },
-          paymentsCount: { $sum: { $size: '$payments' } },
-          averageDuration: { $avg: { $subtract: ['$actual_end_time', '$actual_start_time'] } }
-        }
-      }
-    ]);
-
-    // Lấy forfeited holding fees từ cancelled bookings
-    const forfeitedHoldingFeeQuery = {
-      payment_type: 'holding_fee',
+    // ✅ FIX: Tính doanh thu theo payment.createdAt (giống Dashboard) thay vì rental.actual_start_time
+    const paymentMatchQuery = {
+      createdAt: { $gte: startDate, $lte: endDate },
       status: 'completed',
-      is_active: true,
-      forfeited: true,
-      createdAt: { $gte: startDate, $lte: endDate }
+      is_active: true
     };
 
     if (stationId) {
       const mongoose = require('mongoose');
-      forfeitedHoldingFeeQuery.station_id = new mongoose.Types.ObjectId(stationId);
+      paymentMatchQuery.station_id = new mongoose.Types.ObjectId(stationId);
     }
 
-    const forfeitedHoldingFees = await Payment.aggregate([
-      { $match: forfeitedHoldingFeeQuery },
+    // Lấy TẤT CẢ payments trong khoảng thời gian (bao gồm deposit, rental_fee, additional_fee, holding_fee, refund)
+    const allPayments = await Payment.aggregate([
+      { $match: paymentMatchQuery },
       {
         $group: {
           _id: null,
-          totalForfeitedFees: { $sum: '$amount' },
-          count: { $sum: 1 }
+          totalRevenue: { $sum: '$amount' },
+          count: { $sum: 1 },
+          byType: {
+            $push: {
+              type: '$payment_type',
+              amount: '$amount',
+              forfeited: '$forfeited'
+            }
+          }
         }
       }
     ]);
 
-    const totalForfeitedFees = forfeitedHoldingFees.length > 0 
-      ? forfeitedHoldingFees[0].totalForfeitedFees 
-      : 0;
-    
-    const forfeitedCount = forfeitedHoldingFees.length > 0
-      ? forfeitedHoldingFees[0].count
-      : 0;
+    const totalActualRevenue = allPayments.length > 0 ? allPayments[0].totalRevenue : 0;
+    const totalPayments = allPayments.length > 0 ? allPayments[0].count : 0;
 
-    console.log(`💰 Forfeited holding fees: ${totalForfeitedFees.toLocaleString('vi-VN')} VND (${forfeitedCount} bookings)`);
+    // Phân tích chi tiết theo loại payment
+    const paymentsByType = {};
+    if (allPayments.length > 0) {
+      allPayments[0].byType.forEach(p => {
+        const type = p.type || 'unknown';
+        if (!paymentsByType[type]) {
+          paymentsByType[type] = { count: 0, total: 0 };
+        }
+        paymentsByType[type].count++;
+        paymentsByType[type].total += p.amount;
+      });
+    }
+
+    console.log(`💰 Total revenue from payments: ${totalActualRevenue.toLocaleString('vi-VN')} VND (${totalPayments} payments)`);
+    console.log(`   Breakdown:`, paymentsByType);
 
     // Lấy thống kê trạm - FIXED
     const mongoose = require('mongoose');
@@ -300,7 +252,6 @@ class AIService {
       // New detailed data
       detailedHourlyBookings: hourlyBookingData,
       detailedDailyBookings: dailyBookingData,
-      actualRentalData: actualRentalData,
       
       stationStats,
       weatherData: externalData.weather,
@@ -315,9 +266,8 @@ class AIService {
         totalBookings: hourlyBookingData.reduce((sum, item) => sum + item.bookingsCount, 0),
         completedRentals: hourlyBookingData.reduce((sum, item) => sum + item.completedRentals, 0),
         expectedRevenue: hourlyBookingData.reduce((sum, item) => sum + item.totalBookingRevenue, 0),
-        actualRevenue: actualRentalData.reduce((sum, item) => sum + item.totalActualRevenue, 0) + totalForfeitedFees,  // ✅ BAO GỒM forfeited holding fees
-        forfeitedHoldingFees: totalForfeitedFees,  // ✅ Track riêng forfeited fees
-        forfeitedBookingsCount: forfeitedCount,
+        actualRevenue: totalActualRevenue,  // ✅ Tổng từ TẤT CẢ payments (bao gồm deposit, rental_fee, additional_fee, holding_fee, refund)
+        paymentsByType: paymentsByType,  // ✅ Chi tiết theo loại payment
         conversionRate: hourlyBookingData.length > 0 ? 
           (hourlyBookingData.reduce((sum, item) => sum + item.completedRentals, 0) / 
            hourlyBookingData.reduce((sum, item) => sum + item.bookingsCount, 0)) * 100 : 0
@@ -354,10 +304,9 @@ ${historicalData.detailedDailyBookings.slice(-7).map(item =>
   `Ngày ${item._id.date}: ${item.bookingsCount} lượt đặt, ${item.completedRentals} hoàn thành`
 ).join('\n')}
 
-=== THUÊ XE THỰC TẾ ===
-Dữ liệu thuê xe đã hoàn thành:
-${historicalData.actualRentalData.map(item => 
-  `Giờ ${item._id.hour}h: ${item.rentalCount} lượt thuê, thời gian trung bình: ${Math.round(item.averageDuration/3600000)}h`
+=== DOANH THU THEO LOẠI ===
+${Object.entries(historicalData.summary.paymentsByType || {}).map(([type, data]) => 
+  `${type}: ${data.count} payments - ${(data.total/1000000).toFixed(1)}M VND`
 ).join('\n')}
 
 === TRẠM ===
