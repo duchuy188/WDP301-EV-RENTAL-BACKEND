@@ -281,8 +281,9 @@ exports.forgotPassword = async (req, res) => {
         
         await user.save();
         
-        // Tạo URL đặt lại mật khẩu
-        const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+       
+        const resetBaseUrl = process.env.RESET_PASSWORD_URL || process.env.FRONTEND_URL.split(',')[0].trim();
+        const resetUrl = `${resetBaseUrl}/reset-password/${resetToken}`;
         
         // Gửi email
         try {
