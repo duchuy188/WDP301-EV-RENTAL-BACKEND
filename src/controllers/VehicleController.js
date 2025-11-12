@@ -433,6 +433,12 @@ exports.importLicensePlates = async (req, res) => {
     const successes = updateResults.filter(r => r.success);
     const failures = updateResults.filter(r => !r.success);
 
+   
+    const formattedFailures = failures.map(f => ({
+      licensePlate: f.license_plate || f.vehicle_code, 
+      error: f.message 
+    }));
+
     // Trả về kết quả chi tiết
     return res.status(200).json({
       success: true,
@@ -441,7 +447,7 @@ exports.importLicensePlates = async (req, res) => {
       message: `Đã cập nhật ${successes.length} biển số thành công${failures.length > 0 ? `, ${failures.length} thất bại` : ''}`,
       details: {
         successes,
-        failures
+        failures: formattedFailures // Dùng format mới
       }
     });
 
@@ -1841,6 +1847,12 @@ exports.importPricingUpdates = async (req, res) => {
     const successes = updateResults.filter(r => r.success);
     const failures = updateResults.filter(r => !r.success);
 
+
+    const formattedFailures = failures.map(f => ({
+      vehicleCode: f.vehicle_code, 
+      error: f.message 
+    }));
+
     // Thống kê theo trạng thái
     const statusStats = successes.reduce((acc, item) => {
       acc[item.status] = (acc[item.status] || 0) + 1;
@@ -1856,7 +1868,7 @@ exports.importPricingUpdates = async (req, res) => {
       statusStats,
       details: {
         successes,
-        failures
+        failures: formattedFailures // Dùng format mới
       }
     });
 
