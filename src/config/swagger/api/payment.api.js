@@ -508,3 +508,146 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
+
+/**
+
+ * @swagger
+ * /api/payments/vnpay/fake-success:
+ *   post:
+ *     summary: 🎭 FAKE VNPay Success (FOR TESTING ONLY)
+ *     description: |
+ *       **CHỨC NĂNG:** Giả lập VNPay callback thành công khi VNPay sandbox bị lỗi
+ *       
+ *       **KHI NÀO DÙNG:**
+ *       - VNPay sandbox trả về Error 72 (Không tìm thấy website)
+ *       - VNPay sandbox down hoặc maintenance
+ *       - Cần test/demo mà không thể thanh toán thật
+ *       
+ *       **FLOW:**
+ *       1. User tạo booking → Nhận temp_id
+ *       2. Gọi endpoint này với temp_id
+ *       3. Booking được tạo tự động với status "pending"
+ *       4. Email xác nhận được gửi
+ *       5. Xe được reserve
+ *       
+ *       **LƯU Ý:**
+ *       - ⚠️ CHỈ DÙNG ĐỂ TEST/DEMO
+ *       - ⚠️ KHÔNG DÙNG TRÊN PRODUCTION
+ *       - Pending booking phải còn hiệu lực (chưa hết 15 phút)
+ *       - Booking được tạo sẽ có status "pending" (chờ check-in)
+ *     tags: [Payments]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - temp_id
+ *             properties:
+ *               temp_id:
+ *                 type: string
+ *                 description: Temp ID của pending booking (lấy từ response khi tạo booking)
+ *                 example: "PB13119947884H"
+ *           examples:
+ *             example1:
+ *               summary: "Fake success cho pending booking"
+ *               value:
+ *                 temp_id: "PB13119947884H"
+ *     responses:
+ *       200:
+ *         description: Fake success thành công - Booking đã được tạo
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "🎭 FAKE SUCCESS - Booking created"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     booking_code:
+ *                       type: string
+ *                       example: "BKNGO7GKFV"
+ *                       description: Mã booking vừa tạo
+ *                     booking_id:
+ *                       type: string
+ *                       example: "69160de2ec5fab2c76da5e06"
+ *                       description: ID của booking
+ *                     payment_code:
+ *                       type: string
+ *                       example: "PAYJ41L4OHK"
+ *                       description: Mã payment holding_fee
+ *             examples:
+ *               success:
+ *                 summary: "Response thành công"
+ *                 value:
+ *                   success: true
+ *                   message: "🎭 FAKE SUCCESS - Booking created"
+ *                   data:
+ *                     booking_code: "BKNGO7GKFV"
+ *                     booking_id: "69160de2ec5fab2c76da5e06"
+ *                     payment_code: "PAYJ41L4OHK"
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc pending booking đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *             examples:
+ *               missing_temp_id:
+ *                 summary: "Thiếu temp_id"
+ *                 value:
+ *                   success: false
+ *                   message: "Thiếu temp_id"
+ *               expired:
+ *                 summary: "Pending booking đã hết hạn"
+ *                 value:
+ *                   success: false
+ *                   message: "Pending booking đã hết hạn"
+ *               already_completed:
+ *                 summary: "Đã thanh toán rồi"
+ *                 value:
+ *                   success: false
+ *                   message: "Pending booking đã completed"
+ *       404:
+ *         description: Không tìm thấy pending booking
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy pending booking"
+ *       500:
+ *         description: Lỗi server khi tạo booking
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Lỗi tạo booking"
+ *                 error:
+ *                   type: string
+ *                   example: "Booking validation failed"
+ */

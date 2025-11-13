@@ -10,7 +10,8 @@ const {
   updatePaymentMethod,
   handleVNPayCallback,
   handleVNPayWebhook,
-  handleHoldingFeeCallback
+  handleHoldingFeeCallback,
+  fakeVNPaySuccess
 } = require('../controllers/PaymentController');
 
 const authenticateToken = require('../middlewares/authMiddleware');
@@ -47,6 +48,9 @@ router.get('/', authenticateToken, requireRole(['Station Staff', 'Admin']), getA
 // ✅ VNPay Routes (KHÔNG cần authentication)
 router.get('/vnpay/callback', handleVNPayCallback);
 router.post('/vnpay/webhook', handleVNPayWebhook);
+
+// 🎭 FAKE VNPay Success (FOR TESTING ONLY - Khi VNPay sandbox lỗi)
+router.post('/vnpay/fake-success', fakeVNPaySuccess);
 
 // ✅ Holding Fee Callback (Online Booking) - KHÔNG cần authentication
 router.get('/holding-fee/callback', handleHoldingFeeCallback);

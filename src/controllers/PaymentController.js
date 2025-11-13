@@ -1446,6 +1446,188 @@ Chúc bạn có chuyến đi vui vẻ! 🎉`;
   }
 };
 
+// ==================== FAKE VNPAY SUCCESS (FOR TESTING) ====================
+
+/**
+ * Fake VNPay success - Chữa cháy khi VNPay sandbox lỗi
+ * POST /api/payments/vnpay/fake-success
+ */
+const fakeVNPaySuccess = async (req, res) => {
+  try {
+    const { temp_id } = req.body;
+
+    if (!temp_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thiếu temp_id'
+      });
+    }
+
+    console.log(`🎭 FAKE VNPAY SUCCESS for temp_id: ${temp_id}`);
+
+    // Get pending booking
+    const PendingBooking = require('../models/PendingBooking');
+    const pendingBooking = await PendingBooking.findOne({ temp_id })
+      .populate('user_id', 'fullname email phone');
+
+    if (!pendingBooking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy pending booking'
+      });
+    }
+
+    if (pendingBooking.status !== 'pending_payment') {
+      return res.status(400).json({
+        success: false,
+        message: `Pending booking đã ${pendingBooking.status}`
+      });
+    }
+
+    // Check if expired
+    if (new Date() > pendingBooking.expires_at) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pending booking đã hết hạn'
+      });
+    }
+
+    // Create booking (copy logic from handleHoldingFeeCallback)
+    const Vehicle = require('../models/Vehicle');
+    const Station = require('../models/Station');
+    const { sendEmail, getBookingConfirmationTemplate } = require('../config/emailService');
+
+    let booking;
+    try {
+      // Get booking data
+      const bookingData = pendingBooking.booking_data.toObject ? 
+        pendingBooking.booking_data.toObject() : 
+        pendingBooking.booking_data;
+      
+      console.log('📦 Booking data:', JSON.stringify(bookingData, null, 2));
+      
+      // Create booking
+      booking = await Booking.create({
+        code: 'BK' + Math.random().toString(36).substr(2, 8).toUpperCase(),
+        user_id: pendingBooking.user_id._id,
+        vehicle_id: bookingData.vehicle_id,
+        station_id: bookingData.station_id,
+        start_date: bookingData.start_date,
+        end_date: bookingData.end_date,
+        pickup_time: bookingData.pickup_time,
+        return_time: bookingData.return_time,
+        total_days: bookingData.total_days,
+        price_per_day: bookingData.price_per_day,
+        total_price: bookingData.total_price,
+        deposit_amount: bookingData.deposit_amount,
+        special_requests: bookingData.special_requests || '',
+        notes: bookingData.notes || '',
+        status: 'pending', // ← Chỉ pending, chưa confirmed
+        booking_type: 'online',
+        payment_status: 'holding_fee_paid', // ← Đã thanh toán phí giữ chỗ
+        holding_fee: {
+          amount: 50000,
+          status: 'paid'
+        },
+        created_by: pendingBooking.user_id._id
+      });
+
+      console.log(`✅ Created booking: ${booking.code}`);
+
+      // Create Payment record
+      const payment = await Payment.create({
+        code: 'PAY' + Math.random().toString(36).substr(2, 8).toUpperCase(),
+        rental_id: null,
+        user_id: pendingBooking.user_id._id,
+        booking_id: booking._id,
+        amount: 50000,
+        payment_method: 'vnpay',
+        payment_type: 'holding_fee',
+        status: 'completed',
+        transaction_id: 'FAKE_' + Date.now(),
+        completed_at: nowVietnam().toDate(),
+        notes: 'FAKE SUCCESS - Testing only',
+        processed_by: pendingBooking.user_id._id
+      });
+
+      // Link payment to booking
+      booking.holding_fee.payment_id = payment._id;
+      await booking.save();
+
+      console.log(`💳 Created payment: ${payment.code}`);
+
+      // Update vehicle to hard lock
+      await Vehicle.findByIdAndUpdate(pendingBooking.booking_data.vehicle_id, {
+        status: 'reserved',
+        reserved_for: booking._id,
+        reserved_at: nowVietnam().toDate(),
+        reserved_until: pendingBooking.booking_data.end_date
+      });
+
+      // Update pending booking
+      pendingBooking.status = 'completed';
+      await pendingBooking.save();
+
+      // Send email
+      const station = await Station.findById(booking.station_id);
+      const vehicle = await Vehicle.findById(booking.vehicle_id);
+
+      await sendEmail({
+        to: pendingBooking.user_id.email,
+        subject: '✅ Xác nhận đặt xe thành công - EV Rental',
+        html: getBookingConfirmationTemplate(pendingBooking.user_id.fullname, {
+          bookingId: booking._id.toString(),
+          bookingCode: booking.code,
+          carModel: vehicle.name,
+          pickupTime: `${booking.pickup_time} - ${booking.start_date.toLocaleDateString('vi-VN')}`,
+          pickupLocation: station.name,
+          returnTime: `${booking.return_time} - ${booking.end_date.toLocaleDateString('vi-VN')}`,
+          totalPrice: booking.total_price,
+          depositAmount: booking.deposit_amount
+        })
+      });
+
+      res.json({
+        success: true,
+        message: '🎭 FAKE SUCCESS - Booking created',
+        data: {
+          booking_code: booking.code,
+          booking_id: booking._id,
+          payment_code: payment.code
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error creating booking:', error);
+      
+      // Rollback
+      if (booking) {
+        await Booking.findByIdAndDelete(booking._id);
+      }
+      await Vehicle.findByIdAndUpdate(pendingBooking.booking_data.vehicle_id, {
+        status: 'available',
+        reserved_for: null,
+        reserved_at: null,
+        reserved_until: null
+      });
+
+      return res.status(500).json({
+        success: false,
+        message: 'Lỗi tạo booking',
+        error: error.message
+      });
+    }
+
+  } catch (error) {
+    console.error('Error in fakeVNPaySuccess:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createPayment,
   confirmPayment,
@@ -1456,5 +1638,6 @@ module.exports = {
   updatePaymentMethod,
   handleVNPayCallback,
   handleVNPayWebhook,
-  handleHoldingFeeCallback 
+  handleHoldingFeeCallback,
+  fakeVNPaySuccess // ← NEW: Fake success for testing
 };
