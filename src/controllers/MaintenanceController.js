@@ -209,6 +209,14 @@ exports.updateMaintenanceStatus = async (req, res) => {
         
         await maintenance.save();
 
+       
+        if (oldStatus === 'fixed' && status === 'reported') {
+            return res.status(400).json({
+                success: false,
+                message: 'Không thể chuyển từ "Đã sửa" về "Đang báo cáo". Nếu có vấn đề mới, vui lòng tạo báo cáo bảo trì mới.'
+            });
+        }
+
         // Nếu chuyển từ reported sang fixed, cập nhật xe về available
         if (oldStatus === 'reported' && status === 'fixed') {
             const vehicle = await Vehicle.findById(maintenance.vehicle_id._id);
@@ -231,8 +239,8 @@ exports.updateMaintenanceStatus = async (req, res) => {
                     console.log(`🔋 Updated battery: ${oldBattery}% → ${battery_level}%`);
                 }
                 
-                await vehicle.save();
                 
+                await vehicle.save({ validateModifiedOnly: true });
                 
                 await maintenance.populate('vehicle_id');
 

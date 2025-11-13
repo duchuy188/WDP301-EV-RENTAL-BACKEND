@@ -938,13 +938,20 @@ class RentalController {
       const rentalsWithPayments = await Promise.all(
         rentals.map(async (rental) => {
           const payments = await Payment.find({
-            rental_id: rental._id,
+            $or: [
+              { rental_id: rental._id },
+              { booking_id: rental.booking_id }
+            ],
             is_active: true
           }).select('amount status payment_type payment_method created_at');
           
+          // Calculate total_amount from payments
+          const total_amount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+          
           return {
             ...rental.toObject(),
-            payments
+            payments,
+            total_amount
           };
         })
       );
@@ -1004,13 +1011,20 @@ class RentalController {
       const rentalsWithPayments = await Promise.all(
         rentals.map(async (rental) => {
           const payments = await Payment.find({
-            rental_id: rental._id,
+            $or: [
+              { rental_id: rental._id },
+              { booking_id: rental.booking_id }
+            ],
             is_active: true
           }).select('amount status payment_type payment_method created_at');
           
+          // Calculate total_amount from payments
+          const total_amount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+          
           return {
             ...rental.toObject(),
-            payments
+            payments,
+            total_amount
           };
         })
       );
@@ -1073,13 +1087,20 @@ class RentalController {
       const rentalsWithPayments = await Promise.all(
         rentals.map(async (rental) => {
           const payments = await Payment.find({
-            rental_id: rental._id,
+            $or: [
+              { rental_id: rental._id },
+              { booking_id: rental.booking_id }
+            ],
             is_active: true
           }).select('amount status payment_type payment_method created_at');
           
+          // Calculate total_amount from payments
+          const total_amount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+          
           return {
             ...rental.toObject(),
-            payments
+            payments,
+            total_amount
           };
         })
       );
@@ -1149,6 +1170,9 @@ class RentalController {
       .select('code payment_type amount payment_method status transaction_id vnpay_transaction_no vnpay_bank_code reason createdAt')
       .sort({ createdAt: 1 }); // Sắp xếp theo thời gian tạo
 
+     
+      const total_amount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+
       res.json({
         success: true,
         data: {
@@ -1162,7 +1186,8 @@ class RentalController {
             customer_signed_by: contract.customer_signed_by,
             is_signed: contract.status === 'signed'
           } : null,
-          payments: payments // ← NEW: Include all payments
+          payments: payments, // ← Include all payments
+          total_amount: total_amount // ← Calculate from payments
         }
       });
     } catch (error) {

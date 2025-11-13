@@ -11,10 +11,10 @@ const vehicleSchema = new mongoose.Schema({
         // Bỏ qua validation khi status là draft
         if (this.status === 'draft') return true;
         
-        // Kiểm tra định dạng chỉ khi có giá trị và không phải draft
-        return !v || /^[0-9]{2}[A-Z]-[0-9]{3}\.[0-9]{2}$/.test(v);
+    
+        return !v || /^[0-9]{2}[A-Z]{1,2}-[0-9]{3,5}\.[0-9]{2}$/.test(v);
       },
-      message: 'Biển số không đúng định dạng (VD: 51A-123.45)'
+      message: 'Biển số không đúng định dạng (VD: 51A-123.45 hoặc 51AB-777.64)'
     }
   },
   name: { 
