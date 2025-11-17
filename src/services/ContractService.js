@@ -113,7 +113,7 @@ class ContractService {
       const htmlContent = this.createContractHTML(contract);
       console.log('HTML content generated, length:', htmlContent.length);
       
-      // Launch Puppeteer với cấu hình debug
+      // Launch Puppeteer với cấu hình tối ưu cho Render
       console.log('Launching Puppeteer...');
       browser = await puppeteer.launch({
         headless: 'new',
@@ -123,9 +123,14 @@ class ContractService {
           '--disable-dev-shm-usage',
           '--disable-gpu',
           '--disable-web-security',
-          '--allow-running-insecure-content'
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process', 
+          '--disable-accelerated-2d-canvas'
         ],
-        timeout: 60000 // Tăng timeout lên 60s
+        timeout: 30000 
       });
       
       const page = await browser.newPage();
@@ -136,11 +141,11 @@ class ContractService {
       await page.emulateMediaType('print');
       console.log('Page viewport and media type set');
       
-      // Set content với error handling
+      // Set content với error handling - Tối ưu cho Render
       try {
         await page.setContent(htmlContent, {
-          waitUntil: ['load', 'domcontentloaded', 'networkidle0'],
-          timeout: 60000 // Tăng timeout
+          waitUntil: 'domcontentloaded', 
+          timeout: 30000 // Giảm timeout xuống 30s
         });
         console.log('HTML content set successfully');
       } catch (contentError) {
@@ -148,8 +153,8 @@ class ContractService {
         throw new Error(`Không thể load HTML content: ${contentError.message}`);
       }
       
-      // Đợi page render hoàn tất
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Đợi page render hoàn tất - Giảm thời gian chờ
+      await new Promise(resolve => setTimeout(resolve, 500)); // ⭐ Giảm từ 2s xuống 0.5s
       console.log('Waiting completed, generating PDF...');
       
       // Generate PDF với error handling
