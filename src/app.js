@@ -24,6 +24,7 @@ const maintenanceRoutes = require('./routes/maintenance.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
 const aiRoutes = require('./routes/ai.routes');
 const chatbotRoutes = require('./routes/chatbot.routes');
+const reportRoutes = require('./routes/report.routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000; 
@@ -95,6 +96,7 @@ app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Định nghĩa một route cơ bản
 app.get('/', (req, res) => {

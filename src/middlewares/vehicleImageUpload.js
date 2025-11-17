@@ -22,6 +22,16 @@ const returnImageStorage = new CloudinaryStorage({
   }
 });
 
+// Storage cho ảnh report sự cố
+const reportImageStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'ev-rental/reports',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [{ width: 1200, height: 1200, crop: 'limit' }]
+  }
+});
+
 // Middleware upload ảnh xe
 const vehicleImageUpload = multer({
   storage: vehicleImageStorage,
@@ -39,7 +49,17 @@ const uploadMultiple = multer({
   }
 }).array('photos', 10);
 
+// Middleware upload ảnh report (tối đa 5 ảnh)
+const reportImageUpload = multer({
+  storage: reportImageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB per file
+    files: 5 // Tối đa 5 ảnh
+  }
+});
+
 module.exports = {
   vehicleImageUpload,
-  uploadMultiple
+  uploadMultiple,
+  reportImageUpload
 };
