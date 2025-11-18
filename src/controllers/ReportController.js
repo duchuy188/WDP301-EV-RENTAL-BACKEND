@@ -1,5 +1,23 @@
 const Report = require('../models/Report');
 const Rental = require('../models/Rental');
+const { formatVietnamTime, nowVietnam } = require('../config/timezone');
+
+
+const formatReportTimestamps = (report) => {
+  const reportObj = report.toObject ? report.toObject() : report;
+  
+  if (reportObj.createdAt) {
+    reportObj.createdAt = formatVietnamTime(reportObj.createdAt, 'DD/MM/YYYY HH:mm:ss');
+  }
+  if (reportObj.updatedAt) {
+    reportObj.updatedAt = formatVietnamTime(reportObj.updatedAt, 'DD/MM/YYYY HH:mm:ss');
+  }
+  if (reportObj.resolved_at) {
+    reportObj.resolved_at = formatVietnamTime(reportObj.resolved_at, 'DD/MM/YYYY HH:mm:ss');
+  }
+  
+  return reportObj;
+};
 
 class ReportController {
 
@@ -62,7 +80,7 @@ class ReportController {
       return res.status(201).json({
         success: true,
         message: 'Tạo báo cáo sự cố thành công',
-        data: populatedReport
+        data: formatReportTimestamps(populatedReport)
       });
 
     } catch (error) {
@@ -91,9 +109,11 @@ class ReportController {
         .populate('resolved_by', 'full_name')
         .sort({ createdAt: -1 });
 
+      const formattedReports = reports.map(report => formatReportTimestamps(report));
+
       return res.status(200).json({
         success: true,
-        data: reports
+        data: formattedReports
       });
 
     } catch (error) {
@@ -148,9 +168,11 @@ class ReportController {
         Report.countDocuments(filter)
       ]);
 
+      const formattedReports = reports.map(report => formatReportTimestamps(report));
+
       return res.status(200).json({
         success: true,
-        data: reports,
+        data: formattedReports,
         pagination: {
           total,
           page: parseInt(page),
@@ -210,7 +232,7 @@ class ReportController {
 
       return res.status(200).json({
         success: true,
-        data: report
+        data: formatReportTimestamps(report)
       });
 
     } catch (error) {
@@ -288,7 +310,7 @@ class ReportController {
       return res.status(200).json({
         success: true,
         message: 'Đã giải quyết báo cáo thành công',
-        data: updatedReport
+        data: formatReportTimestamps(updatedReport)
       });
 
     } catch (error) {
