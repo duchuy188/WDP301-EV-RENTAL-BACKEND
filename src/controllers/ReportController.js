@@ -41,6 +41,20 @@ class ReportController {
         });
       }
 
+     
+      const pendingCount = await Report.countDocuments({
+        rental_id: rental_id,
+        status: 'pending',
+        is_active: true
+      });
+
+      if (pendingCount >= 3) {
+        return res.status(400).json({
+          success: false,
+          message: 'Rental này đã có 3 reports đang chờ xử lý. Vui lòng đợi staff xử lý trước khi tạo report mới.',
+          pendingReports: pendingCount
+        });
+      }
 
       // Lấy URLs ảnh đã upload (vehicleImageUpload đã upload lên Cloudinary)
       let imageUrls = [];
