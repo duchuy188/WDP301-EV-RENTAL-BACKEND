@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Payment = require('../models/Payment');
 const Contract = require('../models/Contract');
 const Booking = require('../models/Booking');
+const Report = require('../models/Report');
 const PaymentService = require('../services/PaymentService');
 const VNPayService = require('../services/VNPayService');
 const { uploadToCloudinary } = require('../config/cloudinary');
@@ -167,6 +168,21 @@ class RentalController {
         return res.status(400).json({
           success: false,
           message: 'Chưa ký hợp đồng. Không thể checkout.'
+        });
+      }
+
+    
+      const pendingReports = await Report.countDocuments({
+        rental_id: rental._id,
+        status: 'pending',
+        is_active: true
+      });
+
+      if (pendingReports > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Không thể hoàn thành checkout. Rental này còn ${pendingReports} báo cáo sự cố chưa xử lý. Vui lòng xử lý tất cả reports trước khi checkout.`,
+          pendingReports: pendingReports
         });
       }
 
@@ -557,6 +573,21 @@ class RentalController {
         return res.status(400).json({
           success: false,
           message: 'Chưa ký hợp đồng. Không thể checkout.'
+        });
+      }
+
+      // ⭐ CHECK: Có reports pending không?
+      const pendingReportsWithFees = await Report.countDocuments({
+        rental_id: rental._id,
+        status: 'pending',
+        is_active: true
+      });
+
+      if (pendingReportsWithFees > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Không thể hoàn thành checkout. Rental này còn ${pendingReportsWithFees} báo cáo sự cố chưa xử lý. Vui lòng xử lý tất cả reports trước khi checkout.`,
+          pendingReports: pendingReportsWithFees
         });
       }
 

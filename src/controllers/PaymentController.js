@@ -84,7 +84,37 @@ const createPayment = async (req, res) => {
       });
     }
 
-    // Validate rental_id cho additional_fee (rental_fee có thể tạo từ booking mà chưa có rental)
+    // ⭐ CRITICAL VALIDATION: Endpoint này CHỈ dùng để tạo payment BỔ SUNG sau checkout
+    // Không cho phép tạo payment khi rental chưa checkout (trừ deposit/rental_fee ban đầu)
+    if (rental_id) {
+      const rental = await Rental.findById(rental_id);
+      if (!rental) {
+        return res.status(404).json({ 
+          message: 'Không tìm thấy rental' 
+        });
+      }
+      
+      // Nếu rental chưa checkout (không có vehicle_condition_after)
+      // → CHỈ cho phép tạo deposit hoặc rental_fee (thanh toán ban đầu)
+      if (!rental.vehicle_condition_after) {
+        // Nếu là additional_fee → CHẶN
+        if (payment_type === 'additional_fee') {
+          return res.status(400).json({ 
+            message: 'Không thể tạo phí phát sinh. Rental chưa checkout.',
+            rental_code: rental.code,
+            rental_status: rental.status,
+            hint: 'Vui lòng checkout trước khi tạo phí phát sinh'
+          });
+        }
+        
+        // Nếu là deposit/rental_fee nhưng rental đang active → CẢNH BÁO
+        if (rental.status === 'active' && (payment_type === 'deposit' || payment_type === 'rental_fee')) {
+          console.warn(`⚠️ Creating ${payment_type} for active rental ${rental.code} without checkout`);
+        }
+      }
+    }
+    
+    // Validate rental_id cho additional_fee
     if (payment_type === 'additional_fee' && !rental_id) {
       return res.status(400).json({ 
         message: 'rental_id là bắt buộc cho additional_fee',
@@ -169,11 +199,12 @@ const createPayment = async (req, res) => {
         
         const rental = await Rental.findOne({ 
           booking_id: booking._id,
-          status: { $in: ['pending_deposit', 'active'] } 
+          status: { $in: ['pending_deposit', 'active', 'pending_payment'] } 
         }).sort({ createdAt: -1 }); 
         
         if (rental) {
           payment.rental_id = rental._id;
+          rental_id = rental._id;
           await payment.save();
           console.log(`✅ Auto-linked rental ${rental.code} (${rental._id}) to payment ${payment.code}`);
         } else {
@@ -184,13 +215,29 @@ const createPayment = async (req, res) => {
         // Không throw error, chỉ log để không ảnh hưởng việc tạo payment
       }
     }
+    
+   
+    if (payment_type === 'additional_fee' && rental_id && calculatedAmount > 0) {
+      try {
+        const rental = await Rental.findById(rental_id);
+        if (rental) {
+          rental.other_fees = (rental.other_fees || 0) + calculatedAmount;
+          rental.total_fees = (rental.late_fee || 0) + (rental.damage_fee || 0) + rental.other_fees;
+          await rental.save();
+          console.log(`✅ Updated rental ${rental.code} fees: other_fees +${calculatedAmount}, total_fees = ${rental.total_fees}`);
+        }
+      } catch (feeUpdateError) {
+        console.error('❌ Error updating rental fees:', feeUpdateError);
+        // Không throw để không block việc tạo payment
+      }
+    }
 
     // Tạo VNPay QR Code chỉ khi amount > 0, status = pending và payment_method = vnpay
     if (paymentStatus === 'pending' && calculatedAmount > 0 && payment_method === 'vnpay') {
       const vnpayService = new VNPayService();
       const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1';
       
-      // ✅ XÁC ĐỊNH ĐÚNG VNPAY PAYMENT TYPE
+     
       let vnpayPaymentType;
       if (payment.payment_type === 'holding_fee') {
         vnpayPaymentType = 'holding_fee';
@@ -328,24 +375,32 @@ const confirmPayment = async (req, res) => {
         else {
           const remainingPendingPayments = await Payment.countDocuments({
             rental_id: payment.rental_id,
-            status: 'pending'
+            status: 'pending',
+            is_active: true
           });
           
           // Nếu không còn payment pending nào
           if (remainingPendingPayments === 0) {
-            // Nếu rental đang active → completed (thanh toán rental fee)
+            // Nếu rental đang active → CHỈ completed nếu đã checkout
             if (rental.status === 'active') {
-              await Rental.findByIdAndUpdate(payment.rental_id, {
-                status: 'completed',
-                actual_end_time: nowVietnam().toDate()
-              });
-              
-              // Cập nhật booking status thành completed
-              await Booking.findByIdAndUpdate(rental.booking_id, {
-                status: 'completed'
-              });
-              
-              console.log(`✅ Rental ${payment.rental_id} completed - all payments done`);
+              // ⭐ CRITICAL: Không cho phép complete rental nếu chưa checkout
+              if (!rental.vehicle_condition_after) {
+                console.log(`⚠️ Cannot complete rental ${rental.code} - Not checked out yet (all payments done but waiting for checkout)`);
+                // Không làm gì, rental vẫn active, đợi checkout
+              } else {
+                // Đã checkout → Có thể completed
+                await Rental.findByIdAndUpdate(payment.rental_id, {
+                  status: 'completed',
+                  actual_end_time: nowVietnam().toDate()
+                });
+                
+                // Cập nhật booking status thành completed
+                await Booking.findByIdAndUpdate(rental.booking_id, {
+                  status: 'completed'
+                });
+                
+                console.log(`✅ Rental ${payment.rental_id} completed - all payments done and checked out`);
+              }
             }
             // Nếu rental đang pending_payment → completed (đã checkout, thanh toán xong)
             else if (rental.status === 'pending_payment') {
