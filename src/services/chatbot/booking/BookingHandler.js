@@ -325,7 +325,7 @@ class BookingHandler {
           // Cleanup: Unreserve vehicle
           await Vehicle.findByIdAndUpdate(bookingData.vehicleId, {
             status: 'available',
-            reserved_for: null,
+            reserved_for: '',
             reserved_at: null,
             reserved_until: null
           });

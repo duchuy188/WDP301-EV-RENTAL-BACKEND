@@ -471,7 +471,7 @@ const createBooking = async (req, res) => {
         // Cleanup: Unreserve vehicle
         await Vehicle.findByIdAndUpdate(vehicle._id, {
           status: 'available',
-          reserved_for: null,
+          reserved_for: '',
           reserved_at: null,
           reserved_until: null
         });

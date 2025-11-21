@@ -1081,6 +1081,12 @@ exports.reportMaintenance = async (req, res) => {
     const oldStatus = vehicle.status;
     vehicle.status = 'maintenance';
     vehicle.technical_status = 'needs_maintenance';
+    
+    // Reset reserved fields khi chuyển sang maintenance
+    vehicle.reserved_for = '';
+    vehicle.reserved_at = null;
+    vehicle.reserved_until = null;
+    
     await vehicle.save();
     
     // Cập nhật số lượng xe tại trạm (nếu có)

@@ -1614,7 +1614,7 @@ const fakeVNPaySuccess = async (req, res) => {
       // Update vehicle to hard lock
       await Vehicle.findByIdAndUpdate(pendingBooking.booking_data.vehicle_id, {
         status: 'reserved',
-        reserved_for: booking._id,
+        reserved_for: 'booking',
         reserved_at: nowVietnam().toDate(),
         reserved_until: pendingBooking.booking_data.end_date
       });
@@ -1661,7 +1661,7 @@ const fakeVNPaySuccess = async (req, res) => {
       }
       await Vehicle.findByIdAndUpdate(pendingBooking.booking_data.vehicle_id, {
         status: 'available',
-        reserved_for: null,
+        reserved_for: '',
         reserved_at: null,
         reserved_until: null
       });
